@@ -76,7 +76,7 @@ function syncSpecialistSchedules() {
   });
 
   const specialistSheets = ss.getSheets()
-    .filter(sheet => sheet.getName().startsWith('SPEC_') && sheet.getName() !== 'SPEC_TEMPLATE');
+    .filter(isSpecialistSheet);
 
   ss.toast('Reading ' + specialistSheets.length + ' specialist sheet(s)...', 'Sync', 5);
 
@@ -608,6 +608,17 @@ function mergeCellsIntoRectangles(needsLock, numRows, numCols) {
 
 /**
  * Keep this function identical in wizard/Code.gs and
+ * template/TemplateSync.gs. Generated specialist tabs are named
+ * "SPEC_<name>"; SPEC_Template is the master copy and is never one of them.
+ * Compared case-insensitively, like Google Sheets tab names.
+ */
+function isSpecialistSheet(sheet) {
+  const name = sheet.getName().toUpperCase();
+  return name.indexOf('SPEC_') === 0 && name !== 'SPEC_TEMPLATE';
+}
+
+/**
+ * Keep this function identical in wizard/Code.gs and
  * template/TemplateSync.gs: the wizard applies it when generating a
  * timetable, and the Timetable Admin menu re-applies it later.
  *
@@ -625,7 +636,7 @@ function mergeCellsIntoRectangles(needsLock, numRows, numCols) {
  */
 function applySpecialistClashFormatting(ss) {
   const specialistSheets = ss.getSheets()
-    .filter(sheet => sheet.getName().startsWith('SPEC_') && sheet.getName() !== 'SPEC_TEMPLATE');
+    .filter(isSpecialistSheet);
 
   if (!specialistSheets.length) return;
 

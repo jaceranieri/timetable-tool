@@ -51,7 +51,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 2: Template cleanup
 
-- [ ] **9. Purge leftovers (S).** *Script done; sheet edits in `template/SHEET_CHANGES.md`.*
+- [x] **9. Purge leftovers (S).**
   - Tabs: HELPER, Example, "Amadeus + Creative Arts Advice".
   - Named ranges pointing to `#REF!`: `SchoolData`, `ExtraCurriculars`, `ReferenceList`.
   - All conditional formatting on `SPEC_Template` (the script deletes it anyway).
@@ -62,10 +62,10 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 3: Stop silent data loss
 
-- [ ] **10. Name rules in the wizard and the server (M).** Unique class and specialist names (ignoring case and the characters replaced in tab names); reserved names blocked (DATA, TEMPLATE, OVERVIEW…); no `SPEC_` prefix; no characters that tab names can't hold (`/ \ ? * [ ] :`), because OVERVIEW looks tabs up by class name. The server returns a clear error instead of skipping.
-- [ ] **11. Store DATA as plain text (S)** so `3/4` isn't turned into a date and `=…` isn't turned into a formula.
-- [ ] **12. Detect the template tab reliably (S).** Compare `SPEC_Template` without case, or tag generated tabs with developer metadata.
-- [ ] **13. Check inputs on the server (S).** Times on the 5-minute grid; breaks inside the day and not overlapping; cycle length 1–10; at least one class.
+- [x] **10. Name rules in the wizard and the server (M).** Unique class and specialist names (ignoring case and the characters replaced in tab names); reserved names blocked (DATA, TEMPLATE, OVERVIEW…); no `SPEC_` prefix; no characters that tab names can't hold (`/ \ ? * [ ] :`), because OVERVIEW looks tabs up by class name. The server returns a clear error instead of skipping. Also: names can't start with `=`, class names can't contain `'` or match a break name, and specialist names can't be "Template". The setup is checked before the template is copied.
+- [x] **11. Store DATA as plain text (S)** so `3/4` isn't turned into a date and `=…` isn't turned into a formula.
+- [x] **12. Detect the template tab reliably (S).** Compare `SPEC_Template` without case, or tag generated tabs with developer metadata.
+- [x] **13. Check inputs on the server (S).** Times on the 5-minute grid; breaks inside the day and not overlapping; cycle length 1–10; at least one class.
 
 ## Phase 4: Generator rewrite
 
@@ -98,8 +98,8 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 ## Phase 7: Wizard usability
 
 - [ ] **25. Draft autosave (S)** with Resume and Start new; "Back to wizard" and "Start new" on the success screen.
-- [ ] **26. Step 3 errors (S).** Jump to the first grade tab with an error, show a summary, clear errors as fields are edited. Allow "TBC" teachers; ignore fully blank rows.
-- [ ] **27. School name field (S),** time inputs on the 5-minute grid with live overlap warnings, specialist/class cycle warning, cycle inputs capped at 10.
+- [ ] **26. Step 3 errors (S).** ~~Jump to the first grade tab with an error~~ (done in Phase 3); show a summary, clear errors as fields are edited. Allow "TBC" teachers; ignore fully blank rows.
+- [ ] **27. School name field (S)** and specialist/class cycle warning. (5-minute time steps, overlapping-break errors and the 10-week cycle cap were done in Phase 3.)
 - [ ] **28. Preview before generating (S):** "14 class tabs, 3 specialist tabs, about 1 minute".
 - [ ] **29. Paste from a spreadsheet (S):** paste class names and teachers in bulk.
 - [ ] **30. Save and load the setup as a file (S).** Same format step 32 reads from DATA.

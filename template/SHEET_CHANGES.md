@@ -77,25 +77,39 @@ shows "N/A" there.
   - OVERVIEW lists every class.
   - The specialist KLA dropdown in the wizard no longer offers Non-Curricular.
 
-## Phase 2
+## Phase 2 (applied and tested)
 
 ### Step 9: Purge leftovers
 
 Nothing in the scripts or the remaining tabs reads any of these.
 
-- [ ] **Delete tabs:** HELPER, Example, "Amadeus + Creative Arts Advice" (right-click the tab → Delete; show hidden tabs first via View → Hidden sheets).
-- [ ] **Delete named ranges** that point to `#REF!` (Data → Named ranges): `SchoolData`, `ExtraCurriculars`, `ReferenceList`.
-- [ ] **SPEC_Template:** remove all conditional formatting (select all → Format → Conditional formatting → delete each rule). The script already deletes these rules on every generated specialist tab.
-- [ ] **TEMPLATE `B19:B21`:** delete the "Text is exactly" rules for Break, English, Mathematics, Religion, Science, HSIE, PDHPE and Creative Arts. Those cells only ever hold the Amadeus labels. Keep the custom-formula rule `=AND(B19<>"", ISNA(MATCH(B19, $B$5:$B$11, 0)))` if it gives the Amadeus labels their colour.
-- [ ] **TEMPLATE `A12:B12`:** delete the "Text is exactly Break" rule. Keep the custom-formula `ISNA(MATCH(…))` rule if it gives the Non-Curricular label its colour.
-- [ ] **TEMPLATE `B32`:** delete the empty "Resources" heading (and any formatting under it).
-- [ ] **DATA:** nothing to do. Column N (ActivityList) is no longer written by the wizard.
+- [x] **Delete tabs:** HELPER, Example, "Amadeus + Creative Arts Advice" (right-click the tab → Delete; show hidden tabs first via View → Hidden sheets).
+- [x] **Delete named ranges** that point to `#REF!` (Data → Named ranges): `SchoolData`, `ExtraCurriculars`, `ReferenceList`.
+- [x] **SPEC_Template:** remove all conditional formatting (select all → Format → Conditional formatting → delete each rule). The script already deletes these rules on every generated specialist tab.
+- [x] **TEMPLATE `B19:B21`:** delete the "Text is exactly" rules for Break, English, Mathematics, Religion, Science, HSIE, PDHPE and Creative Arts. Those cells only ever hold the Amadeus labels. Keep the custom-formula rule `=AND(B19<>"", ISNA(MATCH(B19, $B$5:$B$11, 0)))` if it gives the Amadeus labels their colour.
+- [x] **TEMPLATE `A12:B12`:** delete the "Text is exactly Break" rule. Keep the custom-formula `ISNA(MATCH(…))` rule if it gives the Non-Curricular label its colour.
+- [x] **TEMPLATE `B32`:** delete the empty "Resources" heading (and any formatting under it).
+- [x] **DATA:** nothing to do. Column N (ActivityList) is no longer written by the wizard.
 
-### After applying Phase 2
+### After applying Phase 2 (done)
 
-- [ ] Paste the updated `template/TemplateSync.gs` into the template's script project.
-- [ ] Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
-- [ ] Generate a test timetable and check:
+- [x] Paste the updated `template/TemplateSync.gs` into the template's script project.
+- [x] Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
+- [x] Generate a test timetable and check:
   - Class tabs still show subject colours, and the compliance table (rows 5–21) looks as before.
   - Specialist tabs show class colours and grey break rows.
   - Sync, then Lock Synced Cells, then delete one specialist lesson and run both again: the deleted slot is cleared and no longer locked.
+
+## Phase 3
+
+No sheet changes. Paste the updated `wizard/Code.gs`, `wizard/Index.html`
+and `template/TemplateSync.gs`, then check:
+
+- [ ] The wizard flags, on the field itself:
+  - a duplicate class name in another grade (the wizard opens that grade's tab),
+  - a class called `Data`, `SPEC_Test` or `Year 3/4`, or containing an apostrophe,
+  - a specialist called `Template` or two specialists with the same name,
+  - a start, end or break time not on a 5-minute mark (e.g. 10:32),
+  - two overlapping breaks.
+- [ ] A normal setup generates as before, and DATA shows times such as `08:30` as typed (plain text).
+- [ ] The hidden SPEC_Template tab gets no clash formatting, and "Sync Specialist Schedules" doesn't list it.

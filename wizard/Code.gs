@@ -67,6 +67,11 @@ function generateTimetable(payload) {
 
 
   try {
+    // Check the setup before copying anything, so a bad setup doesn't leave
+    // a half-built file in the user's Drive.
+    const config = parsePayloadConfig(payload);
+    validateConfig(config);
+
     updateJobProgress(jobId, 5, 'Initializing template duplication...');
 
 
@@ -92,7 +97,6 @@ function generateTimetable(payload) {
     updateJobProgress(jobId, 18, 'Building DATA reference tables...');
 
 
-    const config = parsePayloadConfig(payload);
     populateDataSheet(dataSheet, payload, config, ss);
     buildSpecialistSheets(ss, config, jobId);
     buildAllClassSheets(ss, config, jobId);
@@ -127,7 +131,7 @@ function parsePayloadConfig(payload) {
     const end = String(varMap['Break_' + index + '_End'] || '').trim();
 
 
-    if (name && isValidTime(start) && isValidTime(end)) {
+    if (name || start || end) {
       breaks.push({ label: name, start: start, end: end });
     }
     index++;
@@ -165,10 +169,7 @@ function parsePayloadConfig(payload) {
   while (varMap['Specialist_' + index + '_Name'] !== undefined) {
     const name = String(varMap['Specialist_' + index + '_Name'] || '').trim();
     const kla = String(varMap['Specialist_' + index + '_KLA'] || '').trim();
-    const cycle = Math.max(
-      1,
-      parseInt(varMap['Specialist_' + index + '_Cycle'], 10) || 1
-    );
+    const cycle = Number(varMap['Specialist_' + index + '_Cycle']);
     if (name) specialists.push({ name: name, kla: kla, cycle: cycle });
     index++;
   }
@@ -182,10 +183,7 @@ function parsePayloadConfig(payload) {
       varMap['Class_' + index + '_Teacher'] || 'N/A'
     ).trim();
     const grade = String(varMap['Class_' + index + '_Grade'] || '').trim();
-    const cycle = Math.max(
-      1,
-      parseInt(varMap['Class_' + index + '_Cycle'], 10) || 1
-    );
+    const cycle = Number(varMap['Class_' + index + '_Cycle']);
     const color = String(varMap['Class_' + index + '_Color'] || '').trim();
 
 
@@ -203,14 +201,161 @@ function parsePayloadConfig(payload) {
 
 
   return {
-    startTime: varMap.SchoolStart || '08:30',
-    endTime: varMap.SchoolEnd || '15:15',
+    startTime: String(varMap.SchoolStart || '').trim(),
+    endTime: String(varMap.SchoolEnd || '').trim(),
     breaks: breaks,
     klas: klas,
     activities: activities,
     specialists: specialists,
     classes: classes
   };
+}
+
+
+/**
+ * Rules shared with the wizard (Index.html), which checks the same things
+ * before submitting. Keep the two in step.
+ */
+const SLOT_MINUTES = 5;
+const MAX_CYCLE_WEEKS = 10;
+const MAX_NAME_LENGTH = 90;
+// Tabs that already exist in the template (or are planned), compared
+// case-insensitively because Google Sheets tab names are.
+const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
+
+/**
+ * Checks the parsed setup and throws one error listing every problem, so
+ * nothing is generated from a setup that would produce missing or broken
+ * tabs.
+ */
+function validateConfig(config) {
+  const problems = [];
+
+  const dayStart = timeToMinutes(config.startTime);
+  const dayEnd = timeToMinutes(config.endTime);
+  if (dayStart === null || dayEnd === null) {
+    problems.push('School start and end times must be valid times.');
+  } else if (dayStart % SLOT_MINUTES || dayEnd % SLOT_MINUTES) {
+    problems.push('School start and end times must be on a 5-minute mark (e.g. 8:30, 8:35).');
+  } else if (dayStart >= dayEnd) {
+    problems.push('School end time must be after the start time.');
+  }
+
+  const validBreaks = [];
+  config.breaks.forEach((item, index) => {
+    const label = item.label ? '"' + item.label + '"' : 'Break ' + (index + 1);
+    const start = timeToMinutes(item.start);
+    const end = timeToMinutes(item.end);
+    if (!item.label) problems.push(label + ' needs a name.');
+    else if (startsWithFormula(item.label)) problems.push(label + " can't start with =.");
+    if (start === null || end === null) {
+      problems.push(label + ' needs a valid start and end time.');
+    } else if (start % SLOT_MINUTES || end % SLOT_MINUTES) {
+      problems.push(label + ' must start and end on a 5-minute mark.');
+    } else if (start >= end) {
+      problems.push(label + ' must end after it starts.');
+    } else if (dayStart !== null && dayEnd !== null && (start < dayStart || end > dayEnd)) {
+      problems.push(label + ' must be within the school day.');
+    } else {
+      validBreaks.push({ label: label, start: start, end: end });
+    }
+  });
+  validBreaks.sort((a, b) => a.start - b.start);
+  for (let i = 1; i < validBreaks.length; i++) {
+    if (validBreaks[i].start < validBreaks[i - 1].end) {
+      problems.push(validBreaks[i - 1].label + ' and ' + validBreaks[i].label + ' overlap.');
+    }
+  }
+
+  if (!config.classes.length) {
+    problems.push('Add at least one class.');
+  }
+
+  const breakNames = config.breaks.map(item => item.label.toLowerCase());
+  const seenClasses = {};
+  config.classes.forEach(item => {
+    const label = 'Class "' + item.name + '"';
+    const nameProblem = getNameProblem(item.name, true);
+    if (nameProblem) problems.push(label + ' ' + nameProblem);
+    const key = item.name.toLowerCase();
+    if (seenClasses[key]) problems.push(label + ' is used more than once.');
+    seenClasses[key] = true;
+    if (breakNames.indexOf(key) !== -1) problems.push(label + ' has the same name as a break.');
+    if (startsWithFormula(item.teacher)) problems.push(label + ": the teacher name can't start with =.");
+    if (!isValidCycle(item.cycle)) {
+      problems.push(label + ' needs a cycle length of 1 to ' + MAX_CYCLE_WEEKS + ' weeks.');
+    }
+  });
+
+  const klaNames = config.klas.map(item => item.name.toLowerCase());
+  const seenSpecialists = {};
+  config.specialists.forEach(item => {
+    const label = 'Specialist "' + item.name + '"';
+    const nameProblem = getNameProblem(item.name, false);
+    if (nameProblem) problems.push(label + ' ' + nameProblem);
+    const key = item.name.toLowerCase();
+    if (seenSpecialists[key]) problems.push(label + ' is used more than once.');
+    seenSpecialists[key] = true;
+    if (klaNames.indexOf(item.kla.toLowerCase()) === -1) {
+      problems.push(label + ' needs a KLA from the list.');
+    }
+    if (!isValidCycle(item.cycle)) {
+      problems.push(label + ' needs a cycle length of 1 to ' + MAX_CYCLE_WEEKS + ' weeks.');
+    }
+  });
+
+  config.activities.forEach(item => {
+    if (startsWithFormula(item.name)) {
+      problems.push('Activity "' + item.name + '" can\'t start with =.');
+    }
+  });
+
+  if (problems.length) {
+    const shown = problems.slice(0, 15);
+    if (problems.length > shown.length) {
+      shown.push('...and ' + (problems.length - shown.length) + ' more.');
+    }
+    throw new Error('Please fix the following and try again:\n- ' + shown.join('\n- '));
+  }
+}
+
+/**
+ * Returns why a class or specialist name can't be used as a tab name, or ''
+ * if it's fine. Class names also can't contain an apostrophe, because the
+ * OVERVIEW tab looks class tabs up by name with INDIRECT.
+ */
+function getNameProblem(name, isClass) {
+  const lower = name.toLowerCase();
+  if (startsWithFormula(name)) return "can't start with =.";
+  if (name.length > MAX_NAME_LENGTH) return 'is longer than ' + MAX_NAME_LENGTH + ' characters.';
+  if (isClass ? /[\/\\?*\[\]:']/.test(name) : /[\/\\?*\[\]:]/.test(name)) {
+    return "can't contain " + (isClass ? "/ \\ ? * [ ] : or '" : '/ \\ ? * [ ] or :') + '.';
+  }
+  if (isClass && (RESERVED_TAB_NAMES.indexOf(lower) !== -1 || /^spec_/.test(lower))) {
+    return 'is a name the timetable uses for its own tabs.';
+  }
+  if (!isClass && lower === 'template') {
+    return 'is a name the timetable uses for its own tabs.';
+  }
+  return '';
+}
+
+function startsWithFormula(value) {
+  return String(value || '').trim().charAt(0) === '=';
+}
+
+function isValidCycle(value) {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_CYCLE_WEEKS;
+}
+
+/** 'HH:MM' to minutes after midnight, or null if it isn't a valid time. */
+function timeToMinutes(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
 }
 
 
@@ -249,6 +394,9 @@ function populateDataSheet(dataSheet, payload, config, ss) {
 
 
   ensureSheetSize(dataSheet, requiredRows, 16);
+  // Plain text, so values like "3-4" or "08:30" are stored exactly as typed
+  // instead of being turned into dates or times.
+  dataSheet.getRange(1, 1, dataSheet.getMaxRows(), 16).setNumberFormat('@');
 
 
   dataSheet.getRange('A1:B1').setValues([['VariableName', 'Value']]);
@@ -308,13 +456,13 @@ function populateDataSheet(dataSheet, payload, config, ss) {
 
 
 function buildSpecialistSheets(ss, config, jobId) {
-  const specTemplateSheet = ss.getSheetByName('SPEC_TEMPLATE');
+  const specTemplateSheet = ss.getSheetByName('SPEC_Template');
   const classListRange = ss.getRangeByName('ClassList');
 
 
   if (!config.specialists.length) return;
   if (!specTemplateSheet) {
-    throw new Error("Could not find a sheet named 'SPEC_TEMPLATE' in the template.");
+    throw new Error("Could not find a sheet named 'SPEC_Template' in the template.");
   }
   if (!classListRange) {
     throw new Error("Named range 'ClassList' was not created.");
@@ -366,11 +514,12 @@ function buildSpecialistSheets(ss, config, jobId) {
 
 
     // Start from a clean slate: don't inherit any conditional formatting
-    // rules that happen to exist on SPEC_TEMPLATE (e.g. a leftover "cell is
+    // rules that happen to exist on SPEC_Template (e.g. a leftover "cell is
     // not empty" rule). Only the rules this script adds below should apply.
     sheet.clearConditionalFormatRules();
 
 
+    sheet.getRangeList(['B1', 'B3']).setNumberFormat('@');
     sheet.getRange('B1').setValue(specialist.name);
     sheet.getRange('B3').setValue(specialist.kla);
     sheet.getRange('D3').setValue(specialist.cycle);
@@ -520,6 +669,7 @@ function buildAllClassSheets(ss, config, jobId) {
     ensureSheetSize(sheet, Math.max(lastDataRow, 30), lastRequiredColumn);
 
 
+    sheet.getRange('C27:C29').setNumberFormat('@');
     sheet.getRange('C27:C30').setValues([
       [classConfig.teacher],
       [classConfig.name],
@@ -794,6 +944,17 @@ function isValidHexColor(value) {
 
 /**
  * Keep this function identical in wizard/Code.gs and
+ * template/TemplateSync.gs. Generated specialist tabs are named
+ * "SPEC_<name>"; SPEC_Template is the master copy and is never one of them.
+ * Compared case-insensitively, like Google Sheets tab names.
+ */
+function isSpecialistSheet(sheet) {
+  const name = sheet.getName().toUpperCase();
+  return name.indexOf('SPEC_') === 0 && name !== 'SPEC_TEMPLATE';
+}
+
+/**
+ * Keep this function identical in wizard/Code.gs and
  * template/TemplateSync.gs: the wizard applies it when generating a
  * timetable, and the Timetable Admin menu re-applies it later.
  *
@@ -811,7 +972,7 @@ function isValidHexColor(value) {
  */
 function applySpecialistClashFormatting(ss) {
   const specialistSheets = ss.getSheets()
-    .filter(sheet => sheet.getName().startsWith('SPEC_') && sheet.getName() !== 'SPEC_TEMPLATE');
+    .filter(isSpecialistSheet);
 
   if (!specialistSheets.length) return;
 

@@ -183,6 +183,41 @@
             '#A0C4FF', '#BDB2FF', '#E4C1F9', '#FFC6FF', '#FFCFE0'
         ];
 
+        // Setup rules shared with the server (validateConfig in Code.gs),
+        // which checks the same things again. Keep the two in step.
+        const SLOT_MINUTES = 5;
+        const MAX_CYCLE_WEEKS = 10;
+        const MAX_NAME_LENGTH = 90;
+        const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
+
+        // Short message for a class or specialist name that can't be used as
+        // a tab name, or '' if it's fine. Class names can't contain an
+        // apostrophe because the OVERVIEW tab looks class tabs up by name.
+        const getNameError = (name, isClass) => {
+            const trimmed = name.trim();
+            const lower = trimmed.toLowerCase();
+            if (!trimmed) return "Required";
+            if (trimmed.startsWith('=')) return "Can't start with =";
+            if (trimmed.length > MAX_NAME_LENGTH) return "Too long";
+            if (isClass ? /[\/\\?*\[\]:']/.test(trimmed) : /[\/\\?*\[\]:]/.test(trimmed)) return isClass ? "No / \\ ? * [ ] : '" : "No / \\ ? * [ ] :";
+            if (isClass && (RESERVED_TAB_NAMES.includes(lower) || lower.startsWith('spec_'))) return "Reserved name";
+            if (!isClass && lower === 'template') return "Reserved name";
+            return "";
+        };
+
+        // Names (lower-cased) that appear more than once in a list.
+        const findDuplicates = (names) => {
+            const counts = {};
+            names.forEach(n => { const key = n.trim().toLowerCase(); if (key) counts[key] = (counts[key] || 0) + 1; });
+            return new Set(Object.keys(counts).filter(key => counts[key] > 1));
+        };
+
+        const isOnSlotGrid = (timeStr) => {
+            if (!timeStr) return false;
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return (hours * 60 + minutes) % SLOT_MINUTES === 0;
+        };
+
         const App = () => {
             const [step, setStep] = useState(1);
 
@@ -370,6 +405,9 @@
                 if (!data.schoolStart) { currentErrors.schoolStart = "Required"; isValid = false; }
                 if (!data.schoolEnd) { currentErrors.schoolEnd = "Required"; isValid = false; }
 
+                if (data.schoolStart && !isOnSlotGrid(data.schoolStart)) { currentErrors.schoolStart = "Use 5-min steps"; isValid = false; }
+                if (data.schoolEnd && !isOnSlotGrid(data.schoolEnd)) { currentErrors.schoolEnd = "Use 5-min steps"; isValid = false; }
+
                 if (data.schoolStart && data.schoolEnd && data.schoolStart >= data.schoolEnd) {
                     currentErrors.schoolEnd = "Must be after start time";
                     isValid = false;
@@ -382,10 +420,16 @@
                     if (!b.start) { breakErrs[i].start = "Required"; isValid = false; }
                     if (!b.end) { breakErrs[i].end = "Required"; isValid = false; }
 
+                    if (b.start && !isOnSlotGrid(b.start)) { breakErrs[i].start = "Use 5-min steps"; isValid = false; }
+                    if (b.end && !isOnSlotGrid(b.end)) { breakErrs[i].end = "Use 5-min steps"; isValid = false; }
+
                     if (b.start && b.end && b.start >= b.end) {
                         breakErrs[i].end = "End must be after start";
                         isValid = false;
                     }
+
+                    const overlaps = data.breaks.some((other, j) => j !== i && b.start && b.end && other.start && other.end && b.start < other.end && other.start < b.end);
+                    if (overlaps && !breakErrs[i].start) { breakErrs[i].start = "Overlaps a break"; isValid = false; }
 
                     if (b.start && data.schoolStart && b.start < data.schoolStart) {
                         breakErrs[i].start = "Before school start";
@@ -412,7 +456,7 @@
                 data.grades.forEach((g, i) => {
                     currentErrors.grades[i] = {};
                     if (g.classes === undefined || g.classes === null || g.classes < 0) { currentErrors.grades[i].classes = "Invalid"; isValid = false; }
-                    if (!g.cycle || g.cycle < 1) { currentErrors.grades[i].cycle = "Invalid"; isValid = false; }
+                    if (!g.cycle || g.cycle < 1 || g.cycle > MAX_CYCLE_WEEKS) { currentErrors.grades[i].cycle = "1 to 10 weeks"; isValid = false; }
                 });
 
                 setErrors(currentErrors);
@@ -422,26 +466,46 @@
             const validateStep3 = () => {
                 let currentErrors = { staffing: {}, specialists: {}, activities: {} };
                 let isValid = true;
+                let firstErrorGradeId = null;
+
+                // Only classes in grades that still have classes are generated.
+                const activeGradeIds = data.grades.filter(g => g.classes > 0).map(g => g.id);
+                const activeStaffing = data.staffing.filter(s => activeGradeIds.includes(s.gradeId));
+                const duplicateClasses = findDuplicates(activeStaffing.map(s => s.className));
+                const breakNames = data.breaks.map(b => b.name.trim().toLowerCase()).filter(Boolean);
 
                 data.staffing.forEach((s, i) => {
                     currentErrors.staffing[i] = {};
-                    if (!s.className.trim()) { currentErrors.staffing[i].className = "Required"; isValid = false; }
+                    if (!activeGradeIds.includes(s.gradeId)) return;
+                    const key = s.className.trim().toLowerCase();
+                    const nameError = getNameError(s.className, true)
+                        || (duplicateClasses.has(key) ? "Duplicate name" : "")
+                        || (breakNames.includes(key) ? "Same as a break" : "");
+                    if (nameError) { currentErrors.staffing[i].className = nameError; isValid = false; }
                     if (!s.teacher.trim()) { currentErrors.staffing[i].teacher = "Required"; isValid = false; }
+                    else if (s.teacher.trim().startsWith('=')) { currentErrors.staffing[i].teacher = "Can't start with ="; isValid = false; }
+                    if (Object.keys(currentErrors.staffing[i]).length && !firstErrorGradeId) firstErrorGradeId = s.gradeId;
                 });
 
+                const duplicateSpecialists = findDuplicates(data.specialists.map(s => s.name));
                 data.specialists.forEach((s, i) => {
                     currentErrors.specialists[i] = {};
-                    if (!s.name.trim()) { currentErrors.specialists[i].name = "Required"; isValid = false; }
+                    const nameError = getNameError(s.name, false)
+                        || (duplicateSpecialists.has(s.name.trim().toLowerCase()) ? "Duplicate name" : "");
+                    if (nameError) { currentErrors.specialists[i].name = nameError; isValid = false; }
                     if (!s.kla) { currentErrors.specialists[i].kla = "Required"; isValid = false; }
-                    if (!s.cycle || s.cycle < 1) { currentErrors.specialists[i].cycle = "Invalid"; isValid = false; }
+                    if (!s.cycle || s.cycle < 1 || s.cycle > MAX_CYCLE_WEEKS) { currentErrors.specialists[i].cycle = "1 to 10 weeks"; isValid = false; }
                 });
 
                 data.activities.forEach((a, i) => {
                     currentErrors.activities[i] = {};
                     if (!a.name.trim()) { currentErrors.activities[i].name = "Required"; isValid = false; }
+                    else if (a.name.trim().startsWith('=')) { currentErrors.activities[i].name = "Can't start with ="; isValid = false; }
                 });
 
                 setErrors(currentErrors);
+                // Class errors only show on their grade's tab, so open it.
+                if (firstErrorGradeId) setActiveGradeTab(firstErrorGradeId);
                 return isValid;
             };
 
@@ -669,11 +733,11 @@
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>School Start Time</Label>
-                                <Input type="time" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
+                                <Input type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
                             </div>
                             <div className="space-y-2">
                                 <Label>School End Time</Label>
-                                <Input type="time" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
+                                <Input type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
                             </div>
                         </div>
                     </div>
@@ -710,11 +774,11 @@
                                         <div className="flex gap-3 w-full sm:w-auto sm:flex-1 items-end">
                                             <div className="flex-1 sm:w-28">
                                                 <Label className="text-xs mb-1 block">Start</Label>
-                                                <Input type="time" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
+                                                <Input type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
                                             </div>
                                             <div className="flex-1 sm:w-28 relative">
                                                 <Label className="text-xs mb-1 block">End</Label>
-                                                <Input type="time" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
+                                                <Input type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
                                             </div>
                                             <div className="flex items-center">
                                                 <div className="h-10 px-3 flex items-center justify-center bg-slate-200/50 border border-slate-200 text-slate-600 text-xs font-bold rounded-md whitespace-nowrap min-w-[72px]">
@@ -781,9 +845,9 @@
                                     </div>
                                     <div className="w-full sm:w-40">
                                         <Label className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
-                                        <Input type="number" min="1" step="1" value={g.cycle} onChange={(e) => {
+                                        <Input type="number" min="1" max={MAX_CYCLE_WEEKS} step="1" value={g.cycle} onChange={(e) => {
                                             const val = parseInt(e.target.value, 10);
-                                            updateList('grades', i, 'cycle', isNaN(val) ? 1 : Math.max(1, val));
+                                            updateList('grades', i, 'cycle', isNaN(val) ? 1 : Math.min(MAX_CYCLE_WEEKS, Math.max(1, val)));
                                         }} error={errors.grades?.[i]?.cycle} disabled={isInactive} />
                                     </div>
                                     <div className="w-full sm:w-auto">
@@ -988,9 +1052,9 @@
                                             </div>
                                             <div className="w-full sm:w-40">
                                                 <Label className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
-                                                <Input type="number" min="1" step="1" value={s.cycle} onChange={(e) => {
+                                                <Input type="number" min="1" max={MAX_CYCLE_WEEKS} step="1" value={s.cycle} onChange={(e) => {
                                                     const val = parseInt(e.target.value, 10);
-                                                    updateList('specialists', i, 'cycle', isNaN(val) ? 1 : Math.max(1, val));
+                                                    updateList('specialists', i, 'cycle', isNaN(val) ? 1 : Math.min(MAX_CYCLE_WEEKS, Math.max(1, val)));
                                                 }} error={errors.specialists?.[i]?.cycle} />
                                             </div>
                                             <div className="w-full sm:w-auto">
