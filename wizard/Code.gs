@@ -111,9 +111,9 @@ function generateTimetable(payload, options) {
     timer.mark('Open the copy', 'Setup');
     populateDataSheet(dataSheet, payload, config, ss);
     timer.mark('Fill the DATA tab', 'Setup');
-    buildSpecialistSheets(ss, config, jobId, timer);
-    // Reopened so tabs added through the Sheets API are visible.
-    buildAllClassSheets(SpreadsheetApp.openById(newFile.getId()), config, jobId, timer);
+    const tabs = createTabTracker(ss);
+    buildSpecialistSheets(ss, config, jobId, timer, tabs);
+    buildAllClassSheets(ss, config, jobId, timer, tabs);
     newFile.setName(fileName);
 
 
@@ -554,8 +554,9 @@ const BREAK_BACKGROUND = '#F2F2F2';
  * each cycle length gets a tab built from SPEC_Template; the others with the
  * same cycle length are copies of it (see copyTabs).
  */
-function buildSpecialistSheets(ss, config, jobId, timer) {
+function buildSpecialistSheets(ss, config, jobId, timer, tabs) {
   timer = timer || createStepTimer(false);
+  tabs = tabs || createTabTracker(ss);
   const specTemplateSheet = ss.getSheetByName('SPEC_Template');
   const classListRange = ss.getRangeByName('ClassList');
 
@@ -577,7 +578,10 @@ function buildSpecialistSheets(ss, config, jobId, timer) {
     .build();
   const prototypes = {}; // cycle length -> first tab built with it
   const copies = [];
-  const firstTabIndex = ss.getSheets().length;
+  const firstTabIndex = tabs.nextIndex;
+  const tabNames = config.specialists.map(specialist =>
+    ('SPEC_' + sanitizeSheetName(specialist.name)).substring(0, 99)
+  );
 
 
   config.specialists.forEach((specialist, specialistIndex) => {
@@ -588,9 +592,7 @@ function buildSpecialistSheets(ss, config, jobId, timer) {
         config.specialists.length + ': ' + specialist.name
     );
 
-    const sheetName = (
-      'SPEC_' + sanitizeSheetName(specialist.name)
-    ).substring(0, 99);
+    const sheetName = tabNames[specialistIndex];
     const existing = ss.getSheetByName(sheetName);
 
     if (existing) {
@@ -621,17 +623,24 @@ function buildSpecialistSheets(ss, config, jobId, timer) {
       sheet.getRangeList(['B1', 'B3']).setNumberFormat('@');
       writeDetails(sheet, getSpecialistDetails(specialist));
       prototypes[specialist.cycle] = sheet;
+      tabs.nextIndex++;
       timer.mark(sheetName + ': build (' + specialist.cycle + '-week cycle)', 'Specialist tabs: build');
     }
   });
 
 
-  updateJobProgress(jobId, 40, 'Copying ' + copies.length + ' specialist tab(s)...');
-  copyTabs(ss, copies, timer, 'Specialist tabs: copy');
-
-  // The clash formatting needs every specialist tab, including the copies.
-  applySpecialistClashFormatting(SpreadsheetApp.openById(ss.getId()));
+  // Clash formatting goes on the tabs built so far, listing every specialist
+  // including the ones still to be copied, so the copies inherit it. (Tabs
+  // copied through the Sheets API can't be reached through SpreadsheetApp in
+  // this run, so they couldn't be formatted afterwards.)
+  applySpecialistClashFormatting(ss, config.specialists.map((specialist, index) => ({
+    name: tabNames[index],
+    cycle: specialist.cycle
+  })));
   timer.mark('Specialist clash formatting', 'Specialist clash formatting');
+
+  updateJobProgress(jobId, 40, 'Copying ' + copies.length + ' specialist tab(s)...');
+  copyTabs(ss, copies, timer, 'Specialist tabs: copy', tabs);
 }
 
 
@@ -642,8 +651,9 @@ function buildSpecialistSheets(ss, config, jobId, timer) {
  * A tab that already exists only has its details (C27:C31) refreshed, so
  * its timetable entries are never touched.
  */
-function buildAllClassSheets(ss, config, jobId, timer) {
+function buildAllClassSheets(ss, config, jobId, timer, tabs) {
   timer = timer || createStepTimer(false);
+  tabs = tabs || createTabTracker(ss);
   const templateSheet = ss.getSheetByName('TEMPLATE');
   const klaListRange = ss.getRangeByName('KLAList');
 
@@ -662,7 +672,7 @@ function buildAllClassSheets(ss, config, jobId, timer) {
     .build();
   const prototypes = {}; // cycle length -> first tab built with it
   const copies = [];
-  const firstTabIndex = ss.getSheets().length;
+  const firstTabIndex = tabs.nextIndex;
 
 
   config.classes.forEach((classConfig, classIndex) => {
@@ -691,13 +701,27 @@ function buildAllClassSheets(ss, config, jobId, timer) {
       pasteTemplateConditionalFormatting(templateSheet, sheet, grid.layout, slots.length);
       writeClassDetails(sheet, classConfig);
       prototypes[classConfig.cycle] = sheet;
+      tabs.nextIndex++;
       timer.mark(sheetName + ': build (' + classConfig.cycle + '-week cycle)', 'Class tabs: build');
     }
   });
 
 
   updateJobProgress(jobId, 75, 'Copying ' + copies.length + ' classroom tab(s)...');
-  copyTabs(ss, copies, timer, 'Class tabs: copy');
+  copyTabs(ss, copies, timer, 'Class tabs: copy', tabs);
+}
+
+
+/**
+ * Where new tabs go and which sheet ids are taken, kept here rather than
+ * read back from the spreadsheet: tabs added through the Sheets API aren't
+ * visible to SpreadsheetApp for the rest of the run.
+ */
+function createTabTracker(ss) {
+  const usedIds = {};
+  const sheets = ss.getSheets();
+  sheets.forEach(sheet => { usedIds[sheet.getSheetId()] = true; });
+  return { nextIndex: sheets.length, usedIds: usedIds };
 }
 
 
@@ -716,8 +740,9 @@ function buildAllClassSheets(ss, config, jobId, timer) {
  */
 const COPIES_PER_REQUEST = 10;
 
-function copyTabs(ss, copies, timer, timerGroup) {
+function copyTabs(ss, copies, timer, timerGroup, tabs) {
   if (!copies.length) return;
+  tabs.nextIndex += copies.length;
 
   if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets) {
     copies.forEach(copy => {
@@ -733,7 +758,7 @@ function copyTabs(ss, copies, timer, timerGroup) {
   // The tabs being copied must be complete before Google copies them.
   SpreadsheetApp.flush();
 
-  const usedIds = {};
+  const usedIds = tabs.usedIds;
   ss.getSheets().forEach(sheet => { usedIds[sheet.getSheetId()] = true; });
   const newSheetId = () => {
     let id;
@@ -1122,20 +1147,23 @@ function isSpecialistSheet(sheet) {
  * works out which cells to compare (see buildClashFormula), the same way
  * "Sync Specialist Schedules" does.
  */
-function applySpecialistClashFormatting(ss) {
+function applySpecialistClashFormatting(ss, allSpecialists) {
   const specialistSheets = ss.getSheets()
     .filter(isSpecialistSheet);
 
   if (!specialistSheets.length) return;
 
   const breakListRange = ss.getRangeByName('BreakList');
-  // Each tab's cycle length, from D3 (written by the wizard).
-  const specialists = specialistSheets.map(sheet => ({
+  // Every specialist tab's name and cycle length (from D3, written by the
+  // wizard). The wizard passes the full list instead, because it formats the
+  // first tab of each cycle length before the rest are copied from it.
+  const cycleOf = sheet => Math.max(1, parseInt(sheet.getRange('D3').getValue(), 10) || 1);
+  const specialists = allSpecialists || specialistSheets.map(sheet => ({
     name: sheet.getName(),
-    cycle: Math.max(1, parseInt(sheet.getRange('D3').getValue(), 10) || 1)
+    cycle: cycleOf(sheet)
   }));
 
-  specialistSheets.forEach((sheet, sheetIndex) => {
+  specialistSheets.forEach(sheet => {
     const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
     if (lastRow < 5 || lastColumn < 10) return;
@@ -1185,11 +1213,11 @@ function applySpecialistClashFormatting(ss) {
       );
     }
 
-    if (specialistSheets.length >= 2) {
+    if (specialists.length >= 2) {
       newRules.push(
         SpreadsheetApp.newConditionalFormatRule()
           .whenFormulaSatisfied(
-            buildClashFormula(referenceCell, specialists[sheetIndex].cycle, specialists)
+            buildClashFormula(referenceCell, cycleOf(sheet), specialists)
           )
           .setBackground('#FF0000')
           .setFontColor('#FFFFFF')

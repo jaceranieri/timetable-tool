@@ -22,6 +22,7 @@ function setUp() {
 function generate(payload) {
   const { world, wizard } = setUp();
   const url = wizard.generateTimetable(payload || makePayload());
+  world.newExecution(); // look at the result as someone opening the file would
   const file = world.files[world.lastCopyId];
   return { world, wizard, url, file, ss: file.spreadsheet };
 }
@@ -214,6 +215,8 @@ test('large school: far fewer spreadsheet calls than the previous generator', ()
   assert.ok(newCalls * 5 < oldCalls, `expected at least 5x fewer calls (${oldCalls} -> ${newCalls})`);
 
   // Same visible result: compare one class tab and one specialist tab.
+  before.world.newExecution();
+  after.world.newExecution();
   const pick = (world, name) => world.files[world.lastCopyId].spreadsheet.getSheetByName(name);
   ['Year 6 Green', 'SPEC_RE Teacher'].forEach(name => {
     const oldSheet = pick(before.world, name);
@@ -252,6 +255,7 @@ test('the Apps Script load test (LoadTest.gs) runs against a valid setup', () =>
   makeTemplate(world, TEMPLATE_ID);
   const wizard = loadScript(['wizard/Code.gs', 'wizard/LoadTest.gs'], world.globals);
   assert.equal(typeof wizard.runLoadTest(), 'number');
+  world.newExecution();
   const ss = world.files[world.lastCopyId].spreadsheet;
   assert.equal(ss.getSheets().length, 4 + 6 + 28);
 });
@@ -303,6 +307,7 @@ test('without the Sheets API service, tabs are copied one at a time with the sam
   makeTemplate(world, TEMPLATE_ID);
   delete world.globals.Sheets;
   loadScript('wizard/Code.gs', world.globals).generateTimetable(payload);
+  world.newExecution();
   const ss = world.files[world.lastCopyId].spreadsheet;
   assert.equal(world.batchUpdates, undefined);
 
@@ -313,4 +318,23 @@ test('without the Sheets API service, tabs are copied one at a time with the sam
     assert.deepEqual(sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).getValues(),
       other.getRange(1, 1, other.getMaxRows(), other.getMaxColumns()).getValues(), sheet.getName());
   });
+});
+
+test('copied specialist tabs get the clash rule and are counted in every other tab\'s rule', () => {
+  const { ss } = generate(makeLargeSchoolPayload());
+  const specialistNames = ss.getSheets().map(s => s.getName()).filter(n => n.startsWith('SPEC_') && n !== 'SPEC_Template');
+  assert.equal(specialistNames.length, 6);
+  specialistNames.forEach(name => {
+    const rule = ss.getSheetByName(name).getConditionalFormatRules().find(r => r._formula && r._formula.includes('ADDRESS(ROW()'));
+    assert.ok(rule, name + ' has a clash rule');
+    specialistNames.forEach(other => assert.ok(rule._formula.includes("'" + other + "'!"), name + ' rule counts ' + other));
+  });
+});
+
+test('large school: tab order follows the wizard even with copies made through the Sheets API', () => {
+  const payload = makeLargeSchoolPayload();
+  const { ss } = generate(payload);
+  const config = setUp().wizard.parsePayloadConfig(payload);
+  assert.deepEqual(ss.getSheets().map(s => s.getName()), ['DATA', 'OVERVIEW', 'TEMPLATE', 'SPEC_Template']
+    .concat(config.specialists.map(s => 'SPEC_' + s.name), config.classes.map(c => c.name)));
 });

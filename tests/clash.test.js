@@ -13,6 +13,7 @@ function generate(specialists) {
   const world = createWorld();
   makeTemplate(world, TEMPLATE_ID);
   loadScript('wizard/Code.gs', world.globals).generateTimetable(makePayload({ specialists }));
+  world.newExecution();
   return world.files[world.lastCopyId].spreadsheet;
 }
 

@@ -17,6 +17,7 @@ function setUp(payloadOptions) {
   const world = createWorld();
   makeTemplate(world, TEMPLATE_ID);
   loadScript('wizard/Code.gs', world.globals).generateTimetable(makePayload(payloadOptions));
+  world.newExecution(); // the menu runs later, in its own execution
   const ss = world.files[world.lastCopyId].spreadsheet;
   world.active = ss;
   const sync = loadScript('template/TemplateSync.gs', world.globals);

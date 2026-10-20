@@ -141,3 +141,10 @@ and `template/TemplateSync.gs`.
   - 1-week specialist: a class in Term 1 Monday 9:00 (column J). 2-week specialist: the same class in Term 1 **Week B** Monday 9:00 (column P). Both cells turn red.
   - 1-week specialist: a class in Term 2 Monday 9:00 (column P). 2-week specialist: the same class in Term 1 Week B Monday 9:00 (also column P). Neither turns red.
   - Two specialists with the same cycle length and the same class in the same cell still turn red.
+
+**Result:** different cycle lengths turned red, but two specialists with the same cycle length didn't. Cause: the second specialist with a cycle length is a copy made through the Sheets API, and tabs made that way can't be reached through SpreadsheetApp for the rest of the run. So the clash formatting skipped the copies, and the class tabs were counted into the wrong positions. Fixed by putting the clash rules on the first tab of each cycle before copying (the copies inherit them) and counting tab positions instead of reading them back.
+
+- [ ] Paste the updated `wizard/Code.gs` and `template/TemplateSync.gs` again, generate a **new** timetable, and repeat the three checks above, plus:
+  - Tabs appear in the wizard's order: DATA, OVERVIEW, TEMPLATE, SPEC_Template, the specialists, then the classes grade by grade.
+  - Each copied class shows its own details in `C27:C31`.
+- [ ] Optional, on the earlier timetable: **Timetable Admin → Refresh Specialist Clash Formatting** should make the same-cycle clash turn red there too (the menu runs separately, so it sees every tab).

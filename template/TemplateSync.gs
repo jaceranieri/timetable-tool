@@ -629,20 +629,23 @@ function isSpecialistSheet(sheet) {
  * works out which cells to compare (see buildClashFormula), the same way
  * "Sync Specialist Schedules" does.
  */
-function applySpecialistClashFormatting(ss) {
+function applySpecialistClashFormatting(ss, allSpecialists) {
   const specialistSheets = ss.getSheets()
     .filter(isSpecialistSheet);
 
   if (!specialistSheets.length) return;
 
   const breakListRange = ss.getRangeByName('BreakList');
-  // Each tab's cycle length, from D3 (written by the wizard).
-  const specialists = specialistSheets.map(sheet => ({
+  // Every specialist tab's name and cycle length (from D3, written by the
+  // wizard). The wizard passes the full list instead, because it formats the
+  // first tab of each cycle length before the rest are copied from it.
+  const cycleOf = sheet => Math.max(1, parseInt(sheet.getRange('D3').getValue(), 10) || 1);
+  const specialists = allSpecialists || specialistSheets.map(sheet => ({
     name: sheet.getName(),
-    cycle: Math.max(1, parseInt(sheet.getRange('D3').getValue(), 10) || 1)
+    cycle: cycleOf(sheet)
   }));
 
-  specialistSheets.forEach((sheet, sheetIndex) => {
+  specialistSheets.forEach(sheet => {
     const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
     if (lastRow < 5 || lastColumn < 10) return;
@@ -692,11 +695,11 @@ function applySpecialistClashFormatting(ss) {
       );
     }
 
-    if (specialistSheets.length >= 2) {
+    if (specialists.length >= 2) {
       newRules.push(
         SpreadsheetApp.newConditionalFormatRule()
           .whenFormulaSatisfied(
-            buildClashFormula(referenceCell, specialists[sheetIndex].cycle, specialists)
+            buildClashFormula(referenceCell, cycleOf(sheet), specialists)
           )
           .setBackground('#FF0000')
           .setFontColor('#FFFFFF')

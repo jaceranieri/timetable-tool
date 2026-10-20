@@ -342,9 +342,13 @@ class FakeSpreadsheet {
   }
   getId() { return this._id; }
   getUrl() { return 'https://docs.google.com/spreadsheets/d/' + this._id + '/edit'; }
-  getSheets() { return this._sheets.slice(); }
+  // Tabs added through the Sheets API aren't visible to SpreadsheetApp until
+  // the next execution (world.newExecution()). That's the cautious
+  // assumption the scripts must cope with.
+  _visibleSheets() { return this._sheets.filter(sheet => !sheet._addedByApi); }
+  getSheets() { return this._visibleSheets(); }
   getSheetByName(name) {
-    return this._sheets.find(sheet => sheet._name.toLowerCase() === String(name).toLowerCase()) || null;
+    return this._visibleSheets().find(sheet => sheet._name.toLowerCase() === String(name).toLowerCase()) || null;
   }
   setNamedRange(name, range) { this._named[name] = range; }
   getRangeByName(name) { return this._named[name] || null; }
@@ -364,12 +368,16 @@ class FakeSpreadsheet {
         const source = this._sheets.find(sheet => sheet._id === r.sourceSheetId);
         if (!source) throw new Error('No sheet with id ' + r.sourceSheetId);
         if (this._sheets.some(sheet => sheet._id === r.newSheetId)) throw new Error('Sheet id in use: ' + r.newSheetId);
-        if (this.getSheetByName(r.newSheetName)) throw new Error('A sheet with the name "' + r.newSheetName + '" already exists.');
+        if (this._sheets.some(sheet => sheet._name.toLowerCase() === r.newSheetName.toLowerCase())) {
+          throw new Error('A sheet with the name "' + r.newSheetName + '" already exists.');
+        }
+        if (r.insertSheetIndex > this._sheets.length) throw new Error('insertSheetIndex out of range: ' + r.insertSheetIndex);
         const copy = source.copyTo(this);
         this._sheets.splice(this._sheets.indexOf(copy), 1);
         this._sheets.splice(r.insertSheetIndex, 0, copy);
         copy._id = r.newSheetId;
         copy._name = r.newSheetName;
+        copy._addedByApi = true;
       } else if (request.updateCells) {
         const r = request.updateCells;
         if (r.fields !== 'userEnteredValue') throw new Error('Fake only supports fields: userEnteredValue');
@@ -408,6 +416,10 @@ class FakeSpreadsheet {
 function createWorld() {
   const world = { calls: 0, callsByMethod: {}, files: {}, cache: {}, alerts: [], properties: {} };
   world.resetCalls = () => { world.calls = 0; world.callsByMethod = {}; };
+  // A later script run (e.g. a menu item): every tab is visible again.
+  world.newExecution = () => {
+    Object.values(world.files).forEach(file => file.spreadsheet._sheets.forEach(sheet => { sheet._addedByApi = false; }));
+  };
 
   const builder = (kind) => {
     const state = { kind };
