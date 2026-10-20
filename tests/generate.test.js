@@ -259,16 +259,58 @@ test('the Apps Script load test (LoadTest.gs) runs against a valid setup', () =>
 test('timing is off for normal runs and logs every step for the load test', () => {
   const quiet = setUp();
   quiet.wizard.generateTimetable(makePayload());
-  assert.equal(quiet.world.flushes || 0, 0, 'no extra flushes in normal runs');
+  // Only the flush before each Sheets API copy request (here: the class copies).
+  assert.equal(quiet.world.flushes, quiet.world.batchUpdates);
 
   const timed = setUp();
   const lines = [];
   timed.world.globals.console.log = line => lines.push(line);
   const wizard = loadScript('wizard/Code.gs', timed.world.globals);
   wizard.generateTimetable(makePayload(), { timing: true });
-  assert.ok(lines.some(line => /^\d+\.\ds {2}K Red: copy$/.test(line)), 'per-step line');
+  assert.ok(lines.some(line => /^\d+\.\ds {2}Copy K Red \(one request\)$/.test(line)), 'per-step line');
   const summary = lines.find(line => line.startsWith('Timing summary'));
+  assert.match(summary, /Class tabs: build: [\d.]+s \(2 x [\d.]+s\)/);
   assert.match(summary, /Class tabs: copy: [\d.]+s\n/);
-  assert.match(summary, /Class tabs: details: [\d.]+s \(3 x [\d.]+s\)/);
   assert.match(summary, /Total: [\d.]+s$/);
+});
+
+test('copies are made in a few Sheets API requests and keep the tab order', () => {
+  const classes = [
+    ['A1', 'T', 'Year 1', 1], ['A3', 'T', 'Year 1', 3], ['B1', 'T', 'Year 2', 1],
+    ['B3', 'T', 'Year 2', 3], ['C1', 'T', 'Year 3', 1]
+  ];
+  const { world, ss } = generate(makePayload({ classes }));
+  assert.deepEqual(ss.getSheets().map(s => s.getName()).slice(4), ['SPEC_Mr Smith', 'SPEC_Ms Jones', 'A1', 'A3', 'B1', 'B3', 'C1']);
+  assert.equal(world.batchUpdates, 1, 'specialists need no copies; the three class copies are one request');
+  assert.deepEqual(ss.getSheetByName('B3').getRange('C27:C30').getValues().flat(), ['T', 'B3', 'Year 2', '3 week cycle']);
+  assert.equal(ss.getSheetByName('C1').getRange('C31').getValue(), true);
+  assert.equal(ss.getSheetByName('B3').getMaxColumns(), ss.getSheetByName('A3').getMaxColumns());
+});
+
+test('large school: copies are split into requests of 10 tabs', () => {
+  const { world } = generate(makeLargeSchoolPayload());
+  // 3 specialist copies -> 1 request; 27 class copies -> 3 requests.
+  assert.equal(world.batchUpdates, 4);
+});
+
+test('without the Sheets API service, tabs are copied one at a time with the same result', () => {
+  const payload = makePayload({
+    classes: [['A1', 'T', 'Year 1', 1], ['A3', 'T', 'Year 1', 3], ['B1', 'T', 'Year 2', 1], ['B3', 'T', 'Year 2', 3]]
+  });
+  const withApi = generate(payload);
+
+  const world = createWorld();
+  makeTemplate(world, TEMPLATE_ID);
+  delete world.globals.Sheets;
+  loadScript('wizard/Code.gs', world.globals).generateTimetable(payload);
+  const ss = world.files[world.lastCopyId].spreadsheet;
+  assert.equal(world.batchUpdates, undefined);
+
+  const names = sheetSet => sheetSet.getSheets().map(s => s.getName());
+  assert.deepEqual(names(ss), names(withApi.ss));
+  ss.getSheets().forEach(sheet => {
+    const other = withApi.ss.getSheetByName(sheet.getName());
+    assert.deepEqual(sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).getValues(),
+      other.getRange(1, 1, other.getMaxRows(), other.getMaxColumns()).getValues(), sheet.getName());
+  });
 });

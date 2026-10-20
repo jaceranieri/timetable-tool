@@ -112,7 +112,8 @@ function generateTimetable(payload, options) {
     populateDataSheet(dataSheet, payload, config, ss);
     timer.mark('Fill the DATA tab', 'Setup');
     buildSpecialistSheets(ss, config, jobId, timer);
-    buildAllClassSheets(ss, config, jobId, timer);
+    // Reopened so tabs added through the Sheets API are visible.
+    buildAllClassSheets(SpreadsheetApp.openById(newFile.getId()), config, jobId, timer);
     newFile.setName(fileName);
 
 
@@ -551,8 +552,7 @@ const BREAK_BACKGROUND = '#F2F2F2';
 /**
  * Builds a specialist tab for every specialist. The first specialist with
  * each cycle length gets a tab built from SPEC_Template; the others with the
- * same cycle length are copies of it, which is much faster than building
- * each one cell by cell.
+ * same cycle length are copies of it (see copyTabs).
  */
 function buildSpecialistSheets(ss, config, jobId, timer) {
   timer = timer || createStepTimer(false);
@@ -576,53 +576,61 @@ function buildSpecialistSheets(ss, config, jobId, timer) {
     .setAllowInvalid(false)
     .build();
   const prototypes = {}; // cycle length -> first tab built with it
+  const copies = [];
+  const firstTabIndex = ss.getSheets().length;
 
 
   config.specialists.forEach((specialist, specialistIndex) => {
     updateJobProgress(
       jobId,
-      25 + (specialistIndex / config.specialists.length) * 20,
-      'Generating Specialist Tab ' + (specialistIndex + 1) + ' of ' +
+      25 + (specialistIndex / config.specialists.length) * 15,
+      'Building Specialist Tab ' + (specialistIndex + 1) + ' of ' +
         config.specialists.length + ': ' + specialist.name
     );
 
     const sheetName = (
       'SPEC_' + sanitizeSheetName(specialist.name)
     ).substring(0, 99);
-    let sheet = ss.getSheetByName(sheetName);
+    const existing = ss.getSheetByName(sheetName);
 
-    if (!sheet) {
-      const prototype = prototypes[specialist.cycle];
-      if (prototype) {
-        sheet = prototype.copyTo(ss).setName(sheetName);
-        timer.mark(sheetName + ': copy', 'Specialist tabs: copy');
-      } else {
-        sheet = specTemplateSheet.copyTo(ss).setName(sheetName).showSheet();
-        // Start from a clean slate: don't inherit any conditional formatting
-        // rules that happen to exist on SPEC_Template. Only the rules this
-        // script adds below should apply.
-        sheet.clearConditionalFormatRules();
-        const grid = buildGrid(
-          sheet, specTemplateSheet, specialist.cycle, slots, breakLabels, validationRule
-        );
-        applyClassColorFormatting(
-          sheet,
-          config.classes,
-          FIRST_DATA_ROW,
-          grid.lastDataRow,
-          grid.layout.lastColumn
-        );
-        prototypes[specialist.cycle] = sheet;
-        timer.mark(sheetName + ': build (' + specialist.cycle + '-week cycle)', 'Specialist tabs: build');
-      }
+    if (existing) {
+      writeDetails(existing, getSpecialistDetails(specialist));
+    } else if (prototypes[specialist.cycle]) {
+      copies.push({
+        prototype: prototypes[specialist.cycle],
+        name: sheetName,
+        index: firstTabIndex + specialistIndex,
+        details: getSpecialistDetails(specialist)
+      });
+    } else {
+      const sheet = specTemplateSheet.copyTo(ss).setName(sheetName).showSheet();
+      // Start from a clean slate: don't inherit any conditional formatting
+      // rules that happen to exist on SPEC_Template. Only the rules this
+      // script adds below should apply.
+      sheet.clearConditionalFormatRules();
+      const grid = buildGrid(
+        sheet, specTemplateSheet, specialist.cycle, slots, breakLabels, validationRule
+      );
+      applyClassColorFormatting(
+        sheet,
+        config.classes,
+        FIRST_DATA_ROW,
+        grid.lastDataRow,
+        grid.layout.lastColumn
+      );
+      sheet.getRangeList(['B1', 'B3']).setNumberFormat('@');
+      writeDetails(sheet, getSpecialistDetails(specialist));
+      prototypes[specialist.cycle] = sheet;
+      timer.mark(sheetName + ': build (' + specialist.cycle + '-week cycle)', 'Specialist tabs: build');
     }
-
-    writeSpecialistDetails(sheet, specialist);
-    timer.mark(sheetName + ': details', 'Specialist tabs: details');
   });
 
 
-  applySpecialistClashFormatting(ss);
+  updateJobProgress(jobId, 40, 'Copying ' + copies.length + ' specialist tab(s)...');
+  copyTabs(ss, copies, timer, 'Specialist tabs: copy');
+
+  // The clash formatting needs every specialist tab, including the copies.
+  applySpecialistClashFormatting(SpreadsheetApp.openById(ss.getId()));
   timer.mark('Specialist clash formatting', 'Specialist clash formatting');
 }
 
@@ -653,62 +661,167 @@ function buildAllClassSheets(ss, config, jobId, timer) {
     .setAllowInvalid(false)
     .build();
   const prototypes = {}; // cycle length -> first tab built with it
+  const copies = [];
+  const firstTabIndex = ss.getSheets().length;
 
 
   config.classes.forEach((classConfig, classIndex) => {
-    updateJobProgress(
-      jobId,
-      45 + (classIndex / config.classes.length) * 50,
-      'Generating Classroom Tab ' + (classIndex + 1) + ' of ' +
-        config.classes.length + ': ' + classConfig.name
-    );
-
     const sheetName = sanitizeSheetName(classConfig.name).substring(0, 99);
-    let sheet = ss.getSheetByName(sheetName);
+    const existing = ss.getSheetByName(sheetName);
 
-    if (!sheet) {
-      const prototype = prototypes[classConfig.cycle];
-      if (prototype) {
-        sheet = prototype.copyTo(ss).setName(sheetName);
-        timer.mark(sheetName + ': copy', 'Class tabs: copy');
-      } else {
-        sheet = templateSheet.copyTo(ss).setName(sheetName).showSheet();
-        const grid = buildGrid(
-          sheet, templateSheet, classConfig.cycle, slots, breakLabels, validationRule
-        );
-        pasteTemplateConditionalFormatting(templateSheet, sheet, grid.layout, slots.length);
-        prototypes[classConfig.cycle] = sheet;
-        timer.mark(sheetName + ': build (' + classConfig.cycle + '-week cycle)', 'Class tabs: build');
-      }
+    if (existing) {
+      writeClassDetails(existing, classConfig);
+    } else if (prototypes[classConfig.cycle]) {
+      copies.push({
+        prototype: prototypes[classConfig.cycle],
+        name: sheetName,
+        index: firstTabIndex + classIndex,
+        details: getClassDetails(classConfig)
+      });
+    } else {
+      updateJobProgress(
+        jobId,
+        45 + (classIndex / config.classes.length) * 25,
+        'Building Classroom Tab for ' + classConfig.cycle + '-week cycle: ' + classConfig.name
+      );
+      const sheet = templateSheet.copyTo(ss).setName(sheetName).showSheet();
+      const grid = buildGrid(
+        sheet, templateSheet, classConfig.cycle, slots, breakLabels, validationRule
+      );
+      pasteTemplateConditionalFormatting(templateSheet, sheet, grid.layout, slots.length);
+      writeClassDetails(sheet, classConfig);
+      prototypes[classConfig.cycle] = sheet;
+      timer.mark(sheetName + ': build (' + classConfig.cycle + '-week cycle)', 'Class tabs: build');
     }
-
-    writeClassDetails(sheet, classConfig);
-    timer.mark(sheetName + ': details', 'Class tabs: details');
   });
+
+
+  updateJobProgress(jobId, 75, 'Copying ' + copies.length + ' classroom tab(s)...');
+  copyTabs(ss, copies, timer, 'Class tabs: copy');
+}
+
+
+/**
+ * Creates tabs as copies of tabs that are already built, each at its index
+ * in the tab order, and writes their details.
+ *
+ * Every change makes Google recalculate the spreadsheet (all the compliance
+ * formulas and the OVERVIEW lookups), and that grows with every tab. So with
+ * the Google Sheets API service enabled in the project, the copies and their
+ * details are sent in a few large requests instead of one change at a time.
+ * Without the service, tabs are copied one by one, which is much slower for
+ * large schools.
+ *
+ * copies: [{ prototype: Sheet, name, index, details: [{ row, column, values }] }]
+ */
+const COPIES_PER_REQUEST = 10;
+
+function copyTabs(ss, copies, timer, timerGroup) {
+  if (!copies.length) return;
+
+  if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets) {
+    copies.forEach(copy => {
+      const sheet = copy.prototype.copyTo(ss).setName(copy.name);
+      ss.setActiveSheet(sheet);
+      ss.moveActiveSheet(copy.index + 1);
+      writeDetails(sheet, copy.details);
+      timer.mark(copy.name + ': copy, one at a time', timerGroup);
+    });
+    return;
+  }
+
+  // The tabs being copied must be complete before Google copies them.
+  SpreadsheetApp.flush();
+
+  const usedIds = {};
+  ss.getSheets().forEach(sheet => { usedIds[sheet.getSheetId()] = true; });
+  const newSheetId = () => {
+    let id;
+    do {
+      id = Math.floor(Math.random() * 2000000000) + 1;
+    } while (usedIds[id]);
+    usedIds[id] = true;
+    return id;
+  };
+
+  for (let start = 0; start < copies.length; start += COPIES_PER_REQUEST) {
+    const batch = copies.slice(start, start + COPIES_PER_REQUEST);
+    const requests = [];
+    batch.forEach(copy => {
+      const sheetId = newSheetId();
+      requests.push({
+        duplicateSheet: {
+          sourceSheetId: copy.prototype.getSheetId(),
+          insertSheetIndex: copy.index,
+          newSheetId: sheetId,
+          newSheetName: copy.name
+        }
+      });
+      copy.details.forEach(detail => {
+        requests.push({
+          updateCells: {
+            start: { sheetId: sheetId, rowIndex: detail.row - 1, columnIndex: detail.column - 1 },
+            rows: detail.values.map(row => ({ values: row.map(toCellData) })),
+            fields: 'userEnteredValue'
+          }
+        });
+      });
+    });
+    Sheets.Spreadsheets.batchUpdate({ requests: requests }, ss.getId());
+    timer.mark(
+      'Copy ' + batch.map(copy => copy.name).join(', ') + ' (one request)',
+      timerGroup
+    );
+  }
+}
+
+
+function toCellData(value) {
+  if (typeof value === 'boolean') return { userEnteredValue: { boolValue: value } };
+  if (typeof value === 'number') return { userEnteredValue: { numberValue: value } };
+  return { userEnteredValue: { stringValue: String(value) } };
+}
+
+
+/** Cells written on each class tab, as {row, column, values} blocks. */
+function getClassDetails(classConfig) {
+  return [
+    {
+      row: 27,
+      column: 3,
+      values: [
+        [classConfig.teacher],
+        [classConfig.name],
+        [classConfig.grade],
+        [classConfig.cycle + ' week cycle']
+      ]
+    },
+    // C18 (Amadeus compliance) reads C31 to decide whether Amadeus applies.
+    { row: 31, column: 2, values: [['Amadeus', isAmadeusGrade(classConfig.grade)]] }
+  ];
+}
+
+
+function getSpecialistDetails(specialist) {
+  return [
+    { row: 1, column: 2, values: [[specialist.name]] },
+    { row: 3, column: 2, values: [[specialist.kla]] },
+    { row: 3, column: 4, values: [[specialist.cycle]] }
+  ];
 }
 
 
 function writeClassDetails(sheet, classConfig) {
   sheet.getRange('C27:C29').setNumberFormat('@');
-  sheet.getRange('C27:C30').setValues([
-    [classConfig.teacher],
-    [classConfig.name],
-    [classConfig.grade],
-    [classConfig.cycle + ' week cycle']
-  ]);
-
-  // C18 (Amadeus compliance) reads C31 to decide whether Amadeus applies.
-  sheet.getRange('B31:C31').setValues([
-    ['Amadeus', isAmadeusGrade(classConfig.grade)]
-  ]);
+  writeDetails(sheet, getClassDetails(classConfig));
 }
 
 
-function writeSpecialistDetails(sheet, specialist) {
-  sheet.getRangeList(['B1', 'B3']).setNumberFormat('@');
-  sheet.getRange('B1').setValue(specialist.name);
-  sheet.getRange('B3').setValue(specialist.kla);
-  sheet.getRange('D3').setValue(specialist.cycle);
+function writeDetails(sheet, details) {
+  details.forEach(detail => {
+    sheet.getRange(detail.row, detail.column, detail.values.length, detail.values[0].length)
+      .setValues(detail.values);
+  });
 }
 
 

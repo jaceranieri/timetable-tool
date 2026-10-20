@@ -35,6 +35,11 @@ Deploy → Manage deployments:
 - **Execute as:** User accessing the web app
 - **Who has access:** Anyone within Sydney Catholic Schools
 
+In the editor, under **Services**, add the **Google Sheets API** (identifier
+`Sheets`). The wizard uses it to create all the copied tabs in a few
+requests, which is much faster for large schools; without it, tabs are
+copied one at a time.
+
 Each user needs view access to the master template, so share it with the
 domain as **Viewer**.
 

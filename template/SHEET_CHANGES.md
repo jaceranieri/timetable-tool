@@ -127,4 +127,9 @@ and `template/TemplateSync.gs`.
   - The file name has no `INCOMPLETE - ` prefix.
 - [x] Force an error (for example, set the `TEMPLATE_ID` script property to `x`) and check the wizard shows the error panel with **Try again** instead of a pop-up. Then set it back.
 - [x] Sync and lock still work as in Phase 2.
-- [ ] **Load test with timings:** paste the updated `wizard/Code.gs` and `wizard/LoadTest.gs`, run `runLoadTest` again, and copy the whole log (it ends with a "Timing summary").
+- [x] **Load test with timings:** 429s. Copying class tabs (244s) and writing their details (117s) were 85% of the time.
+- [ ] **Load test with the Sheets API:**
+  1. In the wizard project, click **Services** (the + next to it in the left sidebar), choose **Google Sheets API**, keep the identifier `Sheets`, and click **Add**.
+  2. Paste the updated `wizard/Code.gs` (and keep `LoadTest.gs` for now).
+  3. Run `runLoadTest` and copy the whole log. Copies should now appear as lines like "Copy Kindergarten Red, … (one request)".
+  4. Generate a normal timetable from the wizard and check the tabs are in the same order as the classes in the wizard, and each copied class shows its own teacher, name, grade and cycle in `C27:C31`.

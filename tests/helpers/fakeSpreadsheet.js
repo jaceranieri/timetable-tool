@@ -234,7 +234,8 @@ class FakeSheet {
   constructor(world, spreadsheet, name, rows, cols) {
     Object.assign(this, {
       _world: world, _spreadsheet: spreadsheet, _name: name, _rows: rows, _cols: cols,
-      _hidden: false, _merges: [], _widths: {}, _cfRules: [], _protections: []
+      _hidden: false, _merges: [], _widths: {}, _cfRules: [], _protections: [],
+      _id: (world.nextSheetId = (world.nextSheetId || 0) + 1)
     });
     this._cells = {};
     LAYERS.forEach(layer => {
@@ -255,6 +256,7 @@ class FakeSheet {
   }
 
   getName() { return this._name; }
+  getSheetId() { return this._id; }
   setName(name) {
     if (this._spreadsheet._sheets.some(sheet => sheet !== this._proxy && sheet._name.toLowerCase() === String(name).toLowerCase())) {
       throw new Error('A sheet with the name "' + name + '" already exists.');
@@ -347,6 +349,45 @@ class FakeSpreadsheet {
   setNamedRange(name, range) { this._named[name] = range; }
   getRangeByName(name) { return this._named[name] || null; }
   getSpreadsheetTimeZone() { return 'Australia/Sydney'; }
+  setActiveSheet(sheet) { this._active = sheet; return sheet; }
+  moveActiveSheet(position) {
+    const index = this._sheets.indexOf(this._active);
+    this._sheets.splice(index, 1);
+    this._sheets.splice(position - 1, 0, this._active);
+  }
+
+  /** Sheets API batchUpdate: only the request types the scripts send. */
+  _batchUpdate(requests) {
+    requests.forEach(request => {
+      if (request.duplicateSheet) {
+        const r = request.duplicateSheet;
+        const source = this._sheets.find(sheet => sheet._id === r.sourceSheetId);
+        if (!source) throw new Error('No sheet with id ' + r.sourceSheetId);
+        if (this._sheets.some(sheet => sheet._id === r.newSheetId)) throw new Error('Sheet id in use: ' + r.newSheetId);
+        if (this.getSheetByName(r.newSheetName)) throw new Error('A sheet with the name "' + r.newSheetName + '" already exists.');
+        const copy = source.copyTo(this);
+        this._sheets.splice(this._sheets.indexOf(copy), 1);
+        this._sheets.splice(r.insertSheetIndex, 0, copy);
+        copy._id = r.newSheetId;
+        copy._name = r.newSheetName;
+      } else if (request.updateCells) {
+        const r = request.updateCells;
+        if (r.fields !== 'userEnteredValue') throw new Error('Fake only supports fields: userEnteredValue');
+        const sheet = this._sheets.find(item => item._id === r.start.sheetId);
+        if (!sheet) throw new Error('No sheet with id ' + r.start.sheetId);
+        const values = r.rows.map(row => row.values.map(cell => {
+          const v = cell.userEnteredValue;
+          if ('boolValue' in v) return v.boolValue;
+          if ('numberValue' in v) return v.numberValue;
+          return v.stringValue;
+        }));
+        sheet.getRange(r.start.rowIndex + 1, r.start.columnIndex + 1, values.length, values[0].length).setValues(values);
+      } else {
+        throw new Error('Fake does not support request: ' + Object.keys(request)[0]);
+      }
+    });
+    return { replies: [] };
+  }
   toast() {}
   getOwner() { return { getEmail: () => this._owner }; }
 
@@ -424,6 +465,17 @@ function createWorld() {
       getScriptProperties: () => ({ getProperty: key => world.properties[key] || null })
     },
     Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@school.example' }) },
+    // The Google Sheets API advanced service. Tests delete it to check the
+    // one-at-a-time fallback.
+    Sheets: {
+      Spreadsheets: {
+        batchUpdate: (body, spreadsheetId) => {
+          world.calls++;
+          world.batchUpdates = (world.batchUpdates || 0) + 1;
+          return world.files[spreadsheetId].spreadsheet._batchUpdate(body.requests);
+        }
+      }
+    },
     Utilities: {
       formatDate: (date) => String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0')
     }
