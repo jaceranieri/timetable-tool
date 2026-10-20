@@ -327,7 +327,7 @@ const MAX_NAME_LENGTH = 90;
 const MAX_SCHOOL_NAME_LENGTH = 100;
 // Tabs that already exist in the template (or are planned), compared
 // case-insensitively because Google Sheets tab names are.
-const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here', 'print view'];
+const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
 
 /**
  * Checks the parsed setup and throws one error listing every problem, so
@@ -965,13 +965,13 @@ function buildStartHereSheet(ss, config, tabs) {
   put(8, [
     '4. Fill in the class timetables',
     'Class teachers',
-    'Open your class tab (listed below) and fill every empty slot. Specialist lessons are already in place. Timetable Admin has helpers to copy Week A to the other weeks and Term 1 to the other terms.',
+    'Open your class tab (listed below) and fill every empty slot. Specialist lessons are already in place. To save typing, Timetable Admin can copy Week A into the other weeks, and Term 1 into Terms 2-4.',
     '=COUNTIF(' + emptySlots + ',0)&" of ' + classCount + ' class(es) have no empty slots"'
   ]);
   put(9, [
     '5. Check compliance',
     'Class teachers and coordinator',
-    'Timetable Admin > Check this timetable (on a class tab) lists what to fix. OVERVIEW shows the whole school.',
+    'Timetable Admin > Check this timetable (on a class tab) lists what to fix. OVERVIEW shows the whole school. Timetable Admin can also make a Google Doc of a timetable or of the compliance summary to print or share.',
     '=COUNTIF(' + compliant + ',"Yes")&" of ' + classCount + ' class(es) compliant"'
   ]);
 

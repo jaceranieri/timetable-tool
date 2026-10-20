@@ -1,7 +1,7 @@
 /**
  * Timetable tools for the Timetable Admin menu (see onOpen in
  * TemplateSync.gs): checking a timetable, copying weeks and terms, and
- * printing. Add this file to the Apps Script project bound to the master
+ * making Google Docs of a timetable or the compliance summary. Add this file to the Apps Script project bound to the master
  * template, next to TemplateSync.gs; it uses that file's helpers
  * (buildScheduleColumnMap, isSpecialistSheet, the note prefixes).
  *
@@ -11,9 +11,6 @@
  * compliant C16, Amadeus C18, Amadeus Tutorials row 21) and the class
  * details in C27:C31.
  */
-
-const PRINT_SHEET_NAME = 'Print view';
-
 
 // ---------------------------------------------------------------------------
 // Check this timetable / Check all class timetables
@@ -206,68 +203,129 @@ function describeSpecialistTimetable(sheet) {
 
 
 // ---------------------------------------------------------------------------
-// Copy Week A to the other weeks / Copy Term 1 to Terms 2-4
+// Copy Week A into the other weeks / Copy Term 1 into Terms 2-4
 // ---------------------------------------------------------------------------
 
+const COPY_MODES = {
+  weeks: {
+    title: 'Copy Week A into the other weeks',
+    explanation: 'Copies what is in <b>Week A</b> of each term into the other weeks of the same term ' +
+      '(Term 1 Week A into Term 1 Week B, and so on).'
+  },
+  terms: {
+    title: 'Copy Term 1 into Terms 2-4',
+    explanation: 'Copies each week of <b>Term 1</b> into the same week of Terms 2, 3 and 4 ' +
+      '(Term 1 Week A into Term 2 Week A, Term 3 Week A and Term 4 Week A, and so on).'
+  }
+};
+
 function copyWeekAToOtherWeeks() {
-  copyTimetableBlocks('weeks');
+  showCopyDialog('weeks');
 }
 
 function copyTermOneToOtherTerms() {
-  copyTimetableBlocks('terms');
+  showCopyDialog('terms');
 }
 
 /**
- * Copies entries on the active class or specialist tab, either from each
- * term's Week A to that term's other weeks, or from each Term 1 week to the
- * same week of Terms 2-4. Never touches break rows or specialist lessons
- * placed by the sync (including conflicts), never copies them, and never
- * clears anything; entries already in a target slot are kept unless the
- * user chooses to replace them.
+ * Explains what will be copied on the active tab and offers the choices as
+ * labelled buttons. The buttons call runCopyFromDialog, and the result is
+ * shown in the same window.
  */
-function copyTimetableBlocks(mode) {
+function showCopyDialog(mode) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
   const sheet = ss.getActiveSheet();
-  const title = mode === 'weeks' ? 'Copy Week A to the other weeks' : 'Copy Term 1 to Terms 2-4';
+  const copyMode = COPY_MODES[mode];
 
   if (!isSpecialistSheet(sheet) && !isClassSheet(ss, sheet)) {
-    ui.alert(title, 'Open a class or specialist tab first, then run this again.', ui.ButtonSet.OK);
+    ui.alert(copyMode.title, 'Open a class or specialist tab first, then choose this again.', ui.ButtonSet.OK);
+    return;
+  }
+  if (!getCopyPairs(readTimetableGrid(sheet), mode).length) {
+    ui.alert(copyMode.title, mode === 'weeks'
+      ? 'This tab has a 1-week timetable, so there are no other weeks to copy into. ' +
+        'Use "Copy Term 1 into Terms 2-4" instead.'
+      : 'There are no other terms to copy into.', ui.ButtonSet.OK);
     return;
   }
 
-  const grid = readTimetableGrid(sheet);
+  // The tab and mode go into the script as JSON, not into the onclick
+  // attributes, so names with quotes can't break the page.
+  showDialog(ui, copyMode.title,
+    '<p>' + copyMode.explanation + '</p>' +
+    '<p>This only changes the <b>' + escapeHtml(sheet.getName()) + '</b> tab. Breaks and specialist ' +
+    'lessons are never changed, and nothing is deleted.</p>' +
+    '<p>What should happen to slots that already have something in them?</p>' +
+    '<div id="choices">' +
+    '<p><button class="primary" onclick="copy(false)">Fill empty slots only</button><br>' +
+    '<span class="note">Slots that already have something in them stay as they are.</span></p>' +
+    '<p><button onclick="copy(true)">Fill empty slots and replace what\'s there</button><br>' +
+    '<span class="note">Slots that already have something in them get the copied entry instead.</span></p>' +
+    '<p><button onclick="google.script.host.close()">Cancel</button></p>' +
+    '</div><div id="result"></div>' +
+    '<script>' +
+    'var MODE=' + JSON.stringify(mode) + ';var SHEET=' + JSON.stringify(sheet.getName()).replace(/</g, '\\u003c') + ';' +
+    'function copy(replace){document.getElementById("choices").style.display="none";' +
+    'document.getElementById("result").innerHTML="<p>Copying...</p>";' +
+    'google.script.run.withSuccessHandler(done).withFailureHandler(failed).runCopyFromDialog(MODE,SHEET,replace);}' +
+    'function done(html){document.getElementById("result").innerHTML=html+' +
+    '"<p><button class=\\"primary\\" onclick=\\"google.script.host.close()\\">Close</button></p>";}' +
+    'function failed(e){done("<p class=\\"bad\\">"+(e&&e.message?e.message:e)+"</p>");}' +
+    '</script>');
+}
+
+/**
+ * Called from the copy window. Copies on the named tab and returns the
+ * result as HTML for the window.
+ */
+function runCopyFromDialog(mode, sheetName, replaceExisting) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('The tab "' + sheetName + '" no longer exists.');
+  const result = copyTimetableBlocks(ss, sheet, mode, Boolean(replaceExisting));
+
+  const lines = [];
+  lines.push(result.copied
+    ? '<p class="ok"><b>Done.</b> Filled ' + result.copied + ' slot(s) (' + formatDuration(result.copied * 5) + ').</p>'
+    : '<p><b>Nothing to copy.</b> Every slot already matched or was kept.</p>');
+  if (result.keptExisting) {
+    lines.push('<p>' + result.keptExisting + ' slot(s) already had something in them and were left as they were.</p>');
+  }
+  if (result.keptSpecialist) {
+    lines.push('<p>' + result.keptSpecialist + ' specialist lesson slot(s) were left as they were.</p>');
+  }
+  if (result.locked) {
+    lines.push('<p class="bad">' + result.locked + ' slot(s) are locked and could not be changed.</p>');
+  }
+  return lines.join('');
+}
+
+/** Each target day column with the column it copies from. */
+function getCopyPairs(grid, mode) {
   const byKey = {};
   grid.columns.forEach(column => { byKey[column.term + '|' + column.week + '|' + column.day] = column; });
-  const pairs = grid.columns
+  return grid.columns
     .map(target => {
-      const sourceKey = mode === 'weeks'
+      const source = byKey[mode === 'weeks'
         ? target.term + '|0|' + target.day
-        : '1|' + target.week + '|' + target.day;
-      const source = byKey[sourceKey];
+        : '1|' + target.week + '|' + target.day];
       return source && source !== target ? { source: source, target: target } : null;
     })
     .filter(Boolean);
+}
 
-  if (!pairs.length) {
-    ui.alert(title, mode === 'weeks'
-      ? 'This timetable has a 1-week cycle, so there are no other weeks to copy to.'
-      : 'There are no other terms to copy to.', ui.ButtonSet.OK);
-    return;
-  }
-
-  const answer = ui.alert(
-    title,
-    (mode === 'weeks'
-      ? 'Copy each term\'s Week A entries into that term\'s other weeks?'
-      : 'Copy each Term 1 week into the same week of Terms 2, 3 and 4?') +
-      '\n\nBreaks and specialist lessons are never changed, and nothing is cleared.\n\n' +
-      'Yes: fill only the empty slots.\nNo: also replace entries that are already there.\nCancel: stop.',
-    ui.ButtonSet.YES_NO_CANCEL
-  );
-  if (answer !== ui.Button.YES && answer !== ui.Button.NO) return;
-  const replaceExisting = answer === ui.Button.NO;
-
+/**
+ * Copies entries on a class or specialist tab, either from each term's
+ * Week A into that term's other weeks, or from each Term 1 week into the
+ * same week of Terms 2-4. Never touches break rows or specialist lessons
+ * placed by the sync (including conflicts), never copies them, and never
+ * clears anything; entries already in a target slot are kept unless
+ * replaceExisting is true.
+ */
+function copyTimetableBlocks(ss, sheet, mode, replaceExisting) {
+  const grid = readTimetableGrid(sheet);
+  const pairs = getCopyPairs(grid, mode);
   const breakNames = getBreakNames(ss);
   const isSpecialistOwned = (value, note) =>
     String(note || '').indexOf(SYNC_NOTE_PREFIX) === 0 ||
@@ -291,12 +349,8 @@ function copyTimetableBlocks(mode) {
     });
   });
 
-  const failed = writeGridChanges(sheet, grid, changed);
-  let message = 'Copied ' + (changed.length - failed) + ' slot(s).';
-  if (keptExisting) message += '\n\nKept ' + keptExisting + ' slot(s) that already had an entry.';
-  if (keptSpecialist) message += '\n\nLeft ' + keptSpecialist + ' specialist lesson(s) as they were.';
-  if (failed) message += '\n\n' + failed + ' slot(s) are locked and could not be changed.';
-  ui.alert(title, message, ui.ButtonSet.OK);
+  const locked = writeGridChanges(sheet, grid, changed);
+  return { copied: changed.length - locked, keptExisting: keptExisting, keptSpecialist: keptSpecialist, locked: locked };
 }
 
 
@@ -325,29 +379,39 @@ function writeGridChanges(sheet, grid, changed) {
 
 
 // ---------------------------------------------------------------------------
-// Printing
+// Google Docs: a week of a timetable, and the school's compliance summary
 // ---------------------------------------------------------------------------
 
 /**
- * Lays out one week of the active class or specialist tab on the Print view
- * tab (consecutive slots with the same entry merged into one block, with its
- * times), then offers a link that downloads it as a landscape A4 PDF.
+ * Makes a Google Doc of one week of the active class or specialist tab: a
+ * table with each lesson as one merged block showing its times, coloured
+ * like the tab (from the tab's own conditional-formatting rules).
+ *
+ * The Doc is made by converting an HTML table (Google keeps merged cells
+ * and cell colours when it converts), which needs the Drive API service in
+ * this script project. It is saved in the same folder as the timetable.
  */
-function printThisTimetable() {
+function makeTimetableDoc() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
   const sheet = ss.getActiveSheet();
+  const title = 'Make a Google Doc of this timetable';
   const isSpecialist = isSpecialistSheet(sheet);
 
   if (!isSpecialist && !isClassSheet(ss, sheet)) {
-    ui.alert('Print this timetable', 'Open a class or specialist tab first, then run this again.', ui.ButtonSet.OK);
+    ui.alert(title, 'Open a class or specialist tab first, then choose this again.', ui.ButtonSet.OK);
     return;
   }
+  if (!hasDriveService(ui, title)) return;
 
   const grid = readTimetableGrid(sheet);
+  const oneWeekCycle = !grid.columns.some(column => column.week > 0);
   const response = ui.prompt(
-    'Print this timetable',
-    'Which week? Enter the term and week, for example 1A for Term 1 Week A. Leave blank for 1A.',
+    title,
+    oneWeekCycle
+      ? 'Which term? Type a term number from 1 to 4. Leave it blank for Term 1.'
+      : 'Which week? Type the term number and the week letter, for example 1A for Term 1 Week A ' +
+        'or 3B for Term 3 Week B. Leave it blank for Term 1 Week A.',
     ui.ButtonSet.OK_CANCEL
   );
   if (response.getSelectedButton() !== ui.Button.OK) return;
@@ -356,101 +420,259 @@ function printThisTimetable() {
   const week = match ? weekLetterToIndex(match[2] || 'A') : NaN;
   const days = grid.columns.filter(column => column.term === term && column.week === week);
   if (days.length !== 5) {
-    ui.alert('Print this timetable', 'That week isn\'t on this timetable. Enter something like 1A or 2B.', ui.ButtonSet.OK);
+    ui.alert(title, oneWeekCycle
+      ? 'Type a term number from 1 to 4.'
+      : 'That week isn\'t on this timetable. Type something like 1A or 2B.', ui.ButtonSet.OK);
     return;
   }
 
-  const blockLabel = days[0].blockLabel;
-  const heading = isSpecialist
+  ss.toast('Making the Google Doc...', title, 10);
+  const name = isSpecialist
     ? String(sheet.getRange('B1').getDisplayValue() || sheet.getName())
-    : sheet.getName() + ' - ' + String(sheet.getRange('C27').getDisplayValue());
-  const printSheet = buildPrintSheet(ss, heading + ' - ' + blockLabel, grid, days, getBreakNames(ss));
-
-  SpreadsheetApp.flush();
-  showPdfLink(ui, ss, printSheet,
-    'The Print view tab now shows ' + escapeHtml(heading) + ', ' + escapeHtml(blockLabel) + '.');
-}
-
-
-function printComplianceOverview() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ui = SpreadsheetApp.getUi();
-  const overview = ss.getSheetByName('OVERVIEW');
-  if (!overview) {
-    ui.alert('Print the compliance overview', 'There is no OVERVIEW tab in this timetable.', ui.ButtonSet.OK);
-    return;
-  }
-  showPdfLink(ui, ss, overview, 'The OVERVIEW tab shows every class\'s compliance.');
-}
-
-
-/** Replaces the Print view tab with one week of a timetable. */
-function buildPrintSheet(ss, title, grid, days, breakNames) {
-  const existing = ss.getSheetByName(PRINT_SHEET_NAME);
-  if (existing) ss.deleteSheet(existing);
-  const sheet = ss.insertSheet(PRINT_SHEET_NAME);
-
-  const slotRows = grid.times.map((time, r) => ({ time: String(time || ''), r: r })).filter(slot => slot.time);
-  const firstRow = 4;
-  const lastRow = firstRow + slotRows.length - 1;
-  const startOf = slot => slot.time.split(' - ')[0];
-  const endOf = slot => slot.time.split(' - ')[1];
-
-  // One row per 5-minute slot; the time shows on the hour and half hour.
-  const values = slotRows.map(slot => {
-    const minutes = parseInt(startOf(slot).split(':')[1], 10);
-    return [minutes % 30 === 0 ? startOf(slot) : ''].concat(
-      days.map(day => String(grid.values[slot.r][day.index] || '').trim())
-    );
+    : sheet.getName();
+  const detail = isSpecialist ? '' : String(sheet.getRange('C27').getDisplayValue() || '');
+  const weekLabel = oneWeekCycle ? 'Term ' + term : days[0].blockLabel;
+  const docTitle = name + ' - ' + weekLabel;
+  const html = buildWeekDocHtml({
+    heading: name + (detail ? ' - ' + detail : ''),
+    subheading: weekLabel + (getSchoolName(ss) ? ' - ' + getSchoolName(ss) : ''),
+    grid: grid,
+    days: days,
+    colours: getEntryColours(sheet),
+    breakNames: getBreakNames(ss)
   });
 
-  sheet.getRange('A1').setValue(title).setFontSize(14).setFontWeight('bold');
-  sheet.getRange(3, 1, 1, 6).setValues([['Time'].concat(days.map(day => day.day))])
-    .setFontWeight('bold').setHorizontalAlignment('center').setBackground('#E8EEF2');
-  sheet.getRange(firstRow, 1, values.length, 6).setNumberFormat('@').setValues(values)
-    .setFontSize(8).setVerticalAlignment('middle').setHorizontalAlignment('center').setWrap(true);
-  sheet.getRange(firstRow, 1, values.length, 1).setFontColor('#666666').setVerticalAlignment('top');
-  sheet.setColumnWidth(1, 50);
-  sheet.setColumnWidths(2, 5, 150);
-  sheet.setRowHeights(firstRow, values.length, 9);
-
-  // Merge each run of slots with the same entry into one block showing its times.
-  const breakRanges = [];
-  for (let d = 0; d < days.length; d++) {
-    let start = 0;
-    while (start < values.length) {
-      const value = values[start][d + 1];
-      let end = start;
-      while (end + 1 < values.length && value && values[end + 1][d + 1] === value) end++;
-      if (value) {
-        const range = sheet.getRange(firstRow + start, d + 2, end - start + 1, 1);
-        if (end > start) range.merge();
-        range.setValue(value + (end - start >= 2
-          ? '\n' + startOf(slotRows[start]) + ' - ' + endOf(slotRows[end])
-          : ''));
-        if (breakNames[value]) breakRanges.push(range.getA1Notation());
-      }
-      start = end + 1;
-    }
-  }
-  if (breakRanges.length) sheet.getRangeList(breakRanges).setBackground('#EEEEEE').setFontColor('#555555');
-  sheet.getRange(3, 1, lastRow - 2, 6).setBorder(true, true, true, true, true, false);
-
-  return sheet;
+  const url = createDocFromHtml(ss, docTitle, html);
+  showDialog(ui, title,
+    '<p class="ok"><b>Your Google Doc is ready:</b> ' + escapeHtml(docTitle) + '.</p>' +
+    '<p>It is saved in the same folder as this timetable.</p>' +
+    '<p><a class="button" href="' + url + '" target="_blank">Open the document</a></p>');
 }
 
 
-/** A dialog with a link that downloads one tab as a landscape A4 PDF. */
-function showPdfLink(ui, ss, sheet, intro) {
-  const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=pdf' +
-    '&gid=' + sheet.getSheetId() + '&size=A4&portrait=false&fitw=true&gridlines=false' +
-    '&printtitle=false&sheetnames=false&pagenum=UNDEFINED&fzr=false' +
-    '&top_margin=0.3&bottom_margin=0.3&left_margin=0.3&right_margin=0.3';
-  showDialog(ui, 'Print',
-    '<p>' + intro + '</p>' +
-    '<p><a class="button" href="' + url + '" target="_blank">Download PDF</a></p>' +
-    '<p class="note">The PDF opens in a new browser tab. You can also use File &gt; Download &gt; ' +
-    'PDF with this tab selected.</p>');
+/**
+ * Makes a Google Doc listing every class with its KLA percentages
+ * (out-of-range values in red), empty slots and whether it is compliant.
+ */
+function makeComplianceDoc() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const title = 'Make a Google Doc of the compliance summary';
+  if (!hasDriveService(ui, title)) return;
+
+  const classSheets = getClassNames(ss).map(name => findClassSheet(ss, name)).filter(Boolean);
+  if (!classSheets.length) {
+    ui.alert(title, 'No class tabs were found.', ui.ButtonSet.OK);
+    return;
+  }
+  ss.toast('Checking ' + classSheets.length + ' class timetable(s)...', title, 10);
+
+  const klaNames = classSheets[0].getRange('B5:B12').getValues().map(row => String(row[0]));
+  const header = '<tr><th>Class</th><th>Teacher</th>' +
+    klaNames.map(kla => '<th>' + escapeHtml(kla) + '</th>').join('') +
+    '<th>Empty slots</th><th>Compliant</th></tr>';
+  const rows = classSheets.map(sheet => {
+    const result = checkClassTimetable(ss, sheet);
+    const table = sheet.getRange('B5:G12').getValues();
+    const outOfRange = {};
+    result.klaIssues.forEach(issue => { outOfRange[issue.kla] = true; });
+    return '<tr><td><b>' + escapeHtml(sheet.getName()) + '</b></td><td>' +
+      escapeHtml(String(sheet.getRange('C27').getDisplayValue())) + '</td>' +
+      table.map(row => {
+        const percent = (Number(row[3]) || 0).toFixed(1) + '%';
+        return outOfRange[String(row[0])]
+          ? '<td style="background-color:#F4CCCC;color:#990000"><b>' + percent + '</b></td>'
+          : '<td>' + percent + '</td>';
+      }).join('') +
+      '<td>' + result.emptySlots + '</td>' +
+      (result.compliant
+        ? '<td style="background-color:#D9EAD3;color:#274E13"><b>Yes</b></td>'
+        : '<td style="background-color:#F4CCCC;color:#990000"><b>No</b></td>') + '</tr>';
+  }).join('');
+
+  const schoolName = getSchoolName(ss);
+  const html = docHtmlPage(
+    '<h1>' + escapeHtml((schoolName ? schoolName + ' - ' : '') + 'Compliance summary') + '</h1>' +
+    '<p>Percentage of teaching time per KLA, averaged over the year. Values outside their range are in red.</p>' +
+    '<table>' + header + rows + '</table>'
+  );
+  const url = createDocFromHtml(ss, (schoolName ? schoolName + ' - ' : '') + 'Compliance summary', html);
+  showDialog(ui, title,
+    '<p class="ok"><b>Your Google Doc is ready.</b> It is saved in the same folder as this timetable.</p>' +
+    '<p><a class="button" href="' + url + '" target="_blank">Open the document</a></p>');
+}
+
+
+/**
+ * The HTML for one week: a table with one row per stretch of time between
+ * changes on any day, and each lesson as one cell spanning its rows
+ * (rowspan), so Google Docs shows it as a merged block.
+ */
+function buildWeekDocHtml(options) {
+  const grid = options.grid;
+  const days = options.days;
+  const slots = grid.times
+    .map((time, r) => ({ r: r, start: String(time || '').split(' - ')[0], end: String(time || '').split(' - ')[1] }))
+    .filter(slot => slot.start && slot.end);
+  const valueAt = (slotIndex, day) => String(grid.values[slots[slotIndex].r][day.index] || '').trim();
+
+  // Each day's runs of the same entry (empty runs too).
+  const runsByDay = days.map(day => {
+    const runs = [];
+    slots.forEach((slot, i) => {
+      const value = valueAt(i, day);
+      const last = runs[runs.length - 1];
+      if (last && last.value === value) last.end = i;
+      else runs.push({ value: value, start: i, end: i });
+    });
+    return runs;
+  });
+
+  // Table rows: the stretches of time between any two changes.
+  const boundaries = {};
+  boundaries[slots.length] = true;
+  runsByDay.forEach(runs => runs.forEach(run => { boundaries[run.start] = true; }));
+  const rowStarts = Object.keys(boundaries).map(Number).sort((a, b) => a - b);
+  const rowIndexOf = {};
+  rowStarts.forEach((start, i) => { rowIndexOf[start] = i; });
+
+  const rows = [];
+  for (let i = 0; i < rowStarts.length - 1; i++) {
+    const startSlot = rowStarts[i];
+    const endSlot = rowStarts[i + 1] - 1;
+    const minutes = (endSlot - startSlot + 1) * 5;
+    let html = '<tr style="height:' + Math.max(16, Math.round(minutes * 1.1)) + 'pt">' +
+      '<td class="time">' + slots[startSlot].start + '<br>' + slots[endSlot].end + '</td>';
+    runsByDay.forEach(runs => {
+      const run = runs.find(item => item.start === startSlot);
+      if (!run) return; // covered by a cell above (rowspan)
+      const span = rowIndexOf[run.end + 1] - rowIndexOf[run.start];
+      const colour = options.breakNames[run.value]
+        ? { background: '#EEEEEE', font: '#555555' }
+        : (run.value ? options.colours(run.value) : null);
+      const style = colour
+        ? ' style="background-color:' + colour.background + (colour.font ? ';color:' + colour.font : '') + '"'
+        : '';
+      const text = run.value
+        ? '<b>' + escapeHtml(run.value) + '</b>' + (run.end > run.start
+          ? '<br><span class="small">' + slots[run.start].start + ' - ' + slots[run.end].end + '</span>'
+          : '')
+        : '';
+      html += '<td' + (span > 1 ? ' rowspan="' + span + '"' : '') + style + '>' + text + '</td>';
+    });
+    rows.push(html + '</tr>');
+  }
+
+  return docHtmlPage(
+    '<h1>' + escapeHtml(options.heading) + '</h1>' +
+    '<p class="sub">' + escapeHtml(options.subheading) + '</p>' +
+    '<table><tr><th class="time">Time</th>' + days.map(day => '<th>' + escapeHtml(day.day) + '</th>').join('') + '</tr>' +
+    rows.join('') + '</table>'
+  );
+}
+
+
+function docHtmlPage(body) {
+  return '<html><head><meta charset="utf-8"><style>' +
+    'body{font-family:Arial,sans-serif;font-size:9pt}' +
+    'h1{font-size:16pt;margin:0 0 2pt 0}p.sub{font-size:11pt;color:#555555;margin:0 0 8pt 0}' +
+    'table{border-collapse:collapse;width:100%}' +
+    'th,td{border:1px solid #999999;padding:2pt 4pt;text-align:center;vertical-align:middle;font-size:9pt}' +
+    'th{background-color:#E8EEF2}td.time,th.time{width:12%;color:#555555;font-size:8pt}' +
+    '.small{font-size:7pt}' +
+    '</style></head><body>' + body + '</body></html>';
+}
+
+
+/**
+ * Converts HTML into a Google Doc in the timetable's folder, sets it to
+ * landscape A4 and returns its link.
+ */
+function createDocFromHtml(ss, name, html) {
+  const parents = Drive.Files.get(ss.getId(), { fields: 'parents' }).parents || [];
+  const file = Drive.Files.create(
+    { name: name, mimeType: 'application/vnd.google-apps.document', parents: parents },
+    Utilities.newBlob(html, 'text/html', name + '.html')
+  );
+  const doc = DocumentApp.openById(file.id);
+  const body = doc.getBody();
+  body.setPageWidth(842).setPageHeight(595); // A4 landscape, in points
+  body.setMarginTop(28).setMarginBottom(28).setMarginLeft(28).setMarginRight(28);
+  doc.saveAndClose();
+  return 'https://docs.google.com/document/d/' + file.id + '/edit';
+}
+
+
+function hasDriveService(ui, title) {
+  if (typeof Drive !== 'undefined' && Drive.Files) return true;
+  ui.alert(title,
+    'Making Google Docs needs the Drive API service, which isn\'t turned on for this timetable. ' +
+    'Ask the person who manages the timetable tool to turn it on in the template\'s script ' +
+    '(Extensions > Apps Script > Services > Drive API).', ui.ButtonSet.OK);
+  return false;
+}
+
+
+/**
+ * How the tab colours each entry, worked out from its conditional-formatting
+ * rules in order (the first matching rule wins, as in Sheets): "text is
+ * exactly" rules (the KLA colours on class tabs), formulas like ="K Blue"
+ * (the class colours on specialist tabs) and "not empty" formulas like
+ * LEN(TRIM(J5))>0. Returns a function from an entry to {background, font},
+ * or null when no rule colours it.
+ */
+function getEntryColours(sheet) {
+  const matchers = [];
+  sheet.getConditionalFormatRules().forEach(rule => {
+    const condition = rule.getBooleanCondition();
+    if (!condition) return;
+    const background = colourToHex(condition, 'Background');
+    if (!background) return;
+    const colour = { background: background, font: colourToHex(condition, 'FontColor') };
+    const type = String(condition.getCriteriaType());
+    const values = condition.getCriteriaValues();
+
+    if (type === 'TEXT_EQUAL_TO' || type === 'NUMBER_EQUAL_TO') {
+      const text = String(values[0]).replace(/^=/, '').replace(/^"(.*)"$/, '$1').replace(/""/g, '"');
+      matchers.push({ test: value => value === text, colour: colour });
+    } else if (type === 'CUSTOM_FORMULA') {
+      // Spaces are allowed around the parts of the formula, but not changed
+      // inside the quoted text ("K Blue").
+      const formula = String(values[0]).trim();
+      const equals = formula.match(/^=\s*\$?[A-Z]+\$?\d+\s*=\s*"((?:[^"]|"")*)"\s*$/);
+      if (equals) {
+        const text = equals[1].replace(/""/g, '"');
+        matchers.push({ test: value => value === text, colour: colour });
+      } else if (/^=\s*LEN\(\s*TRIM\(\s*\$?[A-Z]+\$?\d+\s*\)\s*\)\s*>\s*0\s*$/i.test(formula)) {
+        matchers.push({ test: value => value !== '', colour: colour });
+      }
+    }
+  });
+  return value => {
+    const match = matchers.find(matcher => matcher.test(value));
+    return match ? match.colour : null;
+  };
+}
+
+
+/** A conditional-format colour as #RRGGBB, or '' (theme colours are skipped). */
+function colourToHex(condition, kind) {
+  try {
+    const colour = condition['get' + kind + 'Object'] && condition['get' + kind + 'Object']();
+    if (colour) return colour.asRgbColor().asHexString().toUpperCase();
+  } catch (error) {
+    // Theme colours have no fixed RGB value; fall back below.
+  }
+  const hex = condition['get' + kind] && condition['get' + kind]();
+  return hex ? String(hex).toUpperCase() : '';
+}
+
+
+function getSchoolName(ss) {
+  const range = ss.getRangeByName('StartHereSyncStatus');
+  if (!range) return '';
+  const title = String(range.getSheet().getRange('A1').getValue());
+  return title.replace(/ - Timetable$/, '');
 }
 
 
@@ -533,6 +755,8 @@ function showDialog(ui, title, bodyHtml) {
     'table{border-collapse:collapse;width:100%}th,td{border:1px solid #dadce0;padding:4px 6px;text-align:left}' +
     'th{background:#f1f3f4}a.button{display:inline-block;background:#007A48;color:#fff;padding:8px 16px;' +
     'border-radius:4px;text-decoration:none;font-weight:bold}' +
+    'button{font-size:13px;padding:7px 14px;border:1px solid #dadce0;border-radius:4px;background:#fff;cursor:pointer}' +
+    'button.primary{background:#007A48;color:#fff;border-color:#007A48;font-weight:bold}' +
     '</style>' + bodyHtml;
   ui.showModalDialog(HtmlService.createHtmlOutput(html).setWidth(560).setHeight(520), title);
 }

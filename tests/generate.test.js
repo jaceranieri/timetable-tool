@@ -142,7 +142,7 @@ test('class tab: details, headers, times, breaks and dropdowns', () => {
 
   // TEMPLATE!B5's conditional formatting pasted once per week block.
   const pasted = sheet.getConditionalFormatRules().filter(r => r.pastedFrom === 'B5');
-  assert.equal(pasted.length, 8 * 2); // 8 blocks x the 2 rules on B5
+  assert.equal(pasted.length, 8 * 8); // 8 blocks x the 8 rules on B5 (7 KLA colours + not empty)
 });
 
 test('copied class tabs get the same grid as the first tab with that cycle', () => {

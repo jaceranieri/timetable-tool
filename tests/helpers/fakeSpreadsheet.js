@@ -180,7 +180,7 @@ class FakeRange {
     }
     const sourceRules = this._sheet._cfRules.filter(rule => rule._ranges.some(range => range._overlaps(this._box())));
     sourceRules.forEach(rule => {
-      destination._sheet._cfRules.push(makeRule(rule._formula, [destination], { pastedFrom: this.getA1Notation() }));
+      destination._sheet._cfRules.push(cloneRule(rule, [destination], { pastedFrom: this.getA1Notation() }));
     });
     return undefined;
   }
@@ -226,15 +226,36 @@ class FakeRangeList {
   breakApart() { return this._each('breakApart', []); }
 }
 
+/**
+ * A conditional-format rule. formula is a custom formula, or null for other
+ * kinds; extra can give criteriaType and values (e.g. TEXT_EQUAL_TO,
+ * ['English']), background and fontColor.
+ */
 function makeRule(formula, ranges, extra) {
-  return Object.assign({
+  const rule = Object.assign({
     _formula: formula,
     _ranges: ranges,
     getRanges() { return this._ranges; },
     getBooleanCondition() {
-      return formula === null ? null : { getCriteriaValues: () => [formula] };
+      const type = rule.criteriaType || (formula === null ? null : 'CUSTOM_FORMULA');
+      if (!type) return null;
+      return {
+        getCriteriaType: () => type,
+        getCriteriaValues: () => rule.values || [formula],
+        getBackground: () => rule.background || null,
+        getFontColor: () => rule.fontColor || null
+      };
     }
   }, extra || {});
+  return rule;
+}
+
+/** The same rule on other ranges (pasting, copying a sheet). */
+function cloneRule(rule, ranges, extra) {
+  return makeRule(rule._formula, ranges, Object.assign({
+    criteriaType: rule.criteriaType, values: rule.values, background: rule.background,
+    fontColor: rule.fontColor, pastedFrom: rule.pastedFrom
+  }, extra || {}));
 }
 
 class FakeSheet {
@@ -326,9 +347,8 @@ class FakeSheet {
     copy._merges = this._merges.map(merge => Object.assign({}, merge));
     copy._widths = Object.assign({}, this._widths);
     copy._hidden = this._hidden;
-    copy._cfRules = this._cfRules.map(rule => makeRule(rule._formula,
-      rule._ranges.map(range => copy.getRange(range._row, range._column, range._numRows, range._numColumns)),
-      { pastedFrom: rule.pastedFrom }));
+    copy._cfRules = this._cfRules.map(rule => cloneRule(rule,
+      rule._ranges.map(range => copy.getRange(range._row, range._column, range._numRows, range._numColumns))));
     target._sheets.push(copy);
     return copy;
   }
@@ -449,7 +469,7 @@ function createWorld() {
       setRanges(ranges) { state.ranges = ranges; return api; },
       build() {
         if (kind === 'validation') return Object.assign({}, state);
-        return makeRule(state.formula, state.ranges || [], { background: state.background });
+        return makeRule(state.formula, state.ranges || [], { background: state.background, fontColor: state.fontColor });
       }
     };
     return api;
@@ -529,7 +549,30 @@ function createWorld() {
         return output;
       }
     },
+    // The Drive API advanced service (v3), for making Google Docs from HTML.
+    Drive: {
+      Files: {
+        get: (id) => ({ parents: [world.files[id] && world.files[id].folder ? world.files[id].folder : 'My Drive'] }),
+        create: (resource, blob) => {
+          const id = 'doc' + ((world.docs || []).length + 1);
+          world.docs = (world.docs || []).concat([{ id, name: resource.name, mimeType: resource.mimeType,
+            parents: resource.parents, html: blob.getDataAsString(), page: {} }]);
+          return { id };
+        }
+      }
+    },
+    DocumentApp: {
+      openById: id => {
+        const doc = world.docs.find(item => item.id === id);
+        const body = {};
+        ['PageWidth', 'PageHeight', 'MarginTop', 'MarginBottom', 'MarginLeft', 'MarginRight'].forEach(name => {
+          body['set' + name] = value => { doc.page[name] = value; return body; };
+        });
+        return { getBody: () => body, saveAndClose: () => { doc.saved = true; } };
+      }
+    },
     Utilities: {
+      newBlob: (data, contentType, name) => ({ getDataAsString: () => data, getContentType: () => contentType, getName: () => name }),
       formatDate: (date) => String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0')
     }
   };
@@ -596,8 +639,15 @@ function makeTemplate(world, id) {
   template.getRange('B5:B12').setValues(['English', 'Mathematics', 'Religion', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'].map(v => [v]));
   template.getRange('B21').setValue('Amadeus - Tutorials');
   template.getRange('B27:C30').setValues([['Teacher: ', 'Jason Ranieri'], ['Class Name', 'KGREEN'], ['Grade', 'Kindergarten'], ['Weeks per Cycle', '3 weeks per term']]);
-  template._cfRules.push(makeRule('=LEN(TRIM(B5))>0', [template.getRange('B5')]));
-  template._cfRules.push(makeRule(null, [template.getRange('A5:B12')]));
+  [
+    ['English', '#D9EAD3', '#6AA84F'], ['Mathematics', '#FCE5CD', '#E69138'], ['Religion', '#FFF2CC', '#F1C232'],
+    ['Science & Tech', '#C9DAF8', '#3D85C6'], ['HSIE', '#D9D2E9', '#674EA7'], ['PDHPE', '#D0E0E3', '#45818E'],
+    ['Creative Arts', '#F4CCCC', '#CC0000']
+  ].forEach(([kla, background, fontColor]) => {
+    template._cfRules.push(makeRule(null, [template.getRange('A5:B12')],
+      { criteriaType: 'TEXT_EQUAL_TO', values: [kla], background, fontColor }));
+  });
+  template._cfRules.push(makeRule('=LEN(TRIM(B5))>0', [template.getRange('B5')], { background: '#F3F3F3', fontColor: '#B7B7B7' }));
 
   const spec = ss._addSheet('SPEC_Template', 75, 15);
   spec.hideSheet();

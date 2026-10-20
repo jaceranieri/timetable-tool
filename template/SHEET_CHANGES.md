@@ -173,3 +173,13 @@ No sheet changes, but the template's script project gets a **new file**.
 - [ ] **Check this timetable** on a class tab (partly filled), on a specialist tab, and on DATA (asks for a timetable tab). **Check all class timetables** lists every class.
 - [ ] **Copy Week A to the other weeks** on a 2-week class: Yes fills only empty slots; No also replaces entries; breaks and synced specialist lessons stay as they are. **Copy Term 1 to Terms 2-4** on a 1-week class.
 - [ ] **Print this timetable**: enter `1A`; the Print view tab shows that week with merged blocks and times, and **Download PDF** gives a landscape A4 page. **Print the compliance overview** downloads OVERVIEW.
+
+### Phase 6 changes: clearer copy wording, Google Docs instead of PDFs
+
+- [ ] In the **template's** script project: click **Services** (+), choose **Drive API**, keep the identifier `Drive` (version v3) and click **Add**.
+- [ ] Paste the updated `template/TemplateSync.gs` and `template/TimetableTools.gs` into the template's script project, and the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
+- [ ] Generate a new timetable, then check:
+  - **Copy Week A into the other weeks**: a window explains what will be copied, with the buttons **Fill empty slots only**, **Fill empty slots and replace what's there** and **Cancel**; the result shows in the same window.
+  - **Make a Google Doc of this timetable** on a class tab (`1A`): the Doc opens from the link, is landscape, each lesson is one merged block with its times, and subjects have the same colours as the class tab. Try it on a specialist tab too (class colours).
+  - **Make a Google Doc of the compliance summary**: one row per class, out-of-range percentages in red.
+  - Both Docs are saved in the same folder as the timetable.

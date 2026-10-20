@@ -6,7 +6,7 @@ A timetable helper wizard tool that assists Primary schools creating their timet
 | Folder | Apps Script project | What it does |
 |---|---|---|
 | `wizard/` | The standalone web app project | `Index.html` is the setup wizard; `Code.gs` copies the master template and builds the class and specialist tabs |
-| `template/` | The project bound to the master template spreadsheet | `TemplateSync.gs` adds the **Timetable Admin** menu and does the sync, lock and clash formatting; `TimetableTools.gs` adds the checks, copy helpers and printing. Both are copied into every generated timetable along with the spreadsheet. |
+| `template/` | The project bound to the master template spreadsheet | `TemplateSync.gs` adds the **Timetable Admin** menu and does the sync, lock and clash formatting; `TimetableTools.gs` adds the checks, copy helpers and Google Docs. Both are copied into every generated timetable along with the spreadsheet. |
 
 `PLAN.md` lists the planned fixes and features in priority order, and
 `template/SHEET_CHANGES.md` the edits made in the template spreadsheet itself.
@@ -60,6 +60,15 @@ Drive (created the first time), named
 The `appsscript.json` manifests in this repo reflect those settings. Check
 them against the ones in the Apps Script editor (Project Settings → "Show
 appsscript.json manifest file") before pushing them.
+
+## The template's script project
+
+In the template's script editor (Extensions → Apps Script), under
+**Services**, add the **Drive API** (identifier `Drive`, version v3). The
+Timetable Admin menu uses it to make Google Docs of a timetable or of the
+compliance summary. The setting is copied into every generated timetable.
+The first time someone uses the menu in a timetable, Google asks them to
+allow it (including Drive access, to save the Docs next to the timetable).
 
 ## Testing against a copy of the template
 

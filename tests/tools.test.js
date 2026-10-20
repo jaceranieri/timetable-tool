@@ -128,8 +128,23 @@ test('Check all class timetables lists every class, non-compliant first', () => 
   assert.ok(html.indexOf('K Blue') < html.indexOf('K Red'), 'non-compliant first');
 });
 
+test('Copy Week A: the window explains the choice with labelled buttons', () => {
+  const { world, tools, open, lastDialog } = setUp();
+  open('Year 3 Gold');
+  tools.copyWeekAToOtherWeeks();
+  const html = lastDialog().html;
+  assert.equal(lastDialog().title, 'Copy Week A into the other weeks');
+  assert.match(html, /Copies what is in <b>Week A<\/b> of each term into the other weeks of the same term/);
+  assert.match(html, /only changes the <b>Year 3 Gold<\/b> tab/);
+  assert.match(html, />Fill empty slots only<\/button>/);
+  assert.match(html, />Fill empty slots and replace what's there<\/button>/);
+  assert.match(html, />Cancel<\/button>/);
+  assert.match(html, /var MODE="weeks";var SHEET="Year 3 Gold";/);
+  assert.equal(world.alerts.length, 0);
+});
+
 test('Copy Week A: fills empty slots in each term, keeps breaks, existing entries and specialist lessons', () => {
-  const { world, tools, open } = setUp();
+  const { tools, open } = setUp();
   const sheet = open('Year 3 Gold'); // 2-week cycle: Term 1 Week A = J-N, Week B = P-T; Term 2 Week A = V-Z, Week B = AB-AF
   sheet.getRange('J11:J13').setValues([['English'], ['English'], ['Mathematics']]);
   sheet.getRange('V11').setValue('HSIE');
@@ -137,66 +152,120 @@ test('Copy Week A: fills empty slots in each term, keeps breaks, existing entrie
   sheet.getRange('P13').setValue('PDHPE').setNote('[SPEC_SYNC] Mr Smith');  // specialist lesson
   sheet.getRange('J29').setValue('Recess');                                 // break row (already Recess)
 
-  world.answers = ['YES']; // fill empty slots only
-  tools.copyWeekAToOtherWeeks();
+  const result = tools.runCopyFromDialog('weeks', 'Year 3 Gold', false); // fill empty slots only
   assert.equal(sheet.getRange('P11').getValue(), 'English');
   assert.equal(sheet.getRange('P12').getValue(), 'Religion', 'existing entry kept');
   assert.equal(sheet.getRange('P13').getValue(), 'PDHPE', 'specialist lesson kept');
   assert.equal(sheet.getRange('AB11').getValue(), 'HSIE', 'Term 2 copies from Term 2 Week A');
   assert.equal(sheet.getRange('P29').getValue(), 'Recess');
-  assert.match(world.alerts.pop(), /Copied 2 slot\(s\)\.\n\nKept 1 slot\(s\) that already had an entry\.\n\nLeft 1 specialist lesson/);
+  assert.equal(result, '<p class="ok"><b>Done.</b> Filled 2 slot(s) (10 min).</p>' +
+    '<p>1 slot(s) already had something in them and were left as they were.</p>' +
+    '<p>1 specialist lesson slot(s) were left as they were.</p>');
 
-  world.answers = ['NO']; // also replace existing entries
-  tools.copyWeekAToOtherWeeks();
+  tools.runCopyFromDialog('weeks', 'Year 3 Gold', true); // also replace what's there
   assert.equal(sheet.getRange('P12').getValue(), 'English');
   assert.equal(sheet.getRange('P13').getValue(), 'PDHPE');
-
-  world.answers = ['CANCEL'];
-  sheet.getRange('J14').setValue('Religion');
-  tools.copyWeekAToOtherWeeks();
-  assert.equal(sheet.getRange('P14').getValue(), '');
+  assert.match(tools.runCopyFromDialog('weeks', 'Year 3 Gold', true), /Nothing to copy/);
 });
 
-test('Copy Term 1 to Terms 2-4, and the 1-week cycle message for Copy Week A', () => {
+test('Copy Term 1 into Terms 2-4, and the 1-week timetable message for Copy Week A', () => {
   const { world, tools, open } = setUp();
   const sheet = open('K Blue'); // 1-week cycle: Term 1 = J-N, Term 2 = P-T, Term 3 = V-Z, Term 4 = AB-AF
   sheet.getRange('J11').setValue('English');
-  world.answers = ['YES'];
-  tools.copyTermOneToOtherTerms();
+  assert.match(tools.runCopyFromDialog('terms', 'K Blue', false), /Filled 3 slot\(s\) \(15 min\)/);
   assert.deepEqual(['P11', 'V11', 'AB11'].map(a1 => sheet.getRange(a1).getValue()), ['English', 'English', 'English']);
   tools.copyWeekAToOtherWeeks();
-  assert.match(world.alerts.pop(), /1-week cycle/);
+  assert.match(world.alerts.pop(), /1-week timetable, so there are no other weeks to copy into\. Use "Copy Term 1 into Terms 2-4" instead\./);
 });
 
-test('Print this timetable: one week on the Print view tab, merged blocks with times, PDF link', () => {
-  const { world, ss, tools, open, lastDialog } = setUp();
+/** Lays out a doc's HTML table rows and checks every row has 6 cells once rowspans are counted. */
+function tableShape(html) {
+  const rows = html.split('<tr').slice(1).map(row => row.split('</tr>')[0]);
+  const covered = [];
+  rows.forEach((row, r) => {
+    const cells = row.match(/<t[dh][^>]*>/g) || [];
+    let column = 0;
+    cells.forEach(cell => {
+      while (covered[r] && covered[r][column]) column++;
+      const span = Number((cell.match(/rowspan="(\d+)"/) || [0, 1])[1]);
+      for (let k = 0; k < span; k++) {
+        covered[r + k] = covered[r + k] || [];
+        covered[r + k][column] = true;
+      }
+      column++;
+    });
+  });
+  return covered.map(row => row.filter(Boolean).length);
+}
+
+test('Google Doc of a week: merged lessons with their times, coloured like the tab, in the timetable folder', () => {
+  const { world, tools, open, lastDialog } = setUp();
   const sheet = open('Year 3 Gold');
-  sheet.getRange('P11:P22').setValue('English'); // Term 1 Week B Monday 9:00-10:00
-  world.promptAnswers = ['1b'];
-  tools.printThisTimetable();
+  sheet.getRange('J11:J22').setValue('English');     // Monday 9:00-10:00
+  sheet.getRange('K11:K16').setValue('Mathematics'); // Tuesday 9:00-9:30
+  sheet.getRange('K17:K22').setValue('Assembly');    // Tuesday 9:30-10:00 (no colour rule but "not empty")
+  world.promptAnswers = ['1a'];
+  tools.makeTimetableDoc();
 
-  const print = ss.getSheetByName('Print view');
-  assert.equal(print.getRange('A1').getValue(), 'Year 3 Gold - Ms Chen - Term 1 - Week B');
-  assert.deepEqual(print.getRange('A3:F3').getValues()[0], ['Time', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
-  assert.equal(print.getRange('A4').getValue(), '08:30');
-  assert.equal(print.getRange('B10').getValue(), 'English\n09:00 - 10:00');
-  assert.ok(print._merges.some(m => m.row === 10 && m.column === 2 && m.numRows === 12));
-  assert.equal(print.getRange('B28').getValue(), 'Recess\n10:30 - 11:00');
-  assert.equal(print.getRange('B28').getBackgrounds()[0][0], '#EEEEEE');
-  assert.match(lastDialog().html, new RegExp('export\\?format=pdf&gid=' + print.getSheetId() + '&size=A4&portrait=false'));
-
-  // Printing again replaces the tab; an unknown week is refused.
-  world.promptAnswers = ['4C'];
-  tools.printThisTimetable();
-  assert.match(world.alerts.pop(), /That week isn't on this timetable/);
-  world.promptAnswers = [''];
-  tools.printThisTimetable();
-  assert.equal(ss.getSheets().filter(s => s.getName() === 'Print view').length, 1);
-  assert.match(ss.getSheetByName('Print view').getRange('A1').getValue(), /Term 1 - Week A$/);
+  const doc = world.docs[0];
+  assert.equal(doc.name, 'Year 3 Gold - Term 1 - Week A');
+  assert.equal(doc.mimeType, 'application/vnd.google-apps.document');
+  assert.deepEqual(doc.parents, ['Timetables']);
+  assert.deepEqual(doc.page, { PageWidth: 842, PageHeight: 595, MarginTop: 28, MarginBottom: 28, MarginLeft: 28, MarginRight: 28 });
+  assert.match(doc.html, /<h1>Year 3 Gold - Ms Chen<\/h1><p class="sub">Term 1 - Week A - St Example Primary<\/p>/);
+  assert.match(doc.html, /<td rowspan="2" style="background-color:#D9EAD3;color:#6AA84F"><b>English<\/b><br><span class="small">09:00 - 10:00<\/span><\/td>/);
+  assert.match(doc.html, /<td style="background-color:#FCE5CD;color:#E69138"><b>Mathematics<\/b><br><span class="small">09:00 - 09:30<\/span><\/td>/);
+  assert.match(doc.html, /<td style="background-color:#F3F3F3;color:#B7B7B7"><b>Assembly<\/b>/);
+  assert.match(doc.html, /style="background-color:#EEEEEE;color:#555555"><b>Recess<\/b><br><span class="small">10:30 - 11:00<\/span>/);
+  assert.match(doc.html, /<td class="time">09:00<br>09:30<\/td>/);
+  tableShape(doc.html).forEach((cells, r) => assert.equal(cells, 6, 'row ' + r));
+  assert.match(lastDialog().html, /href="https:\/\/docs\.google\.com\/document\/d\/doc1\/edit" target="_blank">Open the document</);
 });
 
-test('Print the compliance overview links the OVERVIEW tab as a PDF', () => {
-  const { ss, tools, lastDialog } = setUp();
-  tools.printComplianceOverview();
-  assert.match(lastDialog().html, new RegExp('gid=' + ss.getSheetByName('OVERVIEW').getSheetId() + '&'));
+test('Google Doc on a 1-week class asks for a term; on a specialist tab classes keep their colours', () => {
+  const { world, tools, open } = setUp();
+  open('K Blue');
+  world.promptAnswers = ['2'];
+  tools.makeTimetableDoc();
+  assert.match(world.prompts.pop(), /Which term\?/);
+  assert.equal(world.docs[0].name, 'K Blue - Term 2');
+
+  const spec = open('SPEC_Mr Smith');
+  spec.getRange('J11:J16').setValue('K Blue');
+  world.promptAnswers = [''];
+  tools.makeTimetableDoc();
+  assert.equal(world.docs[1].name, 'Mr Smith - Term 1');
+  assert.match(world.docs[1].html, /<td rowspan="\d+" style="background-color:#FFADAD"><b>K Blue<\/b>|<td style="background-color:#FFADAD"><b>K Blue<\/b>/);
+
+  world.promptAnswers = ['5'];
+  tools.makeTimetableDoc();
+  assert.match(world.alerts.pop(), /Type a term number from 1 to 4/);
+});
+
+test('Google Doc of the compliance summary: a row per class, out-of-range values in red', () => {
+  const { world, ss, tools, lastDialog } = setUp();
+  setCompliance(ss.getSheetByName('K Red'), BALANCED, { empty: 0, compliant: true, amadeus: 'N/A', tutorials: 0, tutorialsPercent: 0 });
+  tools.makeComplianceDoc();
+  const doc = world.docs[0];
+  assert.equal(doc.name, 'St Example Primary - Compliance summary');
+  assert.match(doc.html, /<th>Class<\/th><th>Teacher<\/th><th>English<\/th>/);
+  assert.match(doc.html, /<td><b>K Red<\/b><\/td><td>Mr Brown<\/td><td>33\.0%<\/td>/);
+  assert.match(doc.html, /<td style="background-color:#F4CCCC;color:#990000"><b>3\.0%<\/b><\/td>/); // Creative Arts under
+  assert.match(doc.html, /<td style="background-color:#D9EAD3;color:#274E13"><b>Yes<\/b><\/td>/);
+  assert.match(lastDialog().html, /Open the document/);
+});
+
+test('without the Drive API service, making a Google Doc explains what to turn on', () => {
+  const world = createWorld();
+  makeTemplate(world, TEMPLATE_ID);
+  loadScript('wizard/Code.gs', world.globals).generateTimetable(makePayload());
+  world.newExecution();
+  const ss = world.files[world.lastCopyId].spreadsheet;
+  world.active = ss;
+  delete world.globals.Drive;
+  const tools = loadScript(['template/TemplateSync.gs', 'template/TimetableTools.gs'], world.globals);
+  ss.setActiveSheet(ss.getSheetByName('K Blue'));
+  tools.makeTimetableDoc();
+  assert.match(world.alerts.pop(), /needs the Drive API service/);
+  assert.equal(world.docs, undefined);
 });
