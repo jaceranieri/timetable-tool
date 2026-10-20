@@ -13,14 +13,23 @@
  *  - Maps each entry onto the correct cell(s) on the matching class sheet,
  *    correctly handling specialists and classes that have different
  *    cycle lengths (see buildScheduleColumnMap / computeLcm below).
- *  - Writes the specialist's KLA into that class cell and locks it to the
- *    spreadsheet owner only, so nobody else can accidentally overwrite it.
- *  - If two different specialists/values want the same class cell, flags
- *    it visibly in red instead of silently overwriting.
- *  - Warns (without blocking) if a specialist/class cycle combination only
- *    repeats every 4+ weeks, since that's usually a sign the cycles were
- *    not intended to interact that way.
+ *  - Writes the specialist's KLA into that class cell. "Lock Synced Cells"
+ *    then locks those cells to the spreadsheet owner.
+ *  - Each sync starts by removing the slots written by the previous sync,
+ *    so lessons a specialist has since moved or deleted don't linger.
+ *  - If two specialists, or a specialist and a class teacher's own entry,
+ *    want the same class cell, flags it visibly in red instead of silently
+ *    overwriting. The class teacher's entry is restored on the next sync
+ *    once the clash is gone.
+ *  - Warns (without blocking) when a class's cycle isn't a multiple of the
+ *    specialist's cycle, because the class timetable then can't show every
+ *    specialist week separately.
  */
+
+const SYNC_NOTE_PREFIX = '[SPEC_SYNC]';
+const CONFLICT_NOTE_PREFIX = '[SPEC_CONFLICT]';
+const CONFLICT_VALUE_PREFIX = 'CONFLICT:';
+const LOCK_DESCRIPTION = 'Locked Specialist Slot(s)';
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -102,11 +111,27 @@ function syncSpecialistSchedules() {
       fontWeights: region.getFontWeights(),
       notes: region.getNotes(),
       sources: Array.from({ length: numRows }, () => new Array(numCols).fill(null)),
+      dirty: Array.from({ length: numRows }, () => new Array(numCols).fill(false)),
+      released: Array.from({ length: numRows }, () => new Array(numCols).fill(false)),
       numRows: numRows,
       numCols: numCols
     };
+    releasePreviousSyncCells(info, specialistKlaMap);
+    // What each cell held before this sync wrote anything (a class
+    // teacher's entry or blank), so a conflict can be undone later.
+    info.original = info.values.map(row => row.slice());
     classCache[className] = info;
     return info;
+  }
+
+  // Load every class sheet up front, not only the ones a specialist still
+  // mentions, so slots from the previous sync are removed everywhere.
+  const classListRange = ss.getRangeByName('ClassList');
+  if (classListRange) {
+    classListRange.getValues().flat()
+      .map(value => String(value).trim())
+      .filter(Boolean)
+      .forEach(getClassInfo);
   }
 
   specialistSheets.forEach((specialistSheet, specialistIndex) => {
@@ -141,10 +166,10 @@ function syncSpecialistSchedules() {
           const cyclePairKey = specialistName + '|' + className;
           if (!seenCyclePairs[cyclePairKey]) {
             seenCyclePairs[cyclePairKey] = true;
-            if (pairLcm > 4) {
+            if (classInfo.cycle % specialistCycle !== 0) {
               cycleWarnings.push(
-                specialistName + ' (cycle ' + specialistCycle + ') x ' + className +
-                ' (cycle ' + classInfo.cycle + ') only fully repeats every ' + pairLcm + ' weeks'
+                specialistName + ' (' + specialistCycle + '-week cycle) and ' + className +
+                ' (' + classInfo.cycle + '-week cycle)'
               );
             }
           }
@@ -186,25 +211,40 @@ function syncSpecialistSchedules() {
             if (existing && existing.value === assignedKla && existing.source === specialistName) {
               return; // identical repeat write (e.g. broadcast across weeks) - nothing new to do
             }
+            if (existing && existing.value === 'CONFLICT') {
+              return; // already flagged; leave the conflict visible for a human to resolve
+            }
 
-            if (existing && existing.value !== 'CONFLICT') {
+            // A class teacher's own entry (or a break label) already in the
+            // slot. Matching the specialist's KLA is fine: the sync takes it over.
+            const currentValue = String(classInfo.values[gridRow][gridCol] || '').trim();
+            const classEntry = !existing && currentValue && currentValue !== assignedKla
+              ? currentValue
+              : '';
+
+            if (existing || classEntry) {
               // Genuine conflict: two different sources/values want this cell.
               // Conflicts still get a loud literal red flag (rare/exceptional,
               // so it's fine for this to override any subject-colour formatting).
-              classInfo.values[gridRow][gridCol] = 'CONFLICT: ' + existing.source + ' vs ' + specialistName;
+              // The note keeps the cell's original value so the next sync can
+              // put it back once the clash is resolved; it is never locked.
+              const otherSide = existing
+                ? existing.source + ' (' + existing.value + ')'
+                : 'class entry (' + classEntry + ')';
+              classInfo.values[gridRow][gridCol] = CONFLICT_VALUE_PREFIX + ' ' +
+                (existing ? existing.source : classEntry) + ' vs ' + specialistName;
               classInfo.backgrounds[gridRow][gridCol] = '#FF0000';
               classInfo.fontColors[gridRow][gridCol] = '#FFFFFF';
               classInfo.fontWeights[gridRow][gridCol] = 'bold';
-              classInfo.notes[gridRow][gridCol] = ''; // not a valid sync - never lock this
+              classInfo.notes[gridRow][gridCol] = CONFLICT_NOTE_PREFIX + ' ' +
+                String(classInfo.original[gridRow][gridCol] || '');
               conflicts.push(
                 classInfo.sheet.getName() + ' ' + classInfo.sheet.getRange(gridRow + 5, targetColumn).getA1Notation() +
-                ': ' + existing.source + ' (' + existing.value + ') vs ' + specialistName + ' (' + assignedKla + ')'
+                ': ' + otherSide + ' vs ' + specialistName + ' (' + assignedKla + ')'
               );
               classInfo.sources[gridRow][gridCol] = { value: 'CONFLICT', source: 'CONFLICT' };
+              classInfo.dirty[gridRow][gridCol] = true;
               return;
-            }
-            if (existing && existing.value === 'CONFLICT') {
-              return; // already flagged; leave the conflict visible for a human to resolve
             }
 
             // Successful, non-conflict write: only the value changes. Background/
@@ -219,8 +259,9 @@ function syncSpecialistSchedules() {
             classInfo.backgrounds[gridRow][gridCol] = null;
             classInfo.fontColors[gridRow][gridCol] = null;
             classInfo.fontWeights[gridRow][gridCol] = 'normal';
-            classInfo.notes[gridRow][gridCol] = '[SPEC_SYNC] ' + specialistName;
+            classInfo.notes[gridRow][gridCol] = SYNC_NOTE_PREFIX + ' ' + specialistName;
             classInfo.sources[gridRow][gridCol] = { value: assignedKla, source: specialistName };
+            classInfo.dirty[gridRow][gridCol] = true;
             syncedCount++;
           });
         }
@@ -232,6 +273,19 @@ function syncSpecialistSchedules() {
       'Sync',
       4
     );
+  });
+
+  // Slots from the previous sync that no specialist wrote again this time,
+  // i.e. lessons that have since been moved or deleted.
+  let removedCount = 0;
+  Object.keys(classCache).forEach(className => {
+    const info = classCache[className];
+    if (!info) return;
+    for (let r = 0; r < info.numRows; r++) {
+      for (let c = 0; c < info.numCols; c++) {
+        if (info.released[r][c] && !info.sources[r][c]) removedCount++;
+      }
+    }
   });
 
   ss.toast('Writing changes to ' + Object.keys(classCache).length + ' class timetable(s)...', 'Sync', 5);
@@ -256,7 +310,7 @@ function syncSpecialistSchedules() {
     } catch (bulkErr) {
       for (let r = 0; r < info.numRows; r++) {
         for (let c = 0; c < info.numCols; c++) {
-          if (!info.sources[r][c]) continue;
+          if (!info.dirty[r][c]) continue;
           const cell = info.sheet.getRange(r + 5, c + 10);
           try {
             cell.setValue(info.values[r][c])
@@ -275,15 +329,25 @@ function syncSpecialistSchedules() {
   let message = 'Sync Complete! Populated ' + syncedCount + ' specialist slot(s) across class timetables.\n\n' +
     'Nothing has been locked yet - run "Lock Synced Cells" from the menu when you\'re ready.';
 
+  if (removedCount > 0) {
+    message += '\n\nRemoved ' + removedCount + ' slot(s) left over from the previous sync ' +
+      '(specialist lessons that have since been moved or deleted, or conflicts that are now resolved).';
+  }
+
   if (conflicts.length > 0) {
     message += '\n\n' + conflicts.length + ' conflict(s) were found and flagged in red on the ' +
       'class sheets - please resolve these manually:\n' + conflicts.slice(0, 10).join('\n');
     if (conflicts.length > 10) message += '\n...and ' + (conflicts.length - 10) + ' more.';
+    message += '\n\nTo resolve a clash with a class entry, move the specialist lesson or the ' +
+      'class entry, then sync again. The class entry is put back automatically.';
   }
 
   if (cycleWarnings.length > 0) {
-    message += '\n\n' + cycleWarnings.length + ' specialist/class cycle combination(s) only fully ' +
-      'repeat every 4+ weeks, which can be hard to reason about:\n' + cycleWarnings.slice(0, 10).join('\n');
+    message += '\n\n' + cycleWarnings.length + ' specialist/class pair(s) have cycles that ' +
+      "don't line up (the class cycle isn't a multiple of the specialist's), so lessons from " +
+      'different specialist weeks are shown together on the class timetable. Check these ' +
+      'minutes carefully:\n' + cycleWarnings.slice(0, 10).join('\n');
+    if (cycleWarnings.length > 10) message += '\n...and ' + (cycleWarnings.length - 10) + ' more.';
   }
 
   if (writeFailures.length > 0) {
@@ -293,6 +357,46 @@ function syncSpecialistSchedules() {
   }
 
   ui.alert(message);
+}
+
+/**
+ * Undoes the previous sync on one class sheet's in-memory grid, before the
+ * specialist timetables are applied again:
+ *  - Synced slots still holding the specialist's KLA are emptied. If someone
+ *    has since typed something else there, their value is kept.
+ *  - Conflict cells get back the value they held before the clash, unless
+ *    someone has already replaced the conflict text by hand.
+ * Changed cells are marked in info.released and info.dirty.
+ */
+function releasePreviousSyncCells(info, specialistKlaMap) {
+  for (let r = 0; r < info.numRows; r++) {
+    for (let c = 0; c < info.numCols; c++) {
+      const note = String(info.notes[r][c] || '');
+      const value = String(info.values[r][c] || '').trim();
+      const isSyncNote = note.indexOf(SYNC_NOTE_PREFIX) === 0;
+      const isConflictNote = note.indexOf(CONFLICT_NOTE_PREFIX) === 0;
+      const isConflictValue = value.indexOf(CONFLICT_VALUE_PREFIX) === 0;
+      if (!isSyncNote && !isConflictNote && !isConflictValue) continue;
+
+      if (isSyncNote) {
+        const source = note.substring(SYNC_NOTE_PREFIX.length).trim();
+        if (value === (specialistKlaMap[source] || 'Specialist')) {
+          info.values[r][c] = '';
+        }
+      } else if (isConflictValue) {
+        // Conflicts flagged by older versions of this script have no note,
+        // so there is nothing to restore.
+        info.values[r][c] = isConflictNote ? note.substring(CONFLICT_NOTE_PREFIX.length + 1) : '';
+      }
+
+      info.notes[r][c] = '';
+      info.backgrounds[r][c] = null;
+      info.fontColors[r][c] = null;
+      info.fontWeights[r][c] = 'normal';
+      info.dirty[r][c] = true;
+      info.released[r][c] = true;
+    }
+  }
 }
 
 /**
@@ -326,7 +430,8 @@ function lockSyncedSpecialistCells() {
     'Lock Synced Cells',
     'This will lock every specialist-synced cell on class timetables so only the ' +
       'spreadsheet owner (' + owner.getEmail() + ') can edit them. Cells flagged as conflicts ' +
-      '(red) will be left editable until resolved.\n\nContinue?',
+      '(red) will be left editable until resolved.\n\nExisting specialist locks are rebuilt, so ' +
+      'slots that are no longer synced are unlocked.\n\nContinue?',
     ui.ButtonSet.YES_NO
   );
   if (confirmResponse !== ui.Button.YES) return;
@@ -346,6 +451,7 @@ function lockSyncedSpecialistCells() {
   let scannedCellCount = 0;
   let matchedCellCount = 0;
   let alreadyProtectedCellCount = 0;
+  let removedLockCount = 0;
   let sheetsScanned = 0;
   const failures = [];
   const unexpectedSamples = []; // {sheet, cell, text, note} for populated cells NOT matching the sync marker
@@ -366,8 +472,18 @@ function lockSyncedSpecialistCells() {
     const backgrounds = region.getBackgrounds(); // fallback check for cells synced by an older version of this script
     const values = region.getValues();
 
-    // Don't re-protect cells already covered by an existing protection
-    // (e.g. from a previous "Lock Synced Cells" run).
+    // Remove the locks made by the previous run, so slots that are no longer
+    // synced (moved or deleted lessons) don't stay locked, then lock the
+    // current synced cells again below.
+    classSheet.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(protection => {
+      if (protection.getDescription() === LOCK_DESCRIPTION && protection.canEdit()) {
+        protection.remove();
+        removedLockCount++;
+      }
+    });
+
+    // Don't re-protect cells already covered by another protection
+    // (e.g. one a school admin added by hand).
     const alreadyProtected = Array.from({ length: numRows }, () => new Array(numCols).fill(false));
     classSheet.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(protection => {
       const range = protection.getRange();
@@ -415,7 +531,7 @@ function lockSyncedSpecialistCells() {
       );
       try {
         range.setBackground(null); // clean up any leftover marker colour from an older script version
-        const protection = range.protect().setDescription('Locked Specialist Slot(s)');
+        const protection = range.protect().setDescription(LOCK_DESCRIPTION);
         protection.addEditor(owner);
         if (runner.getEmail() !== owner.getEmail()) {
           protection.removeEditors([runner]);
@@ -435,7 +551,8 @@ function lockSyncedSpecialistCells() {
 
   message += '\n\nDiagnostics: scanned ' + sheetsScanned + ' class sheet(s), ' + scannedCellCount +
     ' schedule cell(s) total. Found ' + matchedCellCount + ' cell(s) marked as synced, ' +
-    'of which ' + alreadyProtectedCellCount + ' were already locked from a previous run.';
+    'of which ' + alreadyProtectedCellCount + ' are inside other protected ranges and were left ' +
+    'as they are. Replaced ' + removedLockCount + ' lock(s) from the previous run.';
 
   if (matchedCellCount === 0) {
     message += "\n\nNo synced cells were found at all. This usually means either: (1) " +
@@ -513,17 +630,21 @@ function mergeCellsIntoRectangles(needsLock, numRows, numCols) {
 }
 
 /**
+ * Keep this function identical in wizard/Code.gs and
+ * template/TemplateSync.gs: the wizard applies it when generating a
+ * timetable, and the Timetable Admin menu re-applies it later.
+ *
  * NOTE ON CYCLE MISMATCHES: this live conditional-formatting clash check
  * compares specialist sheets column-for-column, which is only guaranteed
  * correct when the specialist sheets being compared share the same cycle
  * length. It still gives useful, immediate feedback while specialists are
  * filling in their sheets, but it is a heuristic, not the source of truth.
- * The authoritative, cycle-aware clash + conflict check runs via
- * "Sync Specialist Schedules" above, which resolves real repeating weeks
- * via each sheet's own cycle length before comparing anything. Re-run it
- * periodically (or after specialists finish editing), then run
- * "Lock Synced Cells" once you're happy with the result, to catch clashes
- * this live check might miss when cycles differ.
+ * The authoritative, cycle-aware clash + conflict check is the Timetable
+ * Admin menu's "Sync Specialist Schedules" (TemplateSync.gs), which
+ * resolves real repeating weeks via each sheet's own cycle length before
+ * comparing anything. Re-run it periodically (or after specialists finish
+ * editing), then run "Lock Synced Cells" once you're happy with the result,
+ * to catch clashes this live check might miss when cycles differ.
  */
 function applySpecialistClashFormatting(ss) {
   const specialistSheets = ss.getSheets()
@@ -568,10 +689,12 @@ function applySpecialistClashFormatting(ss) {
     // intentionally identical across every specialist at the same time slot,
     // so the clash rule below would otherwise flag them as false-positive
     // collisions. This rule sits above the clash rule so it always wins.
+    // INDIRECT because conditional formatting can't refer to other tabs
+    // (or named ranges on them) directly.
     if (breakListRange) {
       newRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .whenFormulaSatisfied('=COUNTIF(BreakList,' + referenceCell + ')>0')
+          .whenFormulaSatisfied('=COUNTIF(INDIRECT("BreakList"),' + referenceCell + ')>0')
           .setBackground('#D9D9D9')
           .setFontColor('#434343')
           .setRanges(scheduleRanges)

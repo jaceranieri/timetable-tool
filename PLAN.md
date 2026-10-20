@@ -32,19 +32,22 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 1: Correct results
 
-- [ ] **3. Amadeus check (S).**
+- [ ] **3. Amadeus check (S).** *Script done; sheet edits in `template/SHEET_CHANGES.md`.*
   - The script writes `B31` "Amadeus" and `C31` TRUE (Years 3–6) or FALSE (K–2) on each class tab.
   - New `C18`: `"N/A"` when `C31` is FALSE; otherwise TRUE only if Creative Arts (`E11`) is within `F11:G11`, Amadeus Tutorials minutes (`C21`) are above 0, and `E21` is within `F21:G21`.
   - `C16` also requires `C18` to be TRUE or `"N/A"`.
   - Add a grey conditional-format rule on `C18` for `"N/A"`.
-- [ ] **4. Fix `C15` and `SPEC_Template!D5` (S).** `C15` checks the full `J:AAK` grid, not just `J:Z`. `D5` sums the whole class list, not just `D6:D13`.
-- [ ] **5. Break rows shown as clashes (S).** Create the `BreakList` named range in `populateDataSheet`. Keep one version of `applySpecialistClashFormatting` (TemplateSync's, which handles breaks) and copy it into `Code.gs`.
-- [ ] **6. Specialist sync correctness (M).**
+  - The wizard's "Amadeus - Tutorials" activity can't be renamed or removed, and the server always adds it, because `C21` counts that exact name.
+- [ ] **4. Fix `C15` and `SPEC_Template!D5` (S).** *Sheet edits in `template/SHEET_CHANGES.md`.* `C15` checks the full `J:AAK` grid, not just `J:Z`. `D5` sums the whole class list, not just `D6:D13`.
+- [x] **5. Break rows shown as clashes (S).** Create the `BreakList` named range in `populateDataSheet`. Keep one version of `applySpecialistClashFormatting` (TemplateSync's, which handles breaks) and copy it into `Code.gs`.
+- [x] **6. Specialist sync correctness (M).**
   - Clear old `[SPEC_SYNC]` and `CONFLICT:` cells before re-syncing.
   - Flag a conflict when a class teacher's own entry is already in the slot.
   - Warn when a class's cycle isn't a multiple of the specialist's cycle.
-- [ ] **7. OVERVIEW (S).** `G5` becomes `=TRANSPOSE(ClassList)`; `G4`, `E6:E13` and `G17` cover the same number of classes; unhide the tab.
-- [ ] **8. Remove Non-Curricular from the specialist KLA dropdown (S).**
+  - A clashing class entry is kept in the conflict cell's note and put back on the next sync once the clash is gone.
+  - "Lock Synced Cells" rebuilds its own locks each run, so moved or deleted lessons are unlocked.
+- [ ] **7. OVERVIEW (S).** *Sheet edits in `template/SHEET_CHANGES.md`.* `G5` reads the class list from `DATA!F2:F`; `G4`, `E6:E13` and `G17` cover the same number of classes; unhide the tab.
+- [x] **8. Remove Non-Curricular from the specialist KLA dropdown (S).**
 
 ## Phase 2: Template cleanup
 
@@ -59,7 +62,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 3: Stop silent data loss
 
-- [ ] **10. Name rules in the wizard and the server (M).** Unique class and specialist names (ignoring case and the characters replaced in tab names); reserved names blocked (DATA, TEMPLATE, OVERVIEW…); no `SPEC_` prefix. The server returns a clear error instead of skipping.
+- [ ] **10. Name rules in the wizard and the server (M).** Unique class and specialist names (ignoring case and the characters replaced in tab names); reserved names blocked (DATA, TEMPLATE, OVERVIEW…); no `SPEC_` prefix; no characters that tab names can't hold (`/ \ ? * [ ] :`), because OVERVIEW looks tabs up by class name. The server returns a clear error instead of skipping.
 - [ ] **11. Store DATA as plain text (S)** so `3/4` isn't turned into a date and `=…` isn't turned into a formula.
 - [ ] **12. Detect the template tab reliably (S).** Compare `SPEC_Template` without case, or tag generated tabs with developer metadata.
 - [ ] **13. Check inputs on the server (S).** Times on the 5-minute grid; breaks inside the day and not overlapping; cycle length 1–10; at least one class.

@@ -23,6 +23,16 @@ function getTemplateId() {
   return (configuredId || '').trim() || LIVE_TEMPLATE_ID;
 }
 
+/**
+ * Amadeus runs in Years 3-6 in every school. The activity name must match
+ * TEMPLATE!B21 exactly, because C21 counts cells with this value.
+ */
+const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
+
+function isAmadeusGrade(grade) {
+  return /^Year\s*[3-6]$/i.test(String(grade || '').trim());
+}
+
 
 function checkProgress(jobId) {
   if (!jobId) return null;
@@ -142,6 +152,12 @@ function parsePayloadConfig(payload) {
     if (name) activities.push({ name: name });
     index++;
   }
+
+  // Amadeus is compulsory, so make sure it is always selectable on class tabs.
+  const hasAmadeus = activities.some(
+    item => item.name.toLowerCase() === AMADEUS_ACTIVITY_NAME.toLowerCase()
+  );
+  if (!hasAmadeus) activities.push({ name: AMADEUS_ACTIVITY_NAME });
 
 
   const specialists = [];
@@ -293,6 +309,9 @@ function populateDataSheet(dataSheet, payload, config, ss) {
   if (breakNames.length) {
     const breakValues = breakNames.map(name => [name]);
     dataSheet.getRange(2, 16, breakValues.length, 1).setValues(breakValues);
+    // Used by the specialist clash formatting so break rows (identical on
+    // every specialist tab) are shown grey instead of as clashes.
+    ss.setNamedRange('BreakList', dataSheet.getRange(2, 16, breakValues.length, 1));
   }
 }
 
@@ -515,6 +534,11 @@ function buildAllClassSheets(ss, config, jobId) {
       [classConfig.name],
       [classConfig.grade],
       [classConfig.cycle + ' week cycle']
+    ]);
+
+    // C18 (Amadeus compliance) reads C31 to decide whether Amadeus applies.
+    sheet.getRange('B31:C31').setValues([
+      ['Amadeus', isAmadeusGrade(classConfig.grade)]
     ]);
 
 
@@ -778,24 +802,29 @@ function isValidHexColor(value) {
 }
 
 /**
+ * Keep this function identical in wizard/Code.gs and
+ * template/TemplateSync.gs: the wizard applies it when generating a
+ * timetable, and the Timetable Admin menu re-applies it later.
+ *
  * NOTE ON CYCLE MISMATCHES: this live conditional-formatting clash check
  * compares specialist sheets column-for-column, which is only guaranteed
  * correct when the specialist sheets being compared share the same cycle
  * length. It still gives useful, immediate feedback while specialists are
  * filling in their sheets, but it is a heuristic, not the source of truth.
- * The authoritative, cycle-aware clash + conflict check runs via
- * "Sync & Lock Specialist Schedules" (see TemplateSync.gs, which is bound
- * directly to the master template spreadsheet and travels with every copy
- * the wizard generates), which resolves real repeating weeks via each
- * sheet's own cycle length before comparing anything. Re-run Sync & Lock
- * periodically (or after specialists finish editing) to catch clashes this
- * live check might miss when cycles differ.
+ * The authoritative, cycle-aware clash + conflict check is the Timetable
+ * Admin menu's "Sync Specialist Schedules" (TemplateSync.gs), which
+ * resolves real repeating weeks via each sheet's own cycle length before
+ * comparing anything. Re-run it periodically (or after specialists finish
+ * editing), then run "Lock Synced Cells" once you're happy with the result,
+ * to catch clashes this live check might miss when cycles differ.
  */
 function applySpecialistClashFormatting(ss) {
   const specialistSheets = ss.getSheets()
     .filter(sheet => sheet.getName().startsWith('SPEC_') && sheet.getName() !== 'SPEC_TEMPLATE');
 
-  if (specialistSheets.length < 2) return;
+  if (!specialistSheets.length) return;
+
+  const breakListRange = ss.getRangeByName('BreakList');
 
   specialistSheets.forEach(sheet => {
     const lastRow = sheet.getLastRow();
@@ -812,34 +841,58 @@ function applySpecialistClashFormatting(ss) {
     if (!scheduleRanges.length) return;
 
     const referenceCell = scheduleRanges[0].getCell(1, 1).getA1Notation();
-    const counts = specialistSheets.map(specialistSheet => {
-      const escapedName = specialistSheet.getName().replace(/'/g, "''");
-      return 'COUNTIF(INDIRECT("\'' + escapedName +
-        '\'!"&ADDRESS(ROW(),COLUMN(),4)),' + referenceCell + ')';
-    }).join('+');
 
-    const formula = '=AND(LEN(' + referenceCell + ')>0,(' + counts + ')>1)';
-
-    const clashRule = SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied(formula)
-      .setBackground('#FF0000')
-      .setFontColor('#FFFFFF')
-      .setBold(true)
-      .setRanges(scheduleRanges)
-      .build();
-
+    // Keep any rules that aren't the break/clash rules this function manages
+    // (e.g. the class-colour rules added elsewhere).
     const retainedRules = sheet.getConditionalFormatRules().filter(rule => {
       const condition = rule.getBooleanCondition();
       if (!condition) return true;
-      return !condition.getCriteriaValues().some(value =>
+      const isManagedRule = condition.getCriteriaValues().some(value =>
         typeof value === 'string' &&
-        value.indexOf('INDIRECT') !== -1 &&
-        value.indexOf('COUNTIF') !== -1
+        ((value.indexOf('INDIRECT') !== -1 && value.indexOf('COUNTIF') !== -1) ||
+          value.indexOf('BreakList') !== -1)
       );
+      return !isManagedRule;
     });
 
-    retainedRules.unshift(clashRule);
-    sheet.setConditionalFormatRules(retainedRules);
+    const newRules = [];
+
+    // Break periods (Recess, Lunch, etc, as configured on the DATA tab) are
+    // intentionally identical across every specialist at the same time slot,
+    // so the clash rule below would otherwise flag them as false-positive
+    // collisions. This rule sits above the clash rule so it always wins.
+    // INDIRECT because conditional formatting can't refer to other tabs
+    // (or named ranges on them) directly.
+    if (breakListRange) {
+      newRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied('=COUNTIF(INDIRECT("BreakList"),' + referenceCell + ')>0')
+          .setBackground('#D9D9D9')
+          .setFontColor('#434343')
+          .setRanges(scheduleRanges)
+          .build()
+      );
+    }
+
+    if (specialistSheets.length >= 2) {
+      const counts = specialistSheets.map(specialistSheet => {
+        const escapedName = specialistSheet.getName().replace(/'/g, "''");
+        return 'COUNTIF(INDIRECT("\'' + escapedName +
+          '\'!"&ADDRESS(ROW(),COLUMN(),4)),' + referenceCell + ')';
+      }).join('+');
+
+      newRules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied('=AND(LEN(' + referenceCell + ')>0,(' + counts + ')>1)')
+          .setBackground('#FF0000')
+          .setFontColor('#FFFFFF')
+          .setBold(true)
+          .setRanges(scheduleRanges)
+          .build()
+      );
+    }
+
+    sheet.setConditionalFormatRules(newRules.concat(retainedRules));
   });
 }
 

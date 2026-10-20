@@ -264,7 +264,9 @@
                 activities: [
                     { id: 201, name: "Assembly" },
                     { id: 202, name: "Library" },
-                    { id: 203, name: "Amadeus - Tutorials" }
+                    // Amadeus runs in Years 3-6 in every school, so it can't be
+                    // renamed or removed (the name must match TEMPLATE!B21).
+                    { id: 203, name: "Amadeus - Tutorials", locked: true }
                 ]
             });
 
@@ -992,7 +994,7 @@
                                                 <Label className="text-xs mb-1 block">Assigned KLA</Label>
                                                 <Select value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
                                                     <option value="">Select KLA...</option>
-                                                    {data.klas.filter(k => k.name.trim()).map(k => (
+                                                    {data.klas.filter(k => k.name.trim() && !/^non[- ]?curricul(?:ar|um)$/i.test(k.name.trim())).map(k => (
                                                         <option key={k.id} value={k.name}>{k.name}</option>
                                                     ))}
                                                 </Select>
@@ -1038,9 +1040,9 @@
                                     data.activities.map((a, i) => (
                                         <div key={a.id} className="flex items-center gap-2 animate-pop">
                                             <div className="flex-1">
-                                                <Input id={`input-${a.id}`} placeholder="Activity Name (e.g. Debate Club)" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} />
+                                                <Input id={`input-${a.id}`} placeholder="Activity Name (e.g. Debate Club)" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} disabled={a.locked} title={a.locked ? "Required for Years 3-6" : undefined} />
                                             </div>
-                                            <Button variant="bin" className="px-2 shadow-sm" onClick={() => removeFromList('activities', a.id)}>
+                                            <Button variant="bin" className="px-2 shadow-sm" onClick={() => removeFromList('activities', a.id)} disabled={a.locked}>
                                                 <TrashIcon />
                                             </Button>
                                         </div>
