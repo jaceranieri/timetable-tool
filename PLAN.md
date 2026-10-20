@@ -78,8 +78,8 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 5: Deployment polish
 
-- [ ] **19. "User accessing" settings (S).** `getUserCache()`; first-run note about Google's Drive permission prompt; optional "Timetables" folder; school name in the file name.
-- [ ] **20. Pin CDN versions (S).**
+- [x] **19. "User accessing" settings (S).** Progress uses the per-user cache; timetables are saved in a "Timetables" folder in the user's My Drive (created if needed; `OUTPUT_FOLDER_NAME`); the file name includes the school name. No in-app note about Google's permission prompt: with "execute as user", Google asks when the wizard is first opened, before the wizard loads, so the note is in the README for the rollout message instead.
+- [x] **20. Pin CDN versions (S).** React 18.3.1, ReactDOM 18.3.1, Babel standalone 7.26.10, Tailwind Play CDN 3.4.17.
 
 ## Phase 6: Guided workflow in the sheet
 
@@ -99,9 +99,9 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 ## Phase 7: Wizard usability
 
 - [ ] **25. Draft autosave (S)** with Resume and Start new; "Back to wizard" and "Start new" on the success screen.
-- [ ] **26. Step 3 errors (S).** ~~Jump to the first grade tab with an error~~ (done in Phase 3); show a summary, clear errors as fields are edited. Allow "TBC" teachers; ignore fully blank rows.
-- [ ] **26a. Grade tabs in Step 3 (S).** A grade's classes sit in a panel with its own small scroll area (`max-h-[350px]`) and a thin scrollbar, so with four or more classes the last one is hidden below the fold; when it has an error the wizard reports it but you can't see where. Let the class list grow with the page (or make the scroll obvious), show "4 classes, 1 needs attention" on each tab, and scroll to and highlight the first class with an error.
-- [ ] **27. School name field (S)** and specialist/class cycle warning. (5-minute time steps, overlapping-break errors and the 10-week cycle cap were done in Phase 3.)
+- [ ] **26. Step 3 errors (S).** ~~Jump to the first grade tab with an error~~ (done in Phase 3); show a summary, ~~clear errors as fields are edited~~ (done in Phase 5). Allow "TBC" teachers; ignore fully blank rows.
+- [x] **26a. Grade tabs in Step 3 (S).** A grade's classes sit in a panel with its own small scroll area (`max-h-[350px]`) and a thin scrollbar, so with four or more classes the last one is hidden below the fold; when it has an error the wizard reports it but you can't see where. Let the class list grow with the page (or make the scroll obvious), show "4 classes, 1 needs attention" on each tab, and scroll to and highlight the first class with an error. *Done: no inner scroll area; each tab shows its class count and "N to fix"; the panel says "4 classes · 1 needs attention"; Continue opens the tab, scrolls to and highlights the first class with a problem and puts the cursor in the field; a field's error clears as soon as it's edited.*
+- [ ] **27. ~~School name field~~ (done in Phase 5) and specialist/class cycle warning (S).** (5-minute time steps, overlapping-break errors and the 10-week cycle cap were done in Phase 3.)
 - [ ] **28. Preview before generating (S):** "14 class tabs, 3 specialist tabs, about 1 minute".
 - [ ] **29. Paste from a spreadsheet (S):** paste class names and teachers in bulk.
 - [ ] **30. Save and load the setup as a file (S).** Same format step 32 reads from DATA.

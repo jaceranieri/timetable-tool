@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Timetable Configuration Wizard</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Pinned versions, so a new release of a library can't change or break the wizard. -->
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -102,7 +103,7 @@
 
         const Input = ({ className = "", error, ...props }) => (
             <div className="relative w-full flex items-center">
-                <input className={`flex h-10 w-full rounded-md border ${error ? 'border-red-500 pr-[80px] ring-1 ring-red-500/20' : 'border-slate-200'} bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props} />
+                <input aria-invalid={error ? true : undefined} className={`flex h-10 w-full rounded-md border ${error ? 'border-red-500 pr-[80px] ring-1 ring-red-500/20' : 'border-slate-200'} bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props} />
                 {error && (
                     <div className="absolute right-2 flex items-center gap-1 text-[11px] font-medium text-red-600 bg-white px-1 pointer-events-none animate-pop">
                         <AlertCircleIcon className="w-3.5 h-3.5" />
@@ -114,7 +115,7 @@
 
         const Select = ({ className = "", error, children, ...props }) => (
             <div className="relative w-full flex items-center">
-                <select className={`flex h-10 w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
+                <select aria-invalid={error ? true : undefined} className={`flex h-10 w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
                     {children}
                 </select>
                 {!error && (
@@ -188,6 +189,7 @@
         const SLOT_MINUTES = 5;
         const MAX_CYCLE_WEEKS = 10;
         const MAX_NAME_LENGTH = 90;
+        const MAX_SCHOOL_NAME_LENGTH = 100;
         const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
 
         // Short message for a class or specialist name that can't be used as
@@ -258,6 +260,7 @@
 
             // App state for wizard data
             const [data, setData] = useState({
+                schoolName: "",
                 schoolStart: "08:30",
                 schoolEnd: "15:15",
                 breaks: [
@@ -390,6 +393,12 @@
                     list[index] = { ...list[index], [field]: val };
                     return { ...prev, [listKey]: list };
                 });
+                // The error on the field being edited no longer applies.
+                setErrors(prev => {
+                    if (!prev[listKey]?.[index]?.[field]) return prev;
+                    const listErrors = { ...prev[listKey], [index]: { ...prev[listKey][index], [field]: undefined } };
+                    return { ...prev, [listKey]: listErrors };
+                });
             };
 
             const removeFromList = (listKey, id) => {
@@ -402,6 +411,11 @@
             const validateStep1 = () => {
                 let currentErrors = {};
                 let isValid = true;
+
+                const schoolName = data.schoolName.trim();
+                if (!schoolName) { currentErrors.schoolName = "Required"; isValid = false; }
+                else if (schoolName.startsWith('=')) { currentErrors.schoolName = "Can't start with ="; isValid = false; }
+                else if (schoolName.length > MAX_SCHOOL_NAME_LENGTH) { currentErrors.schoolName = "Too long"; isValid = false; }
 
                 if (!data.schoolStart) { currentErrors.schoolStart = "Required"; isValid = false; }
                 if (!data.schoolEnd) { currentErrors.schoolEnd = "Required"; isValid = false; }
@@ -468,6 +482,7 @@
                 let currentErrors = { staffing: {}, specialists: {}, activities: {} };
                 let isValid = true;
                 let firstErrorGradeId = null;
+                let firstErrorStaffId = null;
 
                 // Only classes in grades that still have classes are generated.
                 const activeGradeIds = data.grades.filter(g => g.classes > 0).map(g => g.id);
@@ -485,7 +500,10 @@
                     if (nameError) { currentErrors.staffing[i].className = nameError; isValid = false; }
                     if (!s.teacher.trim()) { currentErrors.staffing[i].teacher = "Required"; isValid = false; }
                     else if (s.teacher.trim().startsWith('=')) { currentErrors.staffing[i].teacher = "Can't start with ="; isValid = false; }
-                    if (Object.keys(currentErrors.staffing[i]).length && !firstErrorGradeId) firstErrorGradeId = s.gradeId;
+                    if (Object.keys(currentErrors.staffing[i]).length && !firstErrorGradeId) {
+                        firstErrorGradeId = s.gradeId;
+                        firstErrorStaffId = s.id;
+                    }
                 });
 
                 const duplicateSpecialists = findDuplicates(data.specialists.map(s => s.name));
@@ -505,8 +523,18 @@
                 });
 
                 setErrors(currentErrors);
-                // Class errors only show on their grade's tab, so open it.
-                if (firstErrorGradeId) setActiveGradeTab(firstErrorGradeId);
+                // Class errors only show on their grade's tab, so open it and
+                // bring the first class with a problem into view.
+                if (firstErrorGradeId) {
+                    setActiveGradeTab(firstErrorGradeId);
+                    setTimeout(() => {
+                        const row = document.getElementById(`class-row-${firstErrorStaffId}`);
+                        if (!row) return;
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        const field = row.querySelector('[aria-invalid="true"]');
+                        if (field) field.focus({ preventScroll: true });
+                    }, 50);
+                }
                 return isValid;
             };
 
@@ -598,6 +626,7 @@
 
                 // Build variables
                 const exportVariables = [];
+                exportVariables.push({ name: 'SchoolName', value: data.schoolName.trim() });
                 exportVariables.push({ name: 'SchoolStart', value: data.schoolStart });
                 exportVariables.push({ name: 'SchoolEnd', value: data.schoolEnd });
 
@@ -741,8 +770,20 @@
             const renderStep1 = () => (
                 <div className="space-y-6 animate-step" key="step1">
 
-                    {/* Bell Times */}
+                    {/* School */}
                     <div>
+                        <div className="mb-4">
+                            <h4 className="text-base font-semibold flex items-center gap-2"><LayersIcon className="w-5 h-5 text-brand-dark" /> School</h4>
+                            <p className="text-sm text-slate-500 mt-1">Used in the timetable's file name.</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>School Name</Label>
+                            <Input placeholder="e.g. St Mary's Primary" value={data.schoolName} onChange={(e) => updateField('schoolName', e.target.value)} error={errors.schoolName} />
+                        </div>
+                    </div>
+
+                    {/* Bell Times */}
+                    <div className="border-t border-slate-200 pt-6">
                         <div className="mb-4">
                             <h4 className="text-base font-semibold flex items-center gap-2"><BellIcon className="w-5 h-5 text-brand-dark" /> Bell Times</h4>
                             <p className="text-sm text-slate-500 mt-1">Set standard operating hours for the day.</p>
@@ -887,11 +928,15 @@
             );
 
             const renderStep3 = () => {
-                const checkGradeCompletion = (gradeId) => {
-                    const staff = data.staffing.filter(s => s.gradeId === gradeId);
-                    if (staff.length === 0) return false;
-                    return staff.every(s => s.className.trim() !== "" && s.teacher.trim() !== "");
+                // A class needs attention if it has an error from the last check,
+                // or its name or teacher is still blank.
+                const classNeedsAttention = (s) => {
+                    const globalIdx = data.staffing.findIndex(st => st.id === s.id);
+                    const rowErrors = errors.staffing?.[globalIdx] || {};
+                    return Object.values(rowErrors).some(Boolean) || !s.className.trim() || !s.teacher.trim();
                 };
+                const countNeedingAttention = (gradeId) =>
+                    data.staffing.filter(s => s.gradeId === gradeId && classNeedsAttention(s)).length;
 
                 const gradesWithClasses = data.grades.filter(g => g.classes > 0);
                 const currentTabId = activeGradeTab && gradesWithClasses.some(g => g.id === activeGradeTab)
@@ -918,7 +963,7 @@
                                     {/* Tabs Header */}
                                     <div role="tablist" className="flex overflow-x-auto border-b border-slate-200 custom-scrollbar bg-slate-50/50 pt-2 px-2 gap-1">
                                         {gradesWithClasses.map(g => {
-                                            const isComplete = checkGradeCompletion(g.id);
+                                            const attentionCount = countNeedingAttention(g.id);
                                             const isActive = currentTabId === g.id;
                                             return (
                                                 <button
@@ -934,10 +979,14 @@
                                                     }`}
                                                 >
                                                     {g.name}
-                                                    {isComplete ? (
+                                                    <span className="text-[11px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded">{g.classes}</span>
+                                                    {attentionCount === 0 ? (
                                                         <CheckCircleIcon className="w-4 h-4 text-brand-dark" />
                                                     ) : (
-                                                        <AlertTriangleIcon className="w-4 h-4 text-amber-500" />
+                                                        <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded" title={`${attentionCount} ${attentionCount === 1 ? 'class needs' : 'classes need'} attention`}>
+                                                            <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-500" />
+                                                            {attentionCount} to fix
+                                                        </span>
                                                     )}
                                                 </button>
                                             )
@@ -945,20 +994,26 @@
                                     </div>
 
                                     {/* Tab Content */}
-                                    <div className="p-4 bg-white max-h-[350px] overflow-y-auto custom-scrollbar">
+                                    {/* No inner scroll area: every class is visible as the page scrolls. */}
+                                    <div className="p-4 bg-white">
                                         {gradesWithClasses.filter(g => g.id === currentTabId).map((g) => {
                                             const staffForGrade = data.staffing.filter(s => s.gradeId === g.id);
+                                            const attentionCount = countNeedingAttention(g.id);
                                             return (
                                                 <div key={g.id} className="space-y-4 animate-pop">
                                                     <div className="flex items-center justify-between pb-2">
                                                         <span className="font-semibold text-slate-800 text-base">Classes for {g.name}</span>
-                                                        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-wide">{g.classes} {g.classes === 1 ? 'Class' : 'Classes'}</span>
+                                                        <span className={`text-[11px] font-bold px-2 py-1 rounded tracking-wide ${attentionCount ? 'text-amber-800 bg-amber-100' : 'text-slate-500 bg-slate-100'}`}>
+                                                            {g.classes} {g.classes === 1 ? 'class' : 'classes'}
+                                                            {attentionCount > 0 && ` · ${attentionCount} ${attentionCount === 1 ? 'needs' : 'need'} attention`}
+                                                        </span>
                                                     </div>
 
                                                     {staffForGrade.map((s, idx) => {
                                                         const globalIdx = data.staffing.findIndex(st => st.id === s.id);
+                                                        const hasError = Object.values(errors.staffing?.[globalIdx] || {}).some(Boolean);
                                                         return (
-                                                            <div key={s.id} className="flex flex-col sm:flex-row items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                            <div key={s.id} id={`class-row-${s.id}`} className={`flex flex-col sm:flex-row items-start gap-3 p-3 rounded-lg border transition-colors ${hasError ? 'bg-red-50/60 border-red-300' : 'bg-slate-50 border-slate-100'}`}>
                                                                 <div className="flex items-center justify-center bg-slate-200 text-slate-500 w-6 h-6 rounded-full text-xs font-bold sm:mt-[26px] mb-1 sm:mb-0 shrink-0">
                                                                     {idx + 1}
                                                                 </div>
@@ -1143,7 +1198,7 @@
                     <div className="space-y-6 animate-step" key="step4">
                         <div className="mb-4">
                             <h4 className="text-xl font-semibold text-slate-800">Summary Review</h4>
-                            <p className="text-base text-slate-500">Please review your configurations before generating the timetable template.</p>
+                            <p className="text-base text-slate-500">Please review your configurations before generating the timetable template{data.schoolName.trim() ? <> for <strong className="text-slate-700">{data.schoolName.trim()}</strong></> : ''}.</p>
                         </div>
 
                         <div className="max-h-[calc(100vh-24rem)] overflow-y-auto custom-scrollbar p-1 -m-1 space-y-6">
@@ -1406,7 +1461,7 @@
                                     </div>
                                 </div>
                                 <h3 className="text-3xl font-bold text-slate-800 mb-3">Timetable Generated</h3>
-                                <p className="text-base text-slate-500 mb-10 max-w-md">Your template has been copied and configured successfully. The data has been written to the <strong>DATA</strong> tab.</p>
+                                <p className="text-base text-slate-500 mb-10 max-w-md">Your timetable has been created and saved in the <strong>Timetables</strong> folder in your My Drive.</p>
 
                                 <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
                                     <a href={generatedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-base font-bold transition-all duration-200 active:scale-95 h-12 px-8 bg-brand-dark text-white hover:bg-[#00663C] shadow-lg">

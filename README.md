@@ -43,6 +43,20 @@ copied one at a time.
 Each user needs view access to the master template, so share it with the
 domain as **Viewer**.
 
+### What users see the first time
+
+Because the wizard runs as each user, Google asks them to allow it to use
+their Google Drive and Sheets the first time they open the wizard's link
+(and again if the wizard ever needs a new permission). This happens before
+the wizard loads, so mention it in the message that shares the link, for
+example: *"The first time you open it, Google will ask you to allow the
+timetable tool to access your Drive and Sheets. This is needed to create
+your timetable in your own Drive."*
+
+Generated timetables are saved in a **Timetables** folder in the user's My
+Drive (created the first time), named
+`Generated Timetable - Resource First - <school name> - <date>`.
+
 The `appsscript.json` manifests in this repo reflect those settings. Check
 them against the ones in the Apps Script editor (Project Settings → "Show
 appsscript.json manifest file") before pushing them.

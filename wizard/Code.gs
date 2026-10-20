@@ -37,7 +37,7 @@ function isAmadeusGrade(grade) {
 function checkProgress(jobId) {
   if (!jobId) return null;
   try {
-    return CacheService.getScriptCache().get(jobId);
+    return CacheService.getUserCache().get(jobId);
   } catch (error) {
     return null;
   }
@@ -52,7 +52,9 @@ function updateJobProgress(jobId, percent, statusText) {
       : Math.min(100, Math.max(0, Math.round(percent)));
 
 
-    CacheService.getScriptCache().put(jobId, JSON.stringify({
+    // Per-user cache: the wizard runs as each user, and only they poll
+    // for their own job's progress.
+    CacheService.getUserCache().put(jobId, JSON.stringify({
       percent: normalizedPercent,
       status: statusText
     }), 600);
@@ -63,6 +65,10 @@ function updateJobProgress(jobId, percent, statusText) {
 
 
 const GENERATED_FILE_PREFIX = 'Generated Timetable - Resource First - ';
+// Generated timetables are saved in this folder in the user's My Drive,
+// which is created if it doesn't exist. Set to '' to save them in My Drive
+// itself.
+const OUTPUT_FOLDER_NAME = 'Timetables';
 // The copy keeps this prefix until generation finishes, so a copy left
 // behind by a failed or timed-out run is easy to spot and delete.
 const INCOMPLETE_FILE_PREFIX = 'INCOMPLETE - ';
@@ -88,8 +94,12 @@ function generateTimetable(payload, options) {
 
 
     const templateFile = DriveApp.getFileById(getTemplateId());
-    const fileName = GENERATED_FILE_PREFIX + new Date().toLocaleDateString('en-AU');
-    const newFile = templateFile.makeCopy(INCOMPLETE_FILE_PREFIX + fileName);
+    const fileName = GENERATED_FILE_PREFIX + config.schoolName + ' - ' +
+      new Date().toLocaleDateString('en-AU');
+    const outputFolder = getOutputFolder();
+    const newFile = outputFolder
+      ? templateFile.makeCopy(INCOMPLETE_FILE_PREFIX + fileName, outputFolder)
+      : templateFile.makeCopy(INCOMPLETE_FILE_PREFIX + fileName);
     timer.mark('Copy the template file', 'Setup');
 
 
@@ -169,6 +179,15 @@ function createStepTimer(enabled) {
       console.log('Timing summary\n' + lines.join('\n'));
     }
   };
+}
+
+
+/** The OUTPUT_FOLDER_NAME folder in the user's My Drive, created if needed. */
+function getOutputFolder() {
+  if (!OUTPUT_FOLDER_NAME) return null;
+  const root = DriveApp.getRootFolder();
+  const existing = root.getFoldersByName(OUTPUT_FOLDER_NAME);
+  return existing.hasNext() ? existing.next() : root.createFolder(OUTPUT_FOLDER_NAME);
 }
 
 
@@ -280,6 +299,7 @@ function parsePayloadConfig(payload) {
 
 
   return {
+    schoolName: String(varMap.SchoolName || '').trim(),
     startTime: String(varMap.SchoolStart || '').trim(),
     endTime: String(varMap.SchoolEnd || '').trim(),
     breaks: breaks,
@@ -298,6 +318,7 @@ function parsePayloadConfig(payload) {
 const SLOT_MINUTES = 5;
 const MAX_CYCLE_WEEKS = 10;
 const MAX_NAME_LENGTH = 90;
+const MAX_SCHOOL_NAME_LENGTH = 100;
 // Tabs that already exist in the template (or are planned), compared
 // case-insensitively because Google Sheets tab names are.
 const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
@@ -309,6 +330,14 @@ const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'st
  */
 function validateConfig(config) {
   const problems = [];
+
+  if (!config.schoolName) {
+    problems.push('Enter the school name.');
+  } else if (startsWithFormula(config.schoolName)) {
+    problems.push("The school name can't start with =.");
+  } else if (config.schoolName.length > MAX_SCHOOL_NAME_LENGTH) {
+    problems.push('The school name is longer than ' + MAX_SCHOOL_NAME_LENGTH + ' characters.');
+  }
 
   const dayStart = timeToMinutes(config.startTime);
   const dayEnd = timeToMinutes(config.endTime);

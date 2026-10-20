@@ -11,6 +11,7 @@ function makePayload(options) {
   const variables = [];
   const add = (name, value) => variables.push({ name, value });
 
+  add('SchoolName', o.schoolName !== undefined ? o.schoolName : 'St Example Primary');
   add('SchoolStart', o.start !== undefined ? o.start : '08:30');
   add('SchoolEnd', o.end !== undefined ? o.end : '15:15');
 

@@ -22,6 +22,7 @@ function runLoadTest() {
 
   const variables = [];
   const add = (name, value) => variables.push({ name: name, value: value });
+  add('SchoolName', 'Load Test School');
   add('SchoolStart', '08:30');
   add('SchoolEnd', '15:15');
   [['Recess', '10:30', '11:00'], ['Lunch', '13:00', '13:45']].forEach((item, i) => {

@@ -459,6 +459,7 @@ function createWorld() {
       ProtectionType: { RANGE: 'RANGE' }
     },
     DriveApp: {
+      getRootFolder: () => world.root,
       getFileById: id => {
         const file = world.files[id];
         if (!file) {
@@ -468,7 +469,7 @@ function createWorld() {
       }
     },
     CacheService: {
-      getScriptCache: () => ({
+      getUserCache: () => ({
         put: (key, value) => { world.cache[key] = value; },
         get: key => world.cache[key] || null
       })
@@ -493,6 +494,26 @@ function createWorld() {
     }
   };
 
+  // My Drive: just enough folder handling for getOutputFolder().
+  const makeFolder = name => {
+    const folder = {
+      _children: [],
+      getName: () => name,
+      getFoldersByName: childName => {
+        const matches = folder._children.filter(child => child.getName() === childName);
+        return { hasNext: () => matches.length > 0, next: () => matches.shift() };
+      },
+      createFolder: childName => {
+        const child = makeFolder(childName);
+        folder._children.push(child);
+        world.foldersCreated = (world.foldersCreated || 0) + 1;
+        return child;
+      }
+    };
+    return folder;
+  };
+  world.root = makeFolder('My Drive');
+
   world.addFile = (id, spreadsheet) => {
     let name = 'Template';
     const file = {
@@ -501,10 +522,11 @@ function createWorld() {
         getId: () => id,
         getName: () => name,
         setName: newName => { name = newName; return file.handle; },
-        makeCopy: newName => {
+        makeCopy: (newName, folder) => {
           const copyId = 'copy' + (Object.keys(world.files).length + 1);
           const copy = spreadsheet._clone(world, copyId);
           world.addFile(copyId, copy).handle.setName(newName);
+          world.files[copyId].folder = folder ? folder.getName() : 'My Drive';
           world.lastCopyId = copyId;
           return world.files[copyId].handle;
         }

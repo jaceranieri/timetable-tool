@@ -37,6 +37,13 @@ test('the wizard and the server agree on which names are allowed', () => {
   assert.equal(server.getNameProblem("Mr O'Brien", false), '', 'apostrophes are fine for specialists');
 });
 
+test('the school name is required, at most 100 characters, and not a formula', () => {
+  assert.deepEqual(problems({ schoolName: '' }), ['Enter the school name.']);
+  assert.deepEqual(problems({ schoolName: '=x' }), ["The school name can't start with =."]);
+  assert.deepEqual(problems({ schoolName: 'x'.repeat(101) }), ['The school name is longer than 100 characters.']);
+  assert.deepEqual(problems({ schoolName: "St Mary's Primary" }), []);
+});
+
 test('times must be on the 5-minute grid, inside the day and not overlapping', () => {
   assert.deepEqual(problems({ start: '08:32' }), ['School start and end times must be on a 5-minute mark (e.g. 8:30, 8:35).']);
   assert.deepEqual(problems({ start: '15:00', end: '09:00', breaks: [] }), ['School end time must be after the start time.']);

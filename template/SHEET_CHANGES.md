@@ -128,7 +128,7 @@ and `template/TemplateSync.gs`.
 - [x] Force an error (for example, set the `TEMPLATE_ID` script property to `x`) and check the wizard shows the error panel with **Try again** instead of a pop-up. Then set it back.
 - [x] Sync and lock still work as in Phase 2.
 - [x] **Load test with timings:** 429s. Copying class tabs (244s) and writing their details (117s) were 85% of the time.
-- [ ] **Load test with the Sheets API:** 93s (steps 1–3 done; step 4 to confirm). Afterwards delete the test timetables and the `LoadTest` file.
+- [x] **Load test with the Sheets API:** 93s. Afterwards delete the test timetables and the `LoadTest` file.
   1. In the wizard project, click **Services** (the + next to it in the left sidebar), choose **Google Sheets API**, keep the identifier `Sheets`, and click **Add**.
   2. Paste the updated `wizard/Code.gs` (and keep `LoadTest.gs` for now).
   3. Run `runLoadTest` and copy the whole log. Copies should now appear as lines like "Copy Kindergarten Red, … (one request)".
@@ -144,7 +144,18 @@ and `template/TemplateSync.gs`.
 
 **Result:** different cycle lengths turned red, but two specialists with the same cycle length didn't. Cause: the second specialist with a cycle length is a copy made through the Sheets API, and tabs made that way can't be reached through SpreadsheetApp for the rest of the run. So the clash formatting skipped the copies, and the class tabs were counted into the wrong positions. Fixed by putting the clash rules on the first tab of each cycle before copying (the copies inherit them) and counting tab positions instead of reading them back.
 
-- [ ] Paste the updated `wizard/Code.gs` and `template/TemplateSync.gs` again, generate a **new** timetable, and repeat the three checks above, plus:
+- [x] Paste the updated `wizard/Code.gs` and `template/TemplateSync.gs` again, generate a **new** timetable, and repeat the three checks above, plus:
   - Tabs appear in the wizard's order: DATA, OVERVIEW, TEMPLATE, SPEC_Template, the specialists, then the classes grade by grade.
   - Each copied class shows its own details in `C27:C31`.
 - [ ] Optional, on the earlier timetable: **Timetable Admin → Refresh Specialist Clash Formatting** should make the same-cycle clash turn red there too (the menu runs separately, so it sees every tab).
+
+## Phase 5 and step 26a
+
+No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html`.
+
+- [ ] The wizard loads and looks the same as before (React, Babel and Tailwind now load pinned versions; check the page is styled, i.e. Tailwind loaded).
+- [ ] Step 1 asks for the **School Name** and won't continue without it.
+- [ ] Step 3: give a grade 4 or more classes. All of them are visible without a small scroll box, and the tab shows the class count.
+- [ ] Leave one class's teacher blank, switch to another grade's tab and click Continue: the wizard opens the right tab, scrolls to the class, highlights it and puts the cursor in the empty field. The tab shows "1 to fix" until it's filled in.
+- [ ] The summary step mentions the school name.
+- [ ] Generate: the timetable is saved in **My Drive › Timetables** (created the first time) and its name includes the school name. A second timetable goes into the same folder.

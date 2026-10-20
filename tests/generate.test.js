@@ -338,3 +338,21 @@ test('large school: tab order follows the wizard even with copies made through t
   assert.deepEqual(ss.getSheets().map(s => s.getName()), ['DATA', 'OVERVIEW', 'TEMPLATE', 'SPEC_Template']
     .concat(config.specialists.map(s => 'SPEC_' + s.name), config.classes.map(c => c.name)));
 });
+
+test('the file is named after the school and saved in the Timetables folder, reused next time', () => {
+  const { world, wizard } = setUp();
+  wizard.generateTimetable(makePayload({ schoolName: "St Mary's Primary" }));
+  const first = world.files[world.lastCopyId];
+  assert.match(first.handle.getName(), /^Generated Timetable - Resource First - St Mary's Primary - \d{1,2}\/\d{1,2}\/\d{4}$/);
+  assert.equal(first.folder, 'Timetables');
+  wizard.generateTimetable(makePayload());
+  assert.equal(world.files[world.lastCopyId].folder, 'Timetables');
+  assert.equal(world.foldersCreated, 1, 'the folder is created once');
+});
+
+test('progress is kept in the per-user cache', () => {
+  const { world, wizard } = setUp();
+  wizard.generateTimetable(makePayload({ jobId: 'job_42' }));
+  assert.equal(JSON.parse(wizard.checkProgress('job_42')).percent, 100);
+  assert.equal(JSON.parse(world.cache.job_42).status, 'Timetable generation complete!');
+});
