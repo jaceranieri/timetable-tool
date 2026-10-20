@@ -119,11 +119,12 @@ and `template/TemplateSync.gs`, then check:
 No sheet changes. Paste the updated `wizard/Code.gs`, `wizard/Index.html`
 and `template/TemplateSync.gs`.
 
-- [ ] **Load test:** in the wizard project, add a script file `LoadTest` and paste `wizard/LoadTest.gs` into it. Choose `runLoadTest` in the toolbar and click Run. The log shows how long 28 classes and 6 specialists took (the limit is 360s). Note the time for step 28, delete the generated file, then delete the `LoadTest` file again.
-- [ ] Generate a normal timetable from the wizard and check:
+- [ ] **Load test:** first run took 504s (too slow; see PLAN step 17). in the wizard project, add a script file `LoadTest` and paste `wizard/LoadTest.gs` into it. Choose `runLoadTest` in the toolbar and click Run. The log shows how long 28 classes and 6 specialists took (the limit is 360s). Note the time for step 28, delete the generated file, then delete the `LoadTest` file again.
+- [x] Generate a normal timetable from the wizard and check:
   - Class tabs look as before: headers, times, grey break rows, dropdowns, subject colours, compliance table.
   - Two classes with the same cycle length have identical grids; a class with a different cycle has its own layout.
   - Specialist tabs: class colours, grey break rows, red clashes between two specialists.
   - The file name has no `INCOMPLETE - ` prefix.
-- [ ] Force an error (for example, set the `TEMPLATE_ID` script property to `x`) and check the wizard shows the error panel with **Try again** instead of a pop-up. Then set it back.
-- [ ] Sync and lock still work as in Phase 2.
+- [x] Force an error (for example, set the `TEMPLATE_ID` script property to `x`) and check the wizard shows the error panel with **Try again** instead of a pop-up. Then set it back.
+- [x] Sync and lock still work as in Phase 2.
+- [ ] **Load test with timings:** paste the updated `wizard/Code.gs` and `wizard/LoadTest.gs`, run `runLoadTest` again, and copy the whole log (it ends with a "Timing summary").

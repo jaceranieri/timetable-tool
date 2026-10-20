@@ -394,6 +394,7 @@ function createWorld() {
         return world.files[id].spreadsheet;
       },
       getActiveSpreadsheet: () => world.active,
+      flush: () => { world.flushes = (world.flushes || 0) + 1; },
       getUi: () => ({
         alert: (...args) => { world.alerts.push(args.length > 1 ? args[1] : args[0]); return 'YES'; },
         ButtonSet: { YES_NO: 'YES_NO' },

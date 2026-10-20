@@ -67,9 +67,15 @@ const GENERATED_FILE_PREFIX = 'Generated Timetable - Resource First - ';
 // behind by a failed or timed-out run is easy to spot and delete.
 const INCOMPLETE_FILE_PREFIX = 'INCOMPLETE - ';
 
-function generateTimetable(payload) {
+/**
+ * options.timing (used by the load test) logs how long each step took. It
+ * flushes pending changes after every step so each step's cost, including
+ * Google recalculating the spreadsheet, is counted against that step.
+ */
+function generateTimetable(payload, options) {
   const jobId = payload ? payload.jobId : null;
   const startedAt = Date.now();
+  const timer = createStepTimer(Boolean(options && options.timing));
 
 
   try {
@@ -84,6 +90,7 @@ function generateTimetable(payload) {
     const templateFile = DriveApp.getFileById(getTemplateId());
     const fileName = GENERATED_FILE_PREFIX + new Date().toLocaleDateString('en-AU');
     const newFile = templateFile.makeCopy(INCOMPLETE_FILE_PREFIX + fileName);
+    timer.mark('Copy the template file', 'Setup');
 
 
     updateJobProgress(jobId, 12, 'Opening duplicated spreadsheet...');
@@ -101,9 +108,11 @@ function generateTimetable(payload) {
     updateJobProgress(jobId, 18, 'Building DATA reference tables...');
 
 
+    timer.mark('Open the copy', 'Setup');
     populateDataSheet(dataSheet, payload, config, ss);
-    buildSpecialistSheets(ss, config, jobId);
-    buildAllClassSheets(ss, config, jobId);
+    timer.mark('Fill the DATA tab', 'Setup');
+    buildSpecialistSheets(ss, config, jobId, timer);
+    buildAllClassSheets(ss, config, jobId, timer);
     newFile.setName(fileName);
 
 
@@ -111,6 +120,7 @@ function generateTimetable(payload) {
       'Generated ' + config.classes.length + ' class and ' + config.specialists.length +
       ' specialist tab(s) in ' + Math.round((Date.now() - startedAt) / 1000) + 's'
     );
+    timer.summary();
     updateJobProgress(jobId, 100, 'Timetable generation complete!');
     return ss.getUrl();
   } catch (error) {
@@ -119,6 +129,45 @@ function generateTimetable(payload) {
     updateJobProgress(jobId, -1, message);
     throw new Error(message);
   }
+}
+
+
+/**
+ * Times the steps of a generation for the load test. When disabled, mark()
+ * and summary() do nothing, so normal runs aren't slowed by extra flushes.
+ */
+function createStepTimer(enabled) {
+  const groups = {};
+  const order = [];
+  const startedAt = Date.now();
+  let lastAt = startedAt;
+
+  return {
+    mark: function (step, group) {
+      if (!enabled) return;
+      SpreadsheetApp.flush();
+      const now = Date.now();
+      const seconds = (now - lastAt) / 1000;
+      lastAt = now;
+      if (!groups[group]) {
+        groups[group] = { count: 0, seconds: 0 };
+        order.push(group);
+      }
+      groups[group].count++;
+      groups[group].seconds += seconds;
+      console.log(seconds.toFixed(1) + 's  ' + step);
+    },
+    summary: function () {
+      if (!enabled) return;
+      const lines = order.map(group => {
+        const item = groups[group];
+        return group + ': ' + item.seconds.toFixed(1) + 's' +
+          (item.count > 1 ? ' (' + item.count + ' x ' + (item.seconds / item.count).toFixed(1) + 's)' : '');
+      });
+      lines.push('Total: ' + ((Date.now() - startedAt) / 1000).toFixed(1) + 's');
+      console.log('Timing summary\n' + lines.join('\n'));
+    }
+  };
 }
 
 
@@ -505,7 +554,8 @@ const BREAK_BACKGROUND = '#F2F2F2';
  * same cycle length are copies of it, which is much faster than building
  * each one cell by cell.
  */
-function buildSpecialistSheets(ss, config, jobId) {
+function buildSpecialistSheets(ss, config, jobId, timer) {
+  timer = timer || createStepTimer(false);
   const specTemplateSheet = ss.getSheetByName('SPEC_Template');
   const classListRange = ss.getRangeByName('ClassList');
 
@@ -545,6 +595,7 @@ function buildSpecialistSheets(ss, config, jobId) {
       const prototype = prototypes[specialist.cycle];
       if (prototype) {
         sheet = prototype.copyTo(ss).setName(sheetName);
+        timer.mark(sheetName + ': copy', 'Specialist tabs: copy');
       } else {
         sheet = specTemplateSheet.copyTo(ss).setName(sheetName).showSheet();
         // Start from a clean slate: don't inherit any conditional formatting
@@ -562,14 +613,17 @@ function buildSpecialistSheets(ss, config, jobId) {
           grid.layout.lastColumn
         );
         prototypes[specialist.cycle] = sheet;
+        timer.mark(sheetName + ': build (' + specialist.cycle + '-week cycle)', 'Specialist tabs: build');
       }
     }
 
     writeSpecialistDetails(sheet, specialist);
+    timer.mark(sheetName + ': details', 'Specialist tabs: details');
   });
 
 
   applySpecialistClashFormatting(ss);
+  timer.mark('Specialist clash formatting', 'Specialist clash formatting');
 }
 
 
@@ -580,7 +634,8 @@ function buildSpecialistSheets(ss, config, jobId) {
  * A tab that already exists only has its details (C27:C31) refreshed, so
  * its timetable entries are never touched.
  */
-function buildAllClassSheets(ss, config, jobId) {
+function buildAllClassSheets(ss, config, jobId, timer) {
+  timer = timer || createStepTimer(false);
   const templateSheet = ss.getSheetByName('TEMPLATE');
   const klaListRange = ss.getRangeByName('KLAList');
 
@@ -615,6 +670,7 @@ function buildAllClassSheets(ss, config, jobId) {
       const prototype = prototypes[classConfig.cycle];
       if (prototype) {
         sheet = prototype.copyTo(ss).setName(sheetName);
+        timer.mark(sheetName + ': copy', 'Class tabs: copy');
       } else {
         sheet = templateSheet.copyTo(ss).setName(sheetName).showSheet();
         const grid = buildGrid(
@@ -622,10 +678,12 @@ function buildAllClassSheets(ss, config, jobId) {
         );
         pasteTemplateConditionalFormatting(templateSheet, sheet, grid.layout, slots.length);
         prototypes[classConfig.cycle] = sheet;
+        timer.mark(sheetName + ': build (' + classConfig.cycle + '-week cycle)', 'Class tabs: build');
       }
     }
 
     writeClassDetails(sheet, classConfig);
+    timer.mark(sheetName + ': details', 'Class tabs: details');
   });
 }
 

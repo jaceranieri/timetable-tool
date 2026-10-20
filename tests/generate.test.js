@@ -255,3 +255,20 @@ test('the Apps Script load test (LoadTest.gs) runs against a valid setup', () =>
   const ss = world.files[world.lastCopyId].spreadsheet;
   assert.equal(ss.getSheets().length, 4 + 6 + 28);
 });
+
+test('timing is off for normal runs and logs every step for the load test', () => {
+  const quiet = setUp();
+  quiet.wizard.generateTimetable(makePayload());
+  assert.equal(quiet.world.flushes || 0, 0, 'no extra flushes in normal runs');
+
+  const timed = setUp();
+  const lines = [];
+  timed.world.globals.console.log = line => lines.push(line);
+  const wizard = loadScript('wizard/Code.gs', timed.world.globals);
+  wizard.generateTimetable(makePayload(), { timing: true });
+  assert.ok(lines.some(line => /^\d+\.\ds {2}K Red: copy$/.test(line)), 'per-step line');
+  const summary = lines.find(line => line.startsWith('Timing summary'));
+  assert.match(summary, /Class tabs: copy: [\d.]+s\n/);
+  assert.match(summary, /Class tabs: details: [\d.]+s \(3 x [\d.]+s\)/);
+  assert.match(summary, /Total: [\d.]+s$/);
+});

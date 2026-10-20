@@ -72,7 +72,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 - [x] **14. Local tests first (M).** `npm test` runs both scripts against an in-memory fake spreadsheet (`tests/`): setup rules, grid layout, full generation, sync, lock, and a comparison with the previous generator.
 - [x] **15. Rebuild tab generation (L).** Build one finished class tab per cycle length and copy it for each class; batched writes; conditional-formatting rules built once. Each step is written as "make sure this tab exists and is set up" so step 32 can reuse it.
 - [x] **16. Clean up after a failed run (S).** The copy is named `INCOMPLETE - …` until generation finishes (this also covers timeouts, which can't run clean-up code); plain-English error messages; one in-app error panel with Try again.
-- [ ] **17. Load test (S).** About 28 classes, 3-week cycle, 6 specialists. Target under 2 minutes. Record timings for step 28. *Run `runLoadTest` in `wizard/LoadTest.gs` from the Apps Script editor.* In the fake spreadsheet, spreadsheet calls dropped from 62,353 to 2,537.
+- [ ] **17. Load test (S).** About 28 classes, 3-week cycle, 6 specialists. Target under 2 minutes. Record timings for step 28. *Run `runLoadTest` in `wizard/LoadTest.gs` from the Apps Script editor.* In the fake spreadsheet, spreadsheet calls dropped from 62,353 to 2,537, but **the first real run took 504s** (target 120s, documented limit 360s). The load test now logs each step's time to find the bottleneck.
 - [x] **18. Faster sync (S).** Header rows are read in bulk in `buildScheduleColumnMap` and the clash formatting.
 
 ## Phase 5: Deployment polish

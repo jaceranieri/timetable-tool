@@ -2,10 +2,10 @@
  * Development only - leave this file out of the live wizard project.
  *
  * Generates a large test school (4 classes per grade K-6 on a 3-week cycle,
- * 6 specialists) and logs how long it took. In the Apps Script editor,
- * choose runLoadTest and click Run, then read the log in the execution
- * panel or under Executions. It creates a real timetable in your Drive;
- * delete it afterwards.
+ * 6 specialists) and logs how long each step took, ending with a timing
+ * summary. In the Apps Script editor, choose runLoadTest and click Run,
+ * then copy the log from the execution panel (or under Executions). It
+ * creates a real timetable in your Drive; delete it afterwards.
  */
 function runLoadTest() {
   const grades = ['Kindergarten', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5', 'Year 6'];
@@ -49,7 +49,10 @@ function runLoadTest() {
   ['Assembly', 'Library', AMADEUS_ACTIVITY_NAME].forEach((name, i) => add('Activity_' + (i + 1) + '_Name', name));
 
   const startedAt = Date.now();
-  const url = generateTimetable({ jobId: 'load_test_' + startedAt, exportVariables: variables });
+  const url = generateTimetable(
+    { jobId: 'load_test_' + startedAt, exportVariables: variables },
+    { timing: true }
+  );
   const seconds = Math.round((Date.now() - startedAt) / 1000);
   console.log('Load test: 28 classes and 6 specialists generated in ' + seconds + 's (limit: 360s). ' + url);
   return seconds;
