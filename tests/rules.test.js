@@ -25,7 +25,7 @@ test('the default setup is valid', () => {
 test('the wizard and the server agree on which names are allowed', () => {
   const names = [
     'K Blue', 'Year 3 Gold', 'Year 3/4', "Mrs O'Neill", 'Data', 'data', 'OVERVIEW', 'Template',
-    'SPEC_Template', 'spec_x', 'Start here', '=SUM(1)', 'a:b', 'x*y', '[1]', 'a\\b', 'Q?', 'x'.repeat(91)
+    'SPEC_Template', 'spec_x', 'Start here', 'Print View', '=SUM(1)', 'a:b', 'x*y', '[1]', 'a\\b', 'Q?', 'x'.repeat(91)
   ];
   [true, false].forEach(isClass => {
     names.forEach(name => {

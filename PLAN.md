@@ -83,7 +83,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 6: Guided workflow in the sheet
 
-- [ ] **21. "Start here" tab (M).**
+- [x] **21. "Start here" tab (M).** *Done: built by the wizard as the first tab, with live status formulas, a linked row per specialist and class tab, "Last run" written by Sync and Lock, the menu in stage order with "Go to Start here", and a warning when locking before syncing.*
   - Stages in order:
     1. Specialists fill their tabs.
     2. Sync and resolve clashes.
@@ -92,9 +92,9 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
     5. Compliance review.
   - Live status for each stage: specialist tabs filled, last sync time, open conflicts, locked or not, classes compliant.
   - Timetable Admin menu reordered to match. The order is guided and warned about, not enforced.
-- [ ] **22. "Check my timetable" (M).** For one class: each KLA's minutes over or under, empty slots by term and week, Amadeus status, open conflicts. Whole-school version writes to OVERVIEW.
-- [ ] **23. Copy helpers (M).** "Copy Week A → other weeks" and "Copy Term 1 → Terms 2–4". Confirmation first; never overwrite break rows, locked specialist slots or non-empty cells unless chosen.
-- [ ] **24. Printable outputs (M).** A clean weekly timetable per class (consecutive same-subject slots merged into blocks) as PDF, and a one-page compliance summary per school. Needs the external-request permission.
+- [x] **22. "Check my timetable" (M).** "Check this timetable" (class tab): each KLA outside its range with roughly how many minutes per week to add or remove, Amadeus, empty slots by term and week, open conflicts. On a specialist tab: minutes per class. "Check all class timetables": one table for the school (shown in a dialog rather than written to OVERVIEW, since Start here and OVERVIEW already show live status).
+- [x] **23. Copy helpers (M).** "Copy Week A to the other weeks" (within each term) and "Copy Term 1 to Terms 2-4", on class and specialist tabs. Yes = fill empty slots only, No = also replace entries, Cancel = stop. Breaks and specialist lessons (synced or in conflict) are never changed or copied, nothing is cleared, locked cells are reported.
+- [x] **24. Printable outputs (M).** "Print this timetable": one chosen week laid out on a Print view tab (each run of the same entry merged into one block with its times, breaks grey), with a Download PDF link (landscape A4). "Print the compliance overview": the OVERVIEW tab as a PDF. The link uses Google's own export in the user's browser, so no extra permission is needed. "Print view" is a reserved tab name.
 
 ## Phase 7: Wizard usability
 

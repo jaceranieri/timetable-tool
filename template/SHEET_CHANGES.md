@@ -153,9 +153,23 @@ and `template/TemplateSync.gs`.
 
 No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html`.
 
-- [ ] The wizard loads and looks the same as before (React, Babel and Tailwind now load pinned versions; check the page is styled, i.e. Tailwind loaded).
-- [ ] Step 1 asks for the **School Name** and won't continue without it.
-- [ ] Step 3: give a grade 4 or more classes. All of them are visible without a small scroll box, and the tab shows the class count.
-- [ ] Leave one class's teacher blank, switch to another grade's tab and click Continue: the wizard opens the right tab, scrolls to the class, highlights it and puts the cursor in the empty field. The tab shows "1 to fix" until it's filled in.
-- [ ] The summary step mentions the school name.
-- [ ] Generate: the timetable is saved in **My Drive › Timetables** (created the first time) and its name includes the school name. A second timetable goes into the same folder.
+- [x] The wizard loads and looks the same as before (React, Babel and Tailwind now load pinned versions; check the page is styled, i.e. Tailwind loaded).
+- [x] Step 1 asks for the **School Name** and won't continue without it.
+- [x] Step 3: give a grade 4 or more classes. All of them are visible without a small scroll box, and the tab shows the class count.
+- [x] Leave one class's teacher blank, switch to another grade's tab and click Continue: the wizard opens the right tab, scrolls to the class, highlights it and puts the cursor in the empty field. The tab shows "1 to fix" until it's filled in.
+- [x] The summary step mentions the school name.
+- [x] Generate: the timetable is saved in **My Drive › Timetables** (created the first time) and its name includes the school name. A second timetable goes into the same folder.
+
+## Phase 6
+
+No sheet changes, but the template's script project gets a **new file**.
+
+- [ ] In the template's script project (Extensions → Apps Script): paste the updated `template/TemplateSync.gs`, then add a script file named `TimetableTools` and paste `template/TimetableTools.gs` into it.
+- [ ] Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
+- [ ] Generate a new timetable and check the **Start here** tab is first:
+  - The five stages with a status for each, and "Not run yet" under Last run for the sync and the lock.
+  - Every specialist and class tab listed, each name a working link, with lessons entered / empty slots / conflicts / compliant filling in.
+- [ ] Reload the timetable; the **Timetable Admin** menu is in stage order. Lock before syncing warns first. After a sync and a lock, Start here shows when they ran, by whom and the result.
+- [ ] **Check this timetable** on a class tab (partly filled), on a specialist tab, and on DATA (asks for a timetable tab). **Check all class timetables** lists every class.
+- [ ] **Copy Week A to the other weeks** on a 2-week class: Yes fills only empty slots; No also replaces entries; breaks and synced specialist lessons stay as they are. **Copy Term 1 to Terms 2-4** on a 1-week class.
+- [ ] **Print this timetable**: enter `1A`; the Print view tab shows that week with merged blocks and times, and **Download PDF** gives a landscape A4 page. **Print the compliance overview** downloads OVERVIEW.

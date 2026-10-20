@@ -64,6 +64,10 @@ function updateJobProgress(jobId, percent, statusText) {
 }
 
 
+// Written by "Sync Specialist Schedules" (TemplateSync.gs) into a class
+// cell that two sources want; the Start here tab counts these.
+const CONFLICT_TEXT_PREFIX = 'CONFLICT:';
+
 const GENERATED_FILE_PREFIX = 'Generated Timetable - Resource First - ';
 // Generated timetables are saved in this folder in the user's My Drive,
 // which is created if it doesn't exist. Set to '' to save them in My Drive
@@ -124,6 +128,8 @@ function generateTimetable(payload, options) {
     const tabs = createTabTracker(ss);
     buildSpecialistSheets(ss, config, jobId, timer, tabs);
     buildAllClassSheets(ss, config, jobId, timer, tabs);
+    buildStartHereSheet(ss, config, tabs);
+    timer.mark('Start here tab', 'Start here tab');
     newFile.setName(fileName);
 
 
@@ -321,7 +327,7 @@ const MAX_NAME_LENGTH = 90;
 const MAX_SCHOOL_NAME_LENGTH = 100;
 // Tabs that already exist in the template (or are planned), compared
 // case-insensitively because Google Sheets tab names are.
-const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
+const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here', 'print view'];
 
 /**
  * Checks the parsed setup and throws one error listing every problem, so
@@ -608,9 +614,7 @@ function buildSpecialistSheets(ss, config, jobId, timer, tabs) {
   const prototypes = {}; // cycle length -> first tab built with it
   const copies = [];
   const firstTabIndex = tabs.nextIndex;
-  const tabNames = config.specialists.map(specialist =>
-    ('SPEC_' + sanitizeSheetName(specialist.name)).substring(0, 99)
-  );
+  const tabNames = config.specialists.map(getSpecialistTabName);
 
 
   config.specialists.forEach((specialist, specialistIndex) => {
@@ -626,6 +630,7 @@ function buildSpecialistSheets(ss, config, jobId, timer, tabs) {
 
     if (existing) {
       writeDetails(existing, getSpecialistDetails(specialist));
+      tabs.sheetIds[sheetName] = existing.getSheetId();
     } else if (prototypes[specialist.cycle]) {
       copies.push({
         prototype: prototypes[specialist.cycle],
@@ -653,6 +658,7 @@ function buildSpecialistSheets(ss, config, jobId, timer, tabs) {
       writeDetails(sheet, getSpecialistDetails(specialist));
       prototypes[specialist.cycle] = sheet;
       tabs.nextIndex++;
+      tabs.sheetIds[sheetName] = sheet.getSheetId();
       timer.mark(sheetName + ': build (' + specialist.cycle + '-week cycle)', 'Specialist tabs: build');
     }
   });
@@ -705,11 +711,12 @@ function buildAllClassSheets(ss, config, jobId, timer, tabs) {
 
 
   config.classes.forEach((classConfig, classIndex) => {
-    const sheetName = sanitizeSheetName(classConfig.name).substring(0, 99);
+    const sheetName = getClassTabName(classConfig);
     const existing = ss.getSheetByName(sheetName);
 
     if (existing) {
       writeClassDetails(existing, classConfig);
+      tabs.sheetIds[sheetName] = existing.getSheetId();
     } else if (prototypes[classConfig.cycle]) {
       copies.push({
         prototype: prototypes[classConfig.cycle],
@@ -731,6 +738,7 @@ function buildAllClassSheets(ss, config, jobId, timer, tabs) {
       writeClassDetails(sheet, classConfig);
       prototypes[classConfig.cycle] = sheet;
       tabs.nextIndex++;
+      tabs.sheetIds[sheetName] = sheet.getSheetId();
       timer.mark(sheetName + ': build (' + classConfig.cycle + '-week cycle)', 'Class tabs: build');
     }
   });
@@ -750,7 +758,9 @@ function createTabTracker(ss) {
   const usedIds = {};
   const sheets = ss.getSheets();
   sheets.forEach(sheet => { usedIds[sheet.getSheetId()] = true; });
-  return { nextIndex: sheets.length, usedIds: usedIds };
+  // sheetIds: tab name -> sheet id of every class and specialist tab, for
+  // the links on the Start here tab.
+  return { nextIndex: sheets.length, usedIds: usedIds, sheetIds: {} };
 }
 
 
@@ -776,6 +786,7 @@ function copyTabs(ss, copies, timer, timerGroup, tabs) {
   if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets) {
     copies.forEach(copy => {
       const sheet = copy.prototype.copyTo(ss).setName(copy.name);
+      tabs.sheetIds[copy.name] = sheet.getSheetId();
       ss.setActiveSheet(sheet);
       ss.moveActiveSheet(copy.index + 1);
       writeDetails(sheet, copy.details);
@@ -803,6 +814,7 @@ function copyTabs(ss, copies, timer, timerGroup, tabs) {
     const requests = [];
     batch.forEach(copy => {
       const sheetId = newSheetId();
+      tabs.sheetIds[copy.name] = sheetId;
       requests.push({
         duplicateSheet: {
           sourceSheetId: copy.prototype.getSheetId(),
@@ -876,6 +888,155 @@ function writeDetails(sheet, details) {
     sheet.getRange(detail.row, detail.column, detail.values.length, detail.values[0].length)
       .setValues(detail.values);
   });
+}
+
+
+/**
+ * The Start here tab: the first tab of every generated timetable. It lists
+ * the order of work (specialists first, then sync and lock, then class
+ * teachers, then the compliance check), who does each stage and a live
+ * status for each, followed by a link to every specialist and class tab
+ * with its progress.
+ *
+ * The status formulas refer to the tabs by name. "Sync Specialist
+ * Schedules" and "Lock Synced Cells" (TemplateSync.gs) write their "Last
+ * run" text through the named ranges StartHereSyncStatus and
+ * StartHereLockStatus.
+ */
+const START_HERE_SHEET_NAME = 'Start here';
+
+function buildStartHereSheet(ss, config, tabs) {
+  if (ss.getSheetByName(START_HERE_SHEET_NAME)) return;
+
+  const sheet = ss.insertSheet(START_HERE_SHEET_NAME, 0);
+  const quote = name => "'" + name.replace(/'/g, "''") + "'";
+  const link = name => {
+    const id = tabs.sheetIds[name];
+    const label = name.replace(/"/g, '""');
+    return id ? '=HYPERLINK("#gid=' + id + '","' + label + '")' : name;
+  };
+  const grid = name => quote(name) + '!J5:AAK';
+
+  // Where each part goes, so the stage formulas can refer to the lists.
+  const specialistCount = config.specialists.length;
+  const classCount = config.classes.length;
+  const specialistFirstRow = 13;
+  const specialistLastRow = specialistFirstRow + Math.max(specialistCount, 1) - 1;
+  const classHeadingRow = specialistLastRow + 2;
+  const classFirstRow = classHeadingRow + 2;
+  const classLastRow = classFirstRow + classCount - 1;
+  const lessons = 'D' + specialistFirstRow + ':D' + specialistLastRow;
+  const emptySlots = 'D' + classFirstRow + ':D' + classLastRow;
+  const conflicts = 'E' + classFirstRow + ':E' + classLastRow;
+  const compliant = 'F' + classFirstRow + ':F' + classLastRow;
+
+  const rows = [];
+  const put = (rowNumber, values) => {
+    while (rows.length < rowNumber) rows.push(['', '', '', '', '', '']);
+    rows[rowNumber - 1] = values.concat(new Array(6 - values.length).fill(''));
+  };
+
+  put(1, [config.schoolName + ' - Timetable']);
+  put(2, ['Work through the stages in order. The status column updates as the timetable is filled in.']);
+  put(4, ['Stage', 'Who', 'What to do', 'Status', 'Last run']);
+  put(5, [
+    '1. Fill in the specialist timetables',
+    'Specialist teachers',
+    'Open your SPEC_ tab (listed below) and choose a class for each lesson. A cell turns red when another specialist has the same class at the same time.',
+    specialistCount
+      ? '=SUM(' + lessons + ')&" lessons entered on "&COUNTIF(' + lessons + ',">0")&" of ' +
+        specialistCount + ' specialist tab(s)"'
+      : 'No specialists in this timetable'
+  ]);
+  put(6, [
+    '2. Sync to the class timetables',
+    'Timetable coordinator',
+    'Timetable Admin > Sync Specialist Schedules. Copies every specialist lesson onto the class tabs and flags clashes in red. Run it again after any change to a specialist tab.',
+    '=IF(SUM(' + conflicts + ')>0,SUM(' + conflicts + ')&" conflict(s) to resolve on the class tabs","No conflicts")',
+    'Not run yet'
+  ]);
+  put(7, [
+    '3. Lock the specialist lessons',
+    'Timetable coordinator',
+    'Timetable Admin > Lock Synced Cells, once the sync shows no conflicts. Locked lessons can only be changed by the spreadsheet owner.',
+    '=IF(SUM(' + conflicts + ')>0,"Resolve the conflicts first","Ready to lock after syncing")',
+    'Not run yet'
+  ]);
+  put(8, [
+    '4. Fill in the class timetables',
+    'Class teachers',
+    'Open your class tab (listed below) and fill every empty slot. Specialist lessons are already in place. Timetable Admin has helpers to copy Week A to the other weeks and Term 1 to the other terms.',
+    '=COUNTIF(' + emptySlots + ',0)&" of ' + classCount + ' class(es) have no empty slots"'
+  ]);
+  put(9, [
+    '5. Check compliance',
+    'Class teachers and coordinator',
+    'Timetable Admin > Check this timetable (on a class tab) lists what to fix. OVERVIEW shows the whole school.',
+    '=COUNTIF(' + compliant + ',"Yes")&" of ' + classCount + ' class(es) compliant"'
+  ]);
+
+  put(11, ['Specialist timetables']);
+  put(12, ['Tab', 'KLA', 'Cycle', 'Lessons entered']);
+  if (!specialistCount) put(specialistFirstRow, ['No specialists in this timetable']);
+  const hasBreaks = config.breaks.length > 0;
+  config.specialists.forEach((specialist, index) => {
+    const name = getSpecialistTabName(specialist);
+    const lessonFormula = hasBreaks
+      ? '=SUMPRODUCT((LEN(' + grid(name) + ')>0)*ISNA(MATCH(' + grid(name) + ',BreakList,0)))'
+      : '=COUNTA(' + grid(name) + ')';
+    put(specialistFirstRow + index, [
+      link(name), specialist.kla, specialist.cycle + ' week cycle', lessonFormula
+    ]);
+  });
+
+  put(classHeadingRow, ['Class timetables']);
+  put(classHeadingRow + 1, ['Tab', 'Teacher', 'Grade', 'Empty slots', 'Conflicts', 'Compliant']);
+  config.classes.forEach((classConfig, index) => {
+    const name = getClassTabName(classConfig);
+    put(classFirstRow + index, [
+      link(name),
+      classConfig.teacher,
+      classConfig.grade,
+      '=' + quote(name) + '!C15',
+      '=COUNTIF(' + grid(name) + ',"' + CONFLICT_TEXT_PREFIX + '*")',
+      '=IF(' + quote(name) + '!C16=TRUE,"Yes","No")'
+    ]);
+  });
+
+  // Names typed in the wizard stay exactly as typed (no dates from "3-4");
+  // the formula cells keep the normal format so they calculate.
+  const textCells = ['A1', 'B' + specialistFirstRow + ':B' + specialistLastRow];
+  if (classCount) textCells.push('B' + classFirstRow + ':C' + classLastRow);
+  sheet.getRangeList(textCells).setNumberFormat('@');
+  sheet.getRange(1, 1, rows.length, 6).setValues(rows);
+
+  sheet.getRange('A1').setFontSize(18).setFontWeight('bold');
+  sheet.getRange('A2').setFontColor('#555555');
+  sheet.getRangeList(['A11', 'A' + classHeadingRow]).setFontSize(13).setFontWeight('bold');
+  sheet.getRangeList(['A4:E4', 'A12:D12', 'A' + (classHeadingRow + 1) + ':F' + (classHeadingRow + 1)])
+    .setFontWeight('bold')
+    .setBackground('#E8EEF2');
+  sheet.getRange('A5:A9').setFontWeight('bold');
+  sheet.getRange('A5:E9').setVerticalAlignment('top').setWrap(true);
+  sheet.setColumnWidth(1, 260);
+  sheet.setColumnWidth(2, 170);
+  sheet.setColumnWidth(3, 420);
+  sheet.setColumnWidth(4, 260);
+  sheet.setColumnWidth(5, 220);
+  sheet.setColumnWidth(6, 100);
+
+  ss.setNamedRange('StartHereSyncStatus', sheet.getRange('E6'));
+  ss.setNamedRange('StartHereLockStatus', sheet.getRange('E7'));
+}
+
+
+function getSpecialistTabName(specialist) {
+  return ('SPEC_' + sanitizeSheetName(specialist.name)).substring(0, 99);
+}
+
+
+function getClassTabName(classConfig) {
+  return sanitizeSheetName(classConfig.name).substring(0, 99);
 }
 
 

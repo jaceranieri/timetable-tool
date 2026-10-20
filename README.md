@@ -6,7 +6,7 @@ A timetable helper wizard tool that assists Primary schools creating their timet
 | Folder | Apps Script project | What it does |
 |---|---|---|
 | `wizard/` | The standalone web app project | `Index.html` is the setup wizard; `Code.gs` copies the master template and builds the class and specialist tabs |
-| `template/` | The project bound to the master template spreadsheet | `TemplateSync.gs` adds the **Timetable Admin** menu (sync, lock, clash formatting). It is copied into every generated timetable along with the spreadsheet. |
+| `template/` | The project bound to the master template spreadsheet | `TemplateSync.gs` adds the **Timetable Admin** menu and does the sync, lock and clash formatting; `TimetableTools.gs` adds the checks, copy helpers and printing. Both are copied into every generated timetable along with the spreadsheet. |
 
 `PLAN.md` lists the planned fixes and features in priority order, and
 `template/SHEET_CHANGES.md` the edits made in the template spreadsheet itself.

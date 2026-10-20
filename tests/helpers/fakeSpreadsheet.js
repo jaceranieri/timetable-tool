@@ -138,6 +138,11 @@ class FakeRange {
   setFontFamily() { return this; }
   setHorizontalAlignment() { return this; }
   setVerticalAlignment() { return this; }
+  setWrap() { return this; }
+  setBorder() { return this; }
+  getFormulas() {
+    return this._get('v').map(row => row.map(value => (typeof value === 'string' && value.charAt(0) === '=' ? value : '')));
+  }
   clearContent() { return this._fill('v', ''); }
   clearDataValidations() { return this._fill('dv', null); }
   setDataValidation(rule) { return this._fill('dv', rule); }
@@ -209,6 +214,8 @@ class FakeRangeList {
   setValue(...args) { return this._each('setValue', args); }
   setBackground(...args) { return this._each('setBackground', args); }
   setFontWeight(...args) { return this._each('setFontWeight', args); }
+  setFontColor(...args) { return this._each('setFontColor', args); }
+  setWrap(...args) { return this._each('setWrap', args); }
   setFontSize(...args) { return this._each('setFontSize', args); }
   setFontFamily(...args) { return this._each('setFontFamily', args); }
   setNumberFormat(...args) { return this._each('setNumberFormat', args); }
@@ -300,6 +307,7 @@ class FakeSheet {
   }
   getRangeList(a1List) { return new FakeRangeList(this._world, this, a1List); }
   setColumnWidth(column, width) { this._widths[column] = width; return this; }
+  setRowHeights() { return this; }
   setColumnWidths(column, count, width) {
     for (let i = 0; i < count; i++) this._widths[column + i] = width;
     return this;
@@ -353,7 +361,15 @@ class FakeSpreadsheet {
   setNamedRange(name, range) { this._named[name] = range; }
   getRangeByName(name) { return this._named[name] || null; }
   getSpreadsheetTimeZone() { return 'Australia/Sydney'; }
+  insertSheet(name, index) {
+    if (this.getSheetByName(name)) throw new Error('A sheet with the name "' + name + '" already exists.');
+    const sheet = new FakeSheet(this._world, this, name, 1000, 26);
+    this._sheets.splice(index === undefined ? this._sheets.length : index, 0, sheet);
+    return sheet;
+  }
   setActiveSheet(sheet) { this._active = sheet; return sheet; }
+  getActiveSheet() { return this._active || this._sheets[0]; }
+  deleteSheet(sheet) { this._sheets.splice(this._sheets.indexOf(sheet), 1); }
   moveActiveSheet(position) {
     const index = this._sheets.indexOf(this._active);
     this._sheets.splice(index, 1);
@@ -448,11 +464,26 @@ function createWorld() {
       },
       getActiveSpreadsheet: () => world.active,
       flush: () => { world.flushes = (world.flushes || 0) + 1; },
-      getUi: () => ({
-        alert: (...args) => { world.alerts.push(args.length > 1 ? args[1] : args[0]); return 'YES'; },
-        ButtonSet: { YES_NO: 'YES_NO' },
-        Button: { YES: 'YES' }
-      }),
+      getUi: () => {
+        const menu = { items: [], addItem(label, fn) { this.items.push([label, fn]); return this; },
+          addSeparator() { this.items.push(['-']); return this; }, addToUi() { world.menu = this.items; return this; } };
+        return {
+          // Answers come from world.answers (a queue), defaulting to YES.
+          alert: (...args) => {
+            world.alerts.push(args.length > 1 ? args[1] : args[0]);
+            return world.answers && world.answers.length ? world.answers.shift() : 'YES';
+          },
+          prompt: (...args) => {
+            world.prompts = (world.prompts || []).concat([args[1]]);
+            const text = world.promptAnswers && world.promptAnswers.length ? world.promptAnswers.shift() : '';
+            return { getSelectedButton: () => (text === null ? 'CANCEL' : 'OK'), getResponseText: () => text || '' };
+          },
+          showModalDialog: (output, title) => { world.dialogs = (world.dialogs || []).concat([{ title, html: output._html }]); },
+          createMenu: () => menu,
+          ButtonSet: { YES_NO: 'YES_NO', YES_NO_CANCEL: 'YES_NO_CANCEL', OK_CANCEL: 'OK_CANCEL' },
+          Button: { YES: 'YES', NO: 'NO', CANCEL: 'CANCEL', OK: 'OK' }
+        };
+      },
       newDataValidation: () => builder('validation'),
       newConditionalFormatRule: () => builder('rule'),
       CopyPasteType: { PASTE_CONDITIONAL_FORMATTING: 'PASTE_CONDITIONAL_FORMATTING' },
@@ -477,7 +508,10 @@ function createWorld() {
     PropertiesService: {
       getScriptProperties: () => ({ getProperty: key => world.properties[key] || null })
     },
-    Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@school.example' }) },
+    Session: {
+      getEffectiveUser: () => ({ getEmail: () => 'owner@school.example' }),
+      getActiveUser: () => ({ getEmail: () => 'coordinator@school.example' })
+    },
     // The Google Sheets API advanced service. Tests delete it to check the
     // one-at-a-time fallback.
     Sheets: {
@@ -487,6 +521,12 @@ function createWorld() {
           world.batchUpdates = (world.batchUpdates || 0) + 1;
           return world.files[spreadsheetId].spreadsheet._batchUpdate(body.requests);
         }
+      }
+    },
+    HtmlService: {
+      createHtmlOutput: html => {
+        const output = { _html: html, setWidth() { return output; }, setHeight() { return output; } };
+        return output;
       }
     },
     Utilities: {

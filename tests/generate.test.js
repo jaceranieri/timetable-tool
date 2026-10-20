@@ -86,10 +86,10 @@ test('generateTimetable builds the file, names it, and lists tabs in order', () 
   assert.match(url, /^https:\/\/docs\.google\.com\/spreadsheets\/d\//);
   assert.match(file.handle.getName(), /^Generated Timetable - Resource First - /);
   assert.deepEqual(ss.getSheets().map(s => s.getName()), [
-    'DATA', 'OVERVIEW', 'TEMPLATE', 'SPEC_Template',
+    'Start here', 'DATA', 'OVERVIEW', 'TEMPLATE', 'SPEC_Template',
     'SPEC_Mr Smith', 'SPEC_Ms Jones', 'K Blue', 'K Red', 'Year 3 Gold'
   ]);
-  ss.getSheets().slice(4).forEach(sheet => assert.equal(sheet.isSheetHidden(), false, sheet.getName()));
+  ss.getSheets().slice(5).forEach(sheet => assert.equal(sheet.isSheetHidden(), false, sheet.getName()));
 });
 
 test('DATA tab: plain text, lists and named ranges', () => {
@@ -257,7 +257,7 @@ test('the Apps Script load test (LoadTest.gs) runs against a valid setup', () =>
   assert.equal(typeof wizard.runLoadTest(), 'number');
   world.newExecution();
   const ss = world.files[world.lastCopyId].spreadsheet;
-  assert.equal(ss.getSheets().length, 4 + 6 + 28);
+  assert.equal(ss.getSheets().length, 5 + 6 + 28);
 });
 
 test('timing is off for normal runs and logs every step for the load test', () => {
@@ -284,7 +284,7 @@ test('copies are made in a few Sheets API requests and keep the tab order', () =
     ['B3', 'T', 'Year 2', 3], ['C1', 'T', 'Year 3', 1]
   ];
   const { world, ss } = generate(makePayload({ classes }));
-  assert.deepEqual(ss.getSheets().map(s => s.getName()).slice(4), ['SPEC_Mr Smith', 'SPEC_Ms Jones', 'A1', 'A3', 'B1', 'B3', 'C1']);
+  assert.deepEqual(ss.getSheets().map(s => s.getName()).slice(5), ['SPEC_Mr Smith', 'SPEC_Ms Jones', 'A1', 'A3', 'B1', 'B3', 'C1']);
   assert.equal(world.batchUpdates, 1, 'specialists need no copies; the three class copies are one request');
   assert.deepEqual(ss.getSheetByName('B3').getRange('C27:C30').getValues().flat(), ['T', 'B3', 'Year 2', '3 week cycle']);
   assert.equal(ss.getSheetByName('C1').getRange('C31').getValue(), true);
@@ -313,10 +313,11 @@ test('without the Sheets API service, tabs are copied one at a time with the sam
 
   const names = sheetSet => sheetSet.getSheets().map(s => s.getName());
   assert.deepEqual(names(ss), names(withApi.ss));
+  // Start here links to tabs by sheet id, which differs between the two runs.
+  const values = sheet => sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).getValues()
+    .map(row => row.map(value => String(value).replace(/#gid=\d+/, '#gid=…')));
   ss.getSheets().forEach(sheet => {
-    const other = withApi.ss.getSheetByName(sheet.getName());
-    assert.deepEqual(sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).getValues(),
-      other.getRange(1, 1, other.getMaxRows(), other.getMaxColumns()).getValues(), sheet.getName());
+    assert.deepEqual(values(sheet), values(withApi.ss.getSheetByName(sheet.getName())), sheet.getName());
   });
 });
 
@@ -335,7 +336,7 @@ test('large school: tab order follows the wizard even with copies made through t
   const payload = makeLargeSchoolPayload();
   const { ss } = generate(payload);
   const config = setUp().wizard.parsePayloadConfig(payload);
-  assert.deepEqual(ss.getSheets().map(s => s.getName()), ['DATA', 'OVERVIEW', 'TEMPLATE', 'SPEC_Template']
+  assert.deepEqual(ss.getSheets().map(s => s.getName()), ['Start here', 'DATA', 'OVERVIEW', 'TEMPLATE', 'SPEC_Template']
     .concat(config.specialists.map(s => 'SPEC_' + s.name), config.classes.map(c => c.name)));
 });
 
@@ -355,4 +356,44 @@ test('progress is kept in the per-user cache', () => {
   wizard.generateTimetable(makePayload({ jobId: 'job_42' }));
   assert.equal(JSON.parse(wizard.checkProgress('job_42')).percent, 100);
   assert.equal(JSON.parse(world.cache.job_42).status, 'Timetable generation complete!');
+});
+
+test('Start here: first tab, stages with live status formulas, and a linked row per tab', () => {
+  const { ss } = generate();
+  const sheet = ss.getSheets()[0];
+  assert.equal(sheet.getName(), 'Start here');
+  assert.equal(sheet.getRange('A1').getValue(), 'St Example Primary - Timetable');
+  assert.deepEqual(sheet.getRange('A5:A9').getValues().flat(), [
+    '1. Fill in the specialist timetables', '2. Sync to the class timetables', '3. Lock the specialist lessons',
+    '4. Fill in the class timetables', '5. Check compliance'
+  ]);
+  assert.equal(sheet.getRange('D5').getValue(), '=SUM(D13:D14)&" lessons entered on "&COUNTIF(D13:D14,">0")&" of 2 specialist tab(s)"');
+  assert.equal(sheet.getRange('D9').getValue(), '=COUNTIF(F18:F20,"Yes")&" of 3 class(es) compliant"');
+  assert.equal(ss.getRangeByName('StartHereSyncStatus').getA1Notation(), 'E6');
+  assert.equal(ss.getRangeByName('StartHereSyncStatus').getValue(), 'Not run yet');
+
+  const smith = ss.getSheetByName('SPEC_Mr Smith');
+  assert.deepEqual(sheet.getRange('A13:D13').getValues()[0], [
+    '=HYPERLINK("#gid=' + smith.getSheetId() + '","SPEC_Mr Smith")', 'PDHPE', '1 week cycle',
+    "=SUMPRODUCT((LEN('SPEC_Mr Smith'!J5:AAK)>0)*ISNA(MATCH('SPEC_Mr Smith'!J5:AAK,BreakList,0)))"
+  ]);
+  const gold = ss.getSheetByName('Year 3 Gold');
+  assert.deepEqual(sheet.getRange('A20:F20').getValues()[0], [
+    '=HYPERLINK("#gid=' + gold.getSheetId() + '","Year 3 Gold")', 'Ms Chen', 'Year 3',
+    "='Year 3 Gold'!C15", "=COUNTIF('Year 3 Gold'!J5:AAK,\"CONFLICT:*\")", "=IF('Year 3 Gold'!C16=TRUE,\"Yes\",\"No\")"
+  ]);
+  // Formula cells calculate (normal format); typed names stay as typed (plain text).
+  assert.equal(sheet.getRange('D20').getNumberFormats()[0][0], '');
+  assert.equal(sheet.getRange('B20').getNumberFormats()[0][0], '@');
+});
+
+test('Start here links copied tabs too (their ids come from the Sheets API requests)', () => {
+  const { ss } = generate(makeLargeSchoolPayload());
+  const sheet = ss.getSheetByName('Start here');
+  const formulas = sheet.getRange('A1:A60').getValues().flat().filter(v => String(v).startsWith('=HYPERLINK'));
+  assert.equal(formulas.length, 6 + 28);
+  formulas.forEach(formula => {
+    const [, id, name] = formula.match(/#gid=(\d+)","(.+)"\)$/);
+    assert.equal(ss.getSheetByName(name).getSheetId(), Number(id), name);
+  });
 });

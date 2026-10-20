@@ -32,12 +32,49 @@ const CONFLICT_VALUE_PREFIX = 'CONFLICT:';
 const LOCK_DESCRIPTION = 'Locked Specialist Slot(s)';
 
 function onOpen() {
+  // In the order of work set out on the Start here tab.
   SpreadsheetApp.getUi()
     .createMenu('Timetable Admin')
-    .addItem('Sync Specialist Schedules', 'syncSpecialistSchedules')
-    .addItem('Lock Synced Cells', 'lockSyncedSpecialistCells')
+    .addItem('Go to Start here', 'goToStartHere')
+    .addSeparator()
+    .addItem('1. Sync Specialist Schedules', 'syncSpecialistSchedules')
+    .addItem('2. Lock Synced Cells', 'lockSyncedSpecialistCells')
+    .addSeparator()
+    .addItem('Check this timetable', 'checkThisTimetable')
+    .addItem('Check all class timetables', 'checkAllClassTimetables')
+    .addSeparator()
+    .addItem('Copy Week A to the other weeks (this tab)', 'copyWeekAToOtherWeeks')
+    .addItem('Copy Term 1 to Terms 2-4 (this tab)', 'copyTermOneToOtherTerms')
+    .addSeparator()
+    .addItem('Print this timetable (PDF)', 'printThisTimetable')
+    .addItem('Print the compliance overview (PDF)', 'printComplianceOverview')
+    .addSeparator()
     .addItem('Refresh Specialist Clash Formatting', 'refreshSpecialistClashFormatting')
     .addToUi();
+}
+
+function goToStartHere() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Start here');
+  if (sheet) ss.setActiveSheet(sheet);
+}
+
+/**
+ * Records a menu action's result in the "Last run" column of the Start here
+ * tab (named ranges StartHereSyncStatus and StartHereLockStatus, created by
+ * the wizard). Does nothing in timetables made before the Start here tab.
+ */
+function writeStartHereStatus(ss, rangeName, text) {
+  const range = ss.getRangeByName(rangeName);
+  if (!range) return;
+  const when = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'd MMM yyyy, h:mm a');
+  const who = Session.getActiveUser().getEmail();
+  range.setValue(when + (who ? ' by ' + who : '') + ': ' + text);
+}
+
+function getStartHereStatus(ss, rangeName) {
+  const range = ss.getRangeByName(rangeName);
+  return range ? String(range.getValue()) : '';
 }
 
 function refreshSpecialistClashFormatting() {
@@ -354,6 +391,8 @@ function syncSpecialistSchedules() {
       writeFailures.slice(0, 10).join('\n');
   }
 
+  writeStartHereStatus(ss, 'StartHereSyncStatus',
+    syncedCount + ' specialist slot(s) synced, ' + conflicts.length + ' conflict(s)');
   ui.alert(message);
 }
 
@@ -423,6 +462,17 @@ function lockSyncedSpecialistCells() {
     return;
   }
 
+  // The order of work is guided, not enforced: warn if the sync hasn't run.
+  if (getStartHereStatus(ss, 'StartHereSyncStatus') === 'Not run yet') {
+    const lockAnyway = ui.alert(
+      'Lock Synced Cells',
+      'The specialist schedules haven\'t been synced yet, so there is nothing to lock. ' +
+        'Run "1. Sync Specialist Schedules" first.\n\nLock anyway?',
+      ui.ButtonSet.YES_NO
+    );
+    if (lockAnyway !== ui.Button.YES) return;
+  }
+
   const confirmResponse = ui.alert(
     'Lock Synced Cells',
     'This will lock every specialist-synced cell on class timetables so only the ' +
@@ -449,6 +499,7 @@ function lockSyncedSpecialistCells() {
   let matchedCellCount = 0;
   let alreadyProtectedCellCount = 0;
   let removedLockCount = 0;
+  let openConflictCount = 0;
   let sheetsScanned = 0;
   const failures = [];
 
@@ -496,6 +547,7 @@ function lockSyncedSpecialistCells() {
     const needsLock = Array.from({ length: numRows }, (_, r) =>
       Array.from({ length: numCols }, (_, c) => {
         const isMarked = String(notes[r][c] || '').indexOf(SYNC_NOTE_PREFIX) === 0;
+        if (String(notes[r][c] || '').indexOf(CONFLICT_NOTE_PREFIX) === 0) openConflictCount++;
         if (isMarked) {
           matchedCellCount++;
           if (alreadyProtected[r][c]) alreadyProtectedCellCount++;
@@ -545,10 +597,17 @@ function lockSyncedSpecialistCells() {
       'message for a "Populated 0 specialist slot(s)" result).';
   }
 
+  if (openConflictCount > 0) {
+    message += '\n\n' + openConflictCount + ' conflict(s) (red cells) are still open and were left ' +
+      'unlocked. Resolve them, then run the sync and the lock again.';
+  }
+
   if (failures.length > 0) {
     message += '\n\n' + failures.length + ' range(s) could not be locked:\n' + failures.slice(0, 10).join('\n');
   }
 
+  writeStartHereStatus(ss, 'StartHereLockStatus', cellCount + ' cell(s) locked' +
+    (openConflictCount ? ', ' + openConflictCount + ' conflict(s) left unlocked' : ''));
   ui.alert(message);
 }
 
