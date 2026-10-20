@@ -11,6 +11,19 @@ function doGet() {
 }
 
 
+/**
+ * The master template the wizard copies. Set a TEMPLATE_ID script property
+ * (Project Settings > Script Properties) to point the wizard at a test copy
+ * while developing; delete the property to use the live template again.
+ */
+const LIVE_TEMPLATE_ID = '1x3pzraH_eG2nsQyiZPE9WGAzZ1wZIFGM2JUVF4W6FCk';
+
+function getTemplateId() {
+  const configuredId = PropertiesService.getScriptProperties().getProperty('TEMPLATE_ID');
+  return (configuredId || '').trim() || LIVE_TEMPLATE_ID;
+}
+
+
 function checkProgress(jobId) {
   if (!jobId) return null;
   try {
@@ -47,8 +60,7 @@ function generateTimetable(payload) {
     updateJobProgress(jobId, 5, 'Initializing template duplication...');
 
 
-    const TEMPLATE_ID = '1x3pzraH_eG2nsQyiZPE9WGAzZ1wZIFGM2JUVF4W6FCk';
-    const templateFile = DriveApp.getFileById(TEMPLATE_ID);
+    const templateFile = DriveApp.getFileById(getTemplateId());
     const timeStamp = new Date().toLocaleDateString('en-AU');
     const newFile = templateFile.makeCopy(
       'Generated Timetable - Resource First - ' + timeStamp
