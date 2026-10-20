@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timetable Configuration Wizard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        brand: {
+                            green: "#00b268", /* Original Brand Green for accents/logos */
+                            dark: "#007A48",  /* WCAG AA Compliant Green for Buttons with white text */
+                            bg: "#f4f7f9"
+                        },
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 222.2 84% 4.9%;
+            --border: 214.3 31.8% 91.4%;
+            --input: 214.3 31.8% 91.4%;
+            --ring: 222.2 84% 4.9%;
+            --primary: 222.2 47.4% 11.2%;
+            --primary-foreground: 210 40% 98%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
+            --muted: 210 40% 96.1%;
+            --muted-foreground: 215.4 16.3% 46.9%;
+        }
+        body { background-color: #f8fafc; color: hsl(var(--foreground)); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+        /* Custom scrollbar for lists */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+
+        /* Microanimations */
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-step { animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.97) translateY(5px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .animate-pop { animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes successPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            60% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-success { animation: successPop 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center pt-12 pb-8 px-4 sm:px-8">
+    <div id="root" class="w-full max-w-4xl"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- BASE UI COMPONENTS ---
+        const Card = ({ children, className = "" }) => (
+            <div className={`rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm ${className}`}>{children}</div>
+        );
+        const CardHeader = ({ children, className = "" }) => <div className={`flex flex-col space-y-1.5 p-6 ${className}`}>{children}</div>;
+        const CardTitle = ({ children, className = "" }) => <h3 className={`font-semibold leading-none tracking-tight text-xl ${className}`}>{children}</h3>;
+        const CardDescription = ({ children, className = "" }) => <p className={`text-sm text-slate-500 ${className}`}>{children}</p>;
+        const CardContent = ({ children, className = "" }) => <div className={`p-6 pt-0 ${className}`}>{children}</div>;
+        const CardFooter = ({ children, className = "" }) => <div className={`flex items-center p-6 pt-0 ${className}`}>{children}</div>;
+
+        const Label = ({ children, className = "" }) => (
+            <label className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${className}`}>{children}</label>
+        );
+
+        const Input = ({ className = "", error, ...props }) => (
+            <div className="relative w-full flex items-center">
+                <input className={`flex h-10 w-full rounded-md border ${error ? 'border-red-500 pr-[80px] ring-1 ring-red-500/20' : 'border-slate-200'} bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props} />
+                {error && (
+                    <div className="absolute right-2 flex items-center gap-1 text-[11px] font-medium text-red-600 bg-white px-1 pointer-events-none animate-pop">
+                        <AlertCircleIcon className="w-3.5 h-3.5" />
+                        <span>{error}</span>
+                    </div>
+                )}
+            </div>
+        );
+
+        const Select = ({ className = "", error, children, ...props }) => (
+            <div className="relative w-full flex items-center">
+                <select className={`flex h-10 w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
+                    {children}
+                </select>
+                {!error && (
+                    <ChevronDownIcon className="w-4 h-4 text-slate-500 absolute right-3 pointer-events-none" />
+                )}
+                {error && (
+                    <div className="absolute right-7 flex items-center gap-1 text-[11px] font-medium text-red-600 bg-white px-1 pointer-events-none animate-pop">
+                        <AlertCircleIcon className="w-3.5 h-3.5" />
+                        <span>{error}</span>
+                    </div>
+                )}
+            </div>
+        );
+
+        const Button = ({ children, variant = "default", className = "", ...props }) => {
+            const variants = {
+                default: "bg-slate-900 text-slate-50 hover:bg-slate-900/90",
+                destructive: "bg-red-600 text-slate-50 hover:bg-red-700",
+                bin: "bg-slate-700 text-slate-100 hover:bg-red-600 hover:text-white shadow-sm",
+                outline: "border border-slate-200 bg-white hover:bg-slate-100 hover:text-slate-900",
+                brand: "bg-brand-dark text-white hover:bg-[#00663C] shadow-sm",
+                ghost: "hover:bg-slate-100 hover:text-slate-900",
+                footerOutline: "border border-slate-300 text-slate-700 hover:bg-slate-100 shadow-sm",
+                footerSolid: "bg-brand-dark text-white hover:bg-[#00663C] shadow-md font-semibold",
+            };
+            return (
+                <button className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-all duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 ${variants[variant] || variants.default} ${className}`} {...props}>
+                    {children}
+                </button>
+            );
+        };
+
+        const GridIcon = () => (
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#00b268" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="3" y1="15" x2="21" y2="15"></line>
+                <line x1="12" y1="3" x2="12" y2="21"></line>
+            </svg>
+        );
+        const PlusIcon = ({className}) => <svg className={className || "w-4 h-4"} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
+        const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+        const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+        const CheckCircleIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>;
+        const AlertTriangleIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
+        const ClockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+        const CalendarIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
+        const ActivityIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>;
+        const ChevronDownIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>;
+        const ChevronUpIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>;
+        const BellIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>;
+        const CoffeeIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"></path><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path><line x1="6" y1="2" x2="6" y2="4"></line><line x1="10" y1="2" x2="10" y2="4"></line><line x1="14" y1="2" x2="14" y2="4"></line></svg>;
+        const LayersIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 12 12 17 22 12"></polyline><polyline points="2 17 12 22 22 17"></polyline></svg>;
+        const UsersIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
+        const StarIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>;
+        const AlertCircleIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>;
+        const PencilIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path><path d="m15 5 4 4"></path></svg>;
+
+        // Pastel palette offered in the class colour swatch picker (also used
+        // to auto-assign a default colour to newly created classes), ordered
+        // warm -> cool. 15 presets fill a 4x4 popover grid, with the 16th
+        // (bottom-right) cell reserved for the custom colour picker.
+        const CLASS_COLOR_PALETTE = [
+            '#FFADAD', '#FBC4AB', '#FFD6A5', '#FFE5B4', '#FDFFB6',
+            '#CAFFBF', '#C1FFD7', '#D0F4DE', '#9BF6FF', '#C4FAF8',
+            '#A0C4FF', '#BDB2FF', '#E4C1F9', '#FFC6FF', '#FFCFE0'
+        ];
+
+        const App = () => {
+            const [step, setStep] = useState(1);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+
+            // Real-time Generation & Polling States
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [loadingProgress, setLoadingProgress] = useState(0);
+            const [loadingMessage, setLoadingMessage] = useState("");
+            const [activeJobId, setActiveJobId] = useState(null);
+            const [logs, setLogs] = useState([]);
+            const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+            const [isSuccess, setIsSuccess] = useState(false);
+            const [activeGradeTab, setActiveGradeTab] = useState(null);
+            const [colorPickerFor, setColorPickerFor] = useState(null);
+            const [colorPickerPos, setColorPickerPos] = useState({ top: 0, left: 0 });
+            const colorTriggerRefs = useRef({});
+
+            // Keep the open colour popover glued to its trigger swatch as the
+            // page or any nested scroll container (e.g. the class list) scrolls.
+            useEffect(() => {
+                if (colorPickerFor === null) return;
+                const reposition = () => {
+                    const el = colorTriggerRefs.current[colorPickerFor];
+                    if (!el) return;
+                    const rect = el.getBoundingClientRect();
+                    setColorPickerPos({ top: rect.bottom + 6, left: rect.left });
+                };
+                reposition();
+                window.addEventListener('scroll', reposition, true);
+                window.addEventListener('resize', reposition);
+                return () => {
+                    window.removeEventListener('scroll', reposition, true);
+                    window.removeEventListener('resize', reposition);
+                };
+            }, [colorPickerFor]);
+            const [generatedUrl, setGeneratedUrl] = useState("");
+
+            // App state for wizard data
+            const [data, setData] = useState({
+                schoolStart: "08:30",
+                schoolEnd: "15:15",
+                breaks: [
+                    { id: 1, name: "Recess", start: "10:30", end: "11:00" },
+                    { id: 2, name: "Lunch", start: "13:00", end: "13:45" }
+                ],
+                klas: [
+                    { id: 10, name: "English" },
+                    { id: 20, name: "Mathematics" },
+                    { id: 30, name: "Religion" },
+                    { id: 40, name: "Science & Tech" },
+                    { id: 50, name: "HSIE" },
+                    { id: 60, name: "PDHPE" },
+                    { id: 70, name: "Creative Arts" },
+                    { id: 80, name: "Non-Curricular" }
+                ],
+                grades: [
+                    { id: "k", name: "Kindergarten", classes: 2, cycle: 1 },
+                    { id: "y1", name: "Year 1", classes: 2, cycle: 1 },
+                    { id: "y2", name: "Year 2", classes: 2, cycle: 1 },
+                    { id: "y3", name: "Year 3", classes: 2, cycle: 1 },
+                    { id: "y4", name: "Year 4", classes: 2, cycle: 1 },
+                    { id: "y5", name: "Year 5", classes: 2, cycle: 1 },
+                    { id: "y6", name: "Year 6", classes: 2, cycle: 1 }
+                ],
+                staffing: [
+                    { id: 101, gradeId: "k", className: "Kindergarten Blue", teacher: "", color: CLASS_COLOR_PALETTE[0] },
+                    { id: 102, gradeId: "k", className: "Kindergarten Red", teacher: "", color: CLASS_COLOR_PALETTE[1] },
+                    { id: 103, gradeId: "y1", className: "Year 1 Gold", teacher: "", color: CLASS_COLOR_PALETTE[2] },
+                    { id: 104, gradeId: "y1", className: "Year 1 Green", teacher: "", color: CLASS_COLOR_PALETTE[3] },
+                    { id: 105, gradeId: "y2", className: "Year 2 Amber", teacher: "", color: CLASS_COLOR_PALETTE[4] },
+                    { id: 106, gradeId: "y2", className: "Year 2 Jade", teacher: "", color: CLASS_COLOR_PALETTE[5] }
+                ],
+                specialists: [
+                    { id: 301, name: "", kla: "", cycle: 1 } // Initial empty template
+                ],
+                activities: [
+                    { id: 201, name: "Assembly" },
+                    { id: 202, name: "Library" },
+                    { id: 203, name: "Amadeus - Tutorials" }
+                ]
+            });
+
+            const [errors, setErrors] = useState({});
+            const [expandedSummary, setExpandedSummary] = useState({ staff: true, specialists: true, activities: true });
+            const logContainerRef = useRef(null);
+
+            useEffect(() => {
+                let timerInterval = null;
+                let pollInterval = null;
+
+                if (isGenerating) {
+                    setElapsedSeconds(0);
+                    timerInterval = setInterval(() => {
+                        setElapsedSeconds(prev => prev + 1);
+                    }, 1000);
+
+                    if (activeJobId) {
+                        pollInterval = setInterval(() => {
+                            if (typeof google !== 'undefined' && google.script) {
+                                google.script.run
+                                    .withSuccessHandler((responseJson) => {
+                                        if (responseJson) {
+                                            try {
+                                                const data = JSON.parse(responseJson);
+                                                if (data.percent >= 0) {
+                                                    setLoadingProgress(data.percent);
+                                                    setLoadingMessage(data.status);
+                                                    setLogs(prev => {
+                                                        if (prev.length === 0 || prev[prev.length - 1].text !== data.status) {
+                                                            return [...prev, {
+                                                                id: Date.now() + Math.random(),
+                                                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                                                text: data.status,
+                                                                percent: data.percent
+                                                            }];
+                                                        }
+                                                        return prev;
+                                                    });
+                                                } else if (data.percent === -1) {
+                                                    setIsGenerating(false);
+                                                    setIsSubmitting(false);
+                                                    alert("Error during timetable generation: " + data.status);
+                                                }
+                                            } catch (e) {
+                                                console.error("Error parsing progress response:", e);
+                                            }
+                                        }
+                                    })
+                                    .checkProgress(activeJobId);
+                            }
+                        }, 1200);
+                    }
+                }
+
+                return () => {
+                    if (timerInterval) clearInterval(timerInterval);
+                    if (pollInterval) clearInterval(pollInterval);
+                };
+            }, [isGenerating, activeJobId]);
+
+            // Auto-scroll activity log to latest entry
+            useEffect(() => {
+                if (logContainerRef.current) {
+                    logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+                }
+            }, [logs]);
+
+            // Helper to format elapsed time
+            const formatElapsed = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            };
+
+            const updateField = (field, val) => {
+                setData(prev => ({ ...prev, [field]: val }));
+                setErrors(prev => ({ ...prev, [field]: undefined }));
+            };
+
+            const addToList = (listKey, newItem) => {
+                const itemWithId = { ...newItem, id: Date.now() + Math.random() };
+                setData(prev => ({ ...prev, [listKey]: [...prev[listKey], itemWithId] }));
+            };
+
+            const updateList = (listKey, index, field, val) => {
+                setData(prev => {
+                    const list = [...prev[listKey]];
+                    list[index] = { ...list[index], [field]: val };
+                    return { ...prev, [listKey]: list };
+                });
+            };
+
+            const removeFromList = (listKey, id) => {
+                setData(prev => ({
+                    ...prev,
+                    [listKey]: prev[listKey].filter(item => item.id !== id)
+                }));
+            };
+
+            const validateStep1 = () => {
+                let currentErrors = {};
+                let isValid = true;
+
+                if (!data.schoolStart) { currentErrors.schoolStart = "Required"; isValid = false; }
+                if (!data.schoolEnd) { currentErrors.schoolEnd = "Required"; isValid = false; }
+
+                if (data.schoolStart && data.schoolEnd && data.schoolStart >= data.schoolEnd) {
+                    currentErrors.schoolEnd = "Must be after start time";
+                    isValid = false;
+                }
+
+                let breakErrs = {};
+                data.breaks.forEach((b, i) => {
+                    breakErrs[i] = {};
+                    if (!b.name.trim()) { breakErrs[i].name = "Required"; isValid = false; }
+                    if (!b.start) { breakErrs[i].start = "Required"; isValid = false; }
+                    if (!b.end) { breakErrs[i].end = "Required"; isValid = false; }
+
+                    if (b.start && b.end && b.start >= b.end) {
+                        breakErrs[i].end = "End must be after start";
+                        isValid = false;
+                    }
+
+                    if (b.start && data.schoolStart && b.start < data.schoolStart) {
+                        breakErrs[i].start = "Before school start";
+                        isValid = false;
+                    }
+                    if (b.end && data.schoolEnd && b.end > data.schoolEnd) {
+                        breakErrs[i].end = "After school end";
+                        isValid = false;
+                    }
+                });
+
+                if (Object.keys(breakErrs).some(k => Object.keys(breakErrs[k]).length > 0)) {
+                    currentErrors.breaks = breakErrs;
+                }
+
+                setErrors(currentErrors);
+                return isValid;
+            };
+
+            const validateStep2 = () => {
+                let currentErrors = { grades: {} };
+                let isValid = true;
+
+                data.grades.forEach((g, i) => {
+                    currentErrors.grades[i] = {};
+                    if (g.classes === undefined || g.classes === null || g.classes < 0) { currentErrors.grades[i].classes = "Invalid"; isValid = false; }
+                    if (!g.cycle || g.cycle < 1) { currentErrors.grades[i].cycle = "Invalid"; isValid = false; }
+                });
+
+                setErrors(currentErrors);
+                return isValid;
+            };
+
+            const validateStep3 = () => {
+                let currentErrors = { staffing: {}, specialists: {}, activities: {} };
+                let isValid = true;
+
+                data.staffing.forEach((s, i) => {
+                    currentErrors.staffing[i] = {};
+                    if (!s.className.trim()) { currentErrors.staffing[i].className = "Required"; isValid = false; }
+                    if (!s.teacher.trim()) { currentErrors.staffing[i].teacher = "Required"; isValid = false; }
+                });
+
+                data.specialists.forEach((s, i) => {
+                    currentErrors.specialists[i] = {};
+                    if (!s.name.trim()) { currentErrors.specialists[i].name = "Required"; isValid = false; }
+                    if (!s.kla) { currentErrors.specialists[i].kla = "Required"; isValid = false; }
+                    if (!s.cycle || s.cycle < 1) { currentErrors.specialists[i].cycle = "Invalid"; isValid = false; }
+                });
+
+                data.activities.forEach((a, i) => {
+                    currentErrors.activities[i] = {};
+                    if (!a.name.trim()) { currentErrors.activities[i].name = "Required"; isValid = false; }
+                });
+
+                setErrors(currentErrors);
+                return isValid;
+            };
+
+            const handleNext = () => {
+                let valid = false;
+                if (step === 1) valid = validateStep1();
+                if (step === 2) {
+                    valid = validateStep2();
+                    if (valid) {
+                        setData(prev => {
+                            let newStaffing = [...prev.staffing];
+                            const validGradeIds = prev.grades.map(g => g.id);
+
+                            // Remove staffing entries for grades that were deleted
+                            newStaffing = newStaffing.filter(s => validGradeIds.includes(s.gradeId));
+
+                            // Adjust staffing rows per grade based on defined 'classes' count
+                            prev.grades.forEach(g => {
+                                const existingForGrade = newStaffing.filter(s => s.gradeId === g.id);
+
+                                if (existingForGrade.length < g.classes) {
+                                    const toAdd = g.classes - existingForGrade.length;
+                                    const startIdx = existingForGrade.length + 1;
+                                    for (let i = 0; i < toAdd; i++) {
+                                        newStaffing.push({
+                                            id: Date.now() + Math.random(),
+                                            gradeId: g.id,
+                                            className: `${g.name} - ${startIdx + i}`,
+                                            teacher: "",
+                                            color: CLASS_COLOR_PALETTE[newStaffing.length % CLASS_COLOR_PALETTE.length]
+                                        });
+                                    }
+                                } else if (existingForGrade.length > g.classes) {
+                                    const toRemove = existingForGrade.length - g.classes;
+                                    for (let i = 0; i < toRemove; i++) {
+                                        const idToRemove = existingForGrade[existingForGrade.length - 1 - i].id;
+                                        newStaffing = newStaffing.filter(s => s.id !== idToRemove);
+                                    }
+                                }
+                            });
+
+                            return { ...prev, staffing: newStaffing };
+                        });
+
+                        // Set active tab to first grade that has classes
+                        const gradesWithClasses = data.grades.filter(g => g.classes > 0);
+                        if (gradesWithClasses.length > 0) {
+                            setActiveGradeTab(gradesWithClasses[0].id);
+                        }
+                    }
+                }
+                if (step === 3) valid = validateStep3();
+
+                if (valid && step < 4) setStep(step + 1);
+            };
+
+            const handleBack = () => setStep(step - 1);
+
+            const handleSubmit = () => {
+                const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                setActiveJobId(jobId);
+                setIsSubmitting(true);
+                setIsGenerating(true);
+                setLoadingProgress(5);
+
+                const initialMsg = "Initializing template duplication...";
+                setLoadingMessage(initialMsg);
+                setLogs([{
+                    id: Date.now(),
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    text: initialMsg,
+                    percent: 5
+                }]);
+
+                // Build variables
+                const exportVariables = [];
+                exportVariables.push({ name: 'SchoolStart', value: data.schoolStart });
+                exportVariables.push({ name: 'SchoolEnd', value: data.schoolEnd });
+
+                data.breaks.forEach((b, i) => {
+                    exportVariables.push({ name: `Break_${i+1}_Name`, value: b.name });
+                    exportVariables.push({ name: `Break_${i+1}_Start`, value: b.start });
+                    exportVariables.push({ name: `Break_${i+1}_End`, value: b.end });
+                });
+
+                data.klas.forEach((k, i) => {
+                    exportVariables.push({ name: `KLA_${i+1}_Name`, value: k.name });
+                });
+
+                data.specialists.forEach((s, i) => {
+                    exportVariables.push({ name: `Specialist_${i+1}_Name`, value: s.name });
+                    exportVariables.push({ name: `Specialist_${i+1}_KLA`, value: s.kla });
+                    exportVariables.push({ name: `Specialist_${i+1}_Cycle`, value: s.cycle || 1 });
+                });
+
+                let classCounter = 1;
+                data.grades.forEach((g) => {
+                    const staff = data.staffing.filter(s => s.gradeId === g.id);
+                    staff.forEach((s) => {
+                        exportVariables.push({ name: `Class_${classCounter}_Name`, value: s.className });
+                        exportVariables.push({ name: `Class_${classCounter}_Teacher`, value: s.teacher });
+                        exportVariables.push({ name: `Class_${classCounter}_Grade`, value: g.name });
+                        exportVariables.push({ name: `Class_${classCounter}_Cycle`, value: g.cycle });
+                        exportVariables.push({ name: `Class_${classCounter}_Color`, value: s.color || '' });
+                        classCounter++;
+                    });
+                });
+
+                data.activities.forEach((a, i) => {
+                    exportVariables.push({ name: `Activity_${i+1}_Name`, value: a.name });
+                });
+
+                const payloadToSubmit = {
+                    jobId: jobId,
+                    exportVariables: exportVariables,
+                    metadata: {
+                        generatedAt: new Date().toISOString()
+                    }
+                };
+
+                // Check environment and invoke backend function
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run
+                        .withSuccessHandler((url) => {
+                            setLoadingProgress(100);
+                            setLoadingMessage("Finalizing spreadsheet setup...");
+                            setLogs(prev => [...prev, {
+                                id: Date.now(),
+                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                text: "Timetable generated successfully!",
+                                percent: 100
+                            }]);
+                            setTimeout(() => {
+                                setGeneratedUrl(url);
+                                setIsGenerating(false);
+                                setIsSubmitting(false);
+                                setIsSuccess(true);
+                            }, 800);
+                        })
+                        .withFailureHandler((error) => {
+                            alert("Failed to generate timetable: " + error.message);
+                            setIsGenerating(false);
+                            setIsSubmitting(false);
+                        })
+                        .generateTimetable(payloadToSubmit);
+                } else {
+                    // Local dev simulation with realistic multi-step updates
+                    const steps = [
+                        { pct: 15, msg: "Opening duplicated spreadsheet..." },
+                        { pct: 22, msg: "Populating DATA sheet configurations..." },
+                        { pct: 35, msg: "Generating Class 1 of 3: Kindergarten - 1 (Building grid...)" },
+                        { pct: 55, msg: "Generating Class 2 of 3: Year 1 - 1 (Applying break slots...)" },
+                        { pct: 80, msg: "Generating Class 3 of 3: Year 2 - 1 (Formatting cells...)" },
+                        { pct: 95, msg: "Applying conditional formatting rules..." },
+                        { pct: 100, msg: "Timetable generation complete!" }
+                    ];
+
+                    steps.forEach((step, idx) => {
+                        setTimeout(() => {
+                            setLoadingProgress(step.pct);
+                            setLoadingMessage(step.msg);
+                            setLogs(prev => [...prev, {
+                                id: Date.now() + idx,
+                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                text: step.msg,
+                                percent: step.pct
+                            }]);
+
+                            if (step.pct === 100) {
+                                setTimeout(() => {
+                                    setGeneratedUrl("https://docs.google.com/spreadsheets/d/dummy-link-for-dev");
+                                    setIsGenerating(false);
+                                    setIsSubmitting(false);
+                                    setIsSuccess(true);
+                                }, 600);
+                            }
+                        }, (idx + 1) * 1200);
+                    });
+                }
+            };
+
+            const timeToMinutes = (timeStr) => {
+                if (!timeStr) return 0;
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return (hours * 60) + minutes;
+            };
+
+            const formatMinutes = (totalMins) => {
+                if (totalMins < 0) return "0 min";
+                const h = Math.floor(totalMins / 60);
+                const m = totalMins % 60;
+                if (h > 0 && m > 0) return `${h} hr ${m} min`;
+                if (h > 0) return `${h} hr`;
+                return `${m} min`;
+            };
+
+            const formatAMPM = (timeStr) => {
+                if (!timeStr) return '';
+                let [hours, minutes] = timeStr.split(':').map(Number);
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12;
+                const mins = minutes < 10 ? '0' + minutes : minutes;
+                return `${hours}:${mins} ${ampm}`;
+            };
+
+            // Calculate active totals for Step 1
+            const schoolStartMins = timeToMinutes(data.schoolStart);
+            const schoolEndMins = timeToMinutes(data.schoolEnd);
+            const totalSchoolMins = schoolEndMins > schoolStartMins ? schoolEndMins - schoolStartMins : 0;
+
+            let totalBreakMins = 0;
+            data.breaks.forEach(b => {
+                if (b.start && b.end) {
+                    const start = timeToMinutes(b.start);
+                    const end = timeToMinutes(b.end);
+                    if (end > start) totalBreakMins += (end - start);
+                }
+            });
+
+            const dailyTeachingMins = Math.max(0, totalSchoolMins - totalBreakMins);
+
+            const renderStep1 = () => (
+                <div className="space-y-6 animate-step" key="step1">
+
+                    {/* Bell Times */}
+                    <div>
+                        <div className="mb-4">
+                            <h4 className="text-base font-semibold flex items-center gap-2"><BellIcon className="w-5 h-5 text-brand-dark" /> Bell Times</h4>
+                            <p className="text-sm text-slate-500 mt-1">Set standard operating hours for the day.</p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>School Start Time</Label>
+                                <Input type="time" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>School End Time</Label>
+                                <Input type="time" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Global Breaks */}
+                    <div className="border-t border-slate-200 pt-6">
+                        <div className="flex items-start justify-between mb-4">
+                            <div>
+                                <h4 className="text-base font-semibold flex items-center gap-2"><CoffeeIcon className="w-5 h-5 text-brand-dark" /> Global Breaks</h4>
+                                <p className="text-sm text-slate-500 mt-1">Define recess, lunch, or transitions.</p>
+                            </div>
+                            <Button variant="brand" size="sm" onClick={() => addToList('breaks', { name: "", start: "", end: "" })} className="h-8 gap-1">
+                                <PlusIcon className="w-4 h-4 mr-1" /> Add Break
+                            </Button>
+                        </div>
+
+                        <div id="list-container-breaks" className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1 -m-1">
+                            {data.breaks.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
+                                    <CalendarIcon className="w-8 h-8 mb-3 text-slate-400" />
+                                    <p className="text-sm font-medium text-slate-700 mb-1">No breaks configured</p>
+                                    <p className="text-xs mb-4 text-center">Add lunch, recess, or standard transition times.</p>
+                                    <Button variant="outline" size="sm" onClick={() => addToList('breaks', { name: "", start: "", end: "" })}>Add First Break</Button>
+                                </div>
+                            ) : (
+                                data.breaks.map((b, i) => {
+                                    const bMins = (b.start && b.end) ? (timeToMinutes(b.end) - timeToMinutes(b.start)) : 0;
+                                    return (
+                                    <div key={b.id} className="flex flex-col sm:flex-row items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg animate-pop">
+                                        <div className="w-full sm:w-1/4 lg:w-1/3">
+                                            <Label className="text-xs mb-1 block">Break Name</Label>
+                                            <Input id={`input-${b.id}`} placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
+                                        </div>
+                                        <div className="flex gap-3 w-full sm:w-auto sm:flex-1 items-end">
+                                            <div className="flex-1 sm:w-28">
+                                                <Label className="text-xs mb-1 block">Start</Label>
+                                                <Input type="time" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
+                                            </div>
+                                            <div className="flex-1 sm:w-28 relative">
+                                                <Label className="text-xs mb-1 block">End</Label>
+                                                <Input type="time" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
+                                            </div>
+                                            <div className="flex items-center">
+                                                <div className="h-10 px-3 flex items-center justify-center bg-slate-200/50 border border-slate-200 text-slate-600 text-xs font-bold rounded-md whitespace-nowrap min-w-[72px]">
+                                                    {bMins > 0 ? formatMinutes(bMins) : '0 min'}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <Button variant="bin" className="px-2 h-10 w-10 shadow-sm shrink-0" onClick={() => removeFromList('breaks', b.id)}>
+                                                    <TrashIcon />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )})
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Real-time Summary Box */}
+                    <div className="bg-brand-green/10 p-4 rounded-lg border border-brand-green/20 flex flex-col sm:flex-row justify-between items-center mt-4 gap-4 shadow-sm animate-pop">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-brand-dark text-white p-2.5 rounded-full shadow-sm">
+                                <ClockIcon />
+                            </div>
+                            <div>
+                                <span className="text-base font-bold text-slate-900 block">Daily Teaching Time</span>
+                                <span className="text-xs text-slate-600 font-medium">Total Day: {formatMinutes(totalSchoolMins)}</span>
+                            </div>
+                        </div>
+                        <div className="text-center sm:text-right">
+                            <span className="text-2xl font-black text-brand-dark leading-none">{formatMinutes(dailyTeachingMins)}</span>
+                            <span className="text-[11px] text-slate-500 block mt-0.5 font-medium">Minus {formatMinutes(totalBreakMins)} Breaks</span>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderStep2 = () => (
+                <div className="space-y-6 animate-step" key="step2">
+                    <div className="flex items-center justify-between mb-2">
+                        <div>
+                            <h4 className="text-base font-semibold flex items-center gap-2"><LayersIcon className="w-5 h-5 text-brand-dark" /> Grade Information</h4>
+                            <p className="text-sm text-slate-500 mt-1">Configure the cycle and class distribution per grade.</p>
+                        </div>
+                    </div>
+
+                    {errors.general && <p className="text-sm text-red-500 bg-red-50 p-2 rounded animate-pop">{errors.general}</p>}
+
+                    <div id="list-container-grades" className="space-y-3 max-h-[calc(100vh-20rem)] overflow-y-auto custom-scrollbar p-1 -m-1">
+                        {data.grades.map((g, i) => {
+                            const isInactive = g.classes === 0;
+                            return (
+                                <div key={g.id} className={`flex flex-wrap sm:flex-nowrap items-start gap-3 p-3 rounded-lg transition-all duration-300 ${isInactive ? 'bg-slate-100 border border-slate-200 opacity-60 grayscale-[50%]' : 'bg-slate-50 border border-slate-100 shadow-sm animate-pop'}`}>
+                                    <div className="w-full sm:flex-1">
+                                        <Label className="text-xs mb-1 block">&nbsp;</Label>
+                                        <div className={`h-10 flex items-center px-4 rounded-md font-bold transition-colors ${isInactive ? 'bg-transparent text-slate-500' : 'bg-slate-200/50 border border-slate-200 text-slate-700'}`}>
+                                            {g.name}
+                                        </div>
+                                    </div>
+                                    <div className="w-full sm:w-24">
+                                        <Label className="text-xs mb-1 block">Total Classes</Label>
+                                        <Input type="number" min="0" step="1" value={g.classes} onChange={(e) => {
+                                            const val = parseInt(e.target.value, 10);
+                                            updateList('grades', i, 'classes', isNaN(val) ? 0 : Math.max(0, val));
+                                        }} error={errors.grades?.[i]?.classes} />
+                                    </div>
+                                    <div className="w-full sm:w-40">
+                                        <Label className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
+                                        <Input type="number" min="1" step="1" value={g.cycle} onChange={(e) => {
+                                            const val = parseInt(e.target.value, 10);
+                                            updateList('grades', i, 'cycle', isNaN(val) ? 1 : Math.max(1, val));
+                                        }} error={errors.grades?.[i]?.cycle} disabled={isInactive} />
+                                    </div>
+                                    <div className="w-full sm:w-auto">
+                                        <Label className="text-xs mb-1 block">&nbsp;</Label>
+                                        {isInactive ? (
+                                            <Button variant="outline" className="px-3 h-10 w-full sm:w-auto shadow-sm text-slate-600 border-slate-300 hover:bg-slate-100 hover:text-slate-900" onClick={() => updateList('grades', i, 'classes', 1)}>
+                                                <PlusIcon className="w-4 h-4 mr-1" /> Add
+                                            </Button>
+                                        ) : (
+                                            <Button variant="bin" className="px-2 h-10 w-full sm:w-10 shadow-sm" onClick={() => updateList('grades', i, 'classes', 0)}>
+                                                <TrashIcon />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+
+            const renderStep3 = () => {
+                const checkGradeCompletion = (gradeId) => {
+                    const staff = data.staffing.filter(s => s.gradeId === gradeId);
+                    if (staff.length === 0) return false;
+                    return staff.every(s => s.className.trim() !== "" && s.teacher.trim() !== "");
+                };
+
+                const gradesWithClasses = data.grades.filter(g => g.classes > 0);
+                const currentTabId = activeGradeTab && gradesWithClasses.some(g => g.id === activeGradeTab)
+                    ? activeGradeTab
+                    : (gradesWithClasses.length > 0 ? gradesWithClasses[0].id : null);
+
+                return (
+                    <div className="space-y-8 animate-step" key="step3">
+                        {/* Classroom Teachers */}
+                        <div>
+                            <div className="mb-4">
+                                <h4 className="text-base font-semibold flex items-center gap-2"><UsersIcon className="w-5 h-5 text-brand-dark" /> Teacher Assignments</h4>
+                                <p className="text-sm text-slate-500 mt-1">Name your class partitions and assign teachers. The number of rows is set by Step 2.</p>
+                            </div>
+
+                            {gradesWithClasses.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
+                                    <ActivityIcon className="w-8 h-8 mb-3 text-slate-400" />
+                                    <p className="text-sm font-medium text-slate-700 mb-1">No classes configured</p>
+                                    <p className="text-xs mb-4 text-center">Return to Step 2 and configure at least 1 class for a grade.</p>
+                                </div>
+                             ) : (
+                                <div className="border border-slate-200 rounded-lg bg-white overflow-hidden shadow-sm">
+                                    {/* Tabs Header */}
+                                    <div role="tablist" className="flex overflow-x-auto border-b border-slate-200 custom-scrollbar bg-slate-50/50 pt-2 px-2 gap-1">
+                                        {gradesWithClasses.map(g => {
+                                            const isComplete = checkGradeCompletion(g.id);
+                                            const isActive = currentTabId === g.id;
+                                            return (
+                                                <button
+                                                    key={g.id}
+                                                    role="tab"
+                                                    aria-selected={isActive}
+                                                    tabIndex={isActive ? 0 : -1}
+                                                    onClick={() => setActiveGradeTab(g.id)}
+                                                    className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap rounded-t-md focus-visible:outline-none focus-visible:bg-slate-100 ${
+                                                        isActive
+                                                            ? 'border-brand-dark text-brand-dark bg-white shadow-[0_-2px_6px_-2px_rgba(0,0,0,0.05)]'
+                                                            : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    {g.name}
+                                                    {isComplete ? (
+                                                        <CheckCircleIcon className="w-4 h-4 text-brand-dark" />
+                                                    ) : (
+                                                        <AlertTriangleIcon className="w-4 h-4 text-amber-500" />
+                                                    )}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {/* Tab Content */}
+                                    <div className="p-4 bg-white max-h-[350px] overflow-y-auto custom-scrollbar">
+                                        {gradesWithClasses.filter(g => g.id === currentTabId).map((g) => {
+                                            const staffForGrade = data.staffing.filter(s => s.gradeId === g.id);
+                                            return (
+                                                <div key={g.id} className="space-y-4 animate-pop">
+                                                    <div className="flex items-center justify-between pb-2">
+                                                        <span className="font-semibold text-slate-800 text-base">Classes for {g.name}</span>
+                                                        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded tracking-wide">{g.classes} {g.classes === 1 ? 'Class' : 'Classes'}</span>
+                                                    </div>
+
+                                                    {staffForGrade.map((s, idx) => {
+                                                        const globalIdx = data.staffing.findIndex(st => st.id === s.id);
+                                                        return (
+                                                            <div key={s.id} className="flex flex-col sm:flex-row items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                                <div className="flex items-center justify-center bg-slate-200 text-slate-500 w-6 h-6 rounded-full text-xs font-bold sm:mt-[26px] mb-1 sm:mb-0 shrink-0">
+                                                                    {idx + 1}
+                                                                </div>
+                                                                <div className="flex-1 w-full">
+                                                                    <Label className="text-xs mb-1 block">Class Name</Label>
+                                                                    <Input placeholder="e.g. 8 Blue" value={s.className} onChange={(e) => updateList('staffing', globalIdx, 'className', e.target.value)} error={errors.staffing?.[globalIdx]?.className} />
+                                                                </div>
+                                                                <div className="flex-1 w-full">
+                                                                    <Label className="text-xs mb-1 block">Assigned Teacher</Label>
+                                                                    <Input placeholder="Teacher Name" value={s.teacher} onChange={(e) => updateList('staffing', globalIdx, 'teacher', e.target.value)} error={errors.staffing?.[globalIdx]?.teacher} />
+                                                                </div>
+                                                                <div className="w-full sm:w-auto">
+                                                                    <Label className="text-xs mb-1 block">&nbsp;</Label>
+                                                                    <button
+                                                                        ref={(el) => { colorTriggerRefs.current[s.id] = el; }}
+                                                                        type="button"
+                                                                        onClick={() => setColorPickerFor(prev => prev === s.id ? null : s.id)}
+                                                                        title="Choose class colour"
+                                                                        className="group relative w-10 h-10 rounded-md border border-black/10 shadow-sm cursor-pointer transition-transform hover:scale-105"
+                                                                        style={{ backgroundColor: s.color || CLASS_COLOR_PALETTE[0] }}
+                                                                    >
+                                                                        <PencilIcon className="w-4 h-4 text-white absolute inset-0 m-auto opacity-0 group-hover:opacity-100 transition-opacity duration-150" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.5))' }} />
+                                                                    </button>
+                                                                    {colorPickerFor === s.id && ReactDOM.createPortal(
+                                                                        <React.Fragment>
+                                                                            <div className="fixed inset-0 z-40" onClick={() => setColorPickerFor(null)} />
+                                                                            <div
+                                                                                className="fixed z-50 p-2.5 bg-white border border-slate-200 rounded-lg shadow-xl animate-pop w-[152px]"
+                                                                                style={{ top: colorPickerPos.top, left: colorPickerPos.left }}
+                                                                            >
+                                                                                <div className="grid grid-cols-4 gap-1.5">
+                                                                                    {CLASS_COLOR_PALETTE.map((hex) => (
+                                                                                        <button
+                                                                                            key={hex}
+                                                                                            type="button"
+                                                                                            onClick={() => { updateList('staffing', globalIdx, 'color', hex); setColorPickerFor(null); }}
+                                                                                            title={hex}
+                                                                                            className={`w-5 h-5 rounded-sm border transition-all ${s.color === hex ? 'ring-2 ring-offset-1 ring-slate-400 border-white' : 'border-black/10 hover:scale-110'}`}
+                                                                                            style={{ backgroundColor: hex }}
+                                                                                        />
+                                                                                    ))}
+                                                                                    <label
+                                                                                        htmlFor={`custom-color-${s.id}`}
+                                                                                        title="Custom colour"
+                                                                                        className={`relative w-5 h-5 rounded-sm border cursor-pointer overflow-hidden transition-all ${!CLASS_COLOR_PALETTE.includes(s.color) ? 'ring-2 ring-offset-1 ring-slate-400 border-white' : 'border-black/10 hover:scale-110'}`}
+                                                                                        style={!CLASS_COLOR_PALETTE.includes(s.color) && s.color
+                                                                                            ? { backgroundColor: s.color }
+                                                                                            : { background: 'conic-gradient(from 0deg, #FFADAD, #FDFFB6, #CAFFBF, #A0C4FF, #BDB2FF, #FFC6FF, #FFADAD)' }}
+                                                                                    >
+                                                                                        <input
+                                                                                            id={`custom-color-${s.id}`}
+                                                                                            type="color"
+                                                                                            value={s.color || CLASS_COLOR_PALETTE[0]}
+                                                                                            onChange={(e) => { updateList('staffing', globalIdx, 'color', e.target.value); setColorPickerFor(null); }}
+                                                                                            className="absolute w-0 h-0 opacity-0"
+                                                                                        />
+                                                                                    </label>
+                                                                                </div>
+                                                                            </div>
+                                                                        </React.Fragment>,
+                                                                        document.body
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Specialist Teachers */}
+                        <div className="border-t border-slate-200 pt-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h4 className="text-base font-semibold flex items-center gap-2"><StarIcon className="w-5 h-5 text-brand-dark" /> Specialist Profiles</h4>
+                                    <p className="text-sm text-slate-500 mt-1">Add specialist teachers and assign them to a KLA.</p>
+                                </div>
+                                <Button variant="brand" size="sm" onClick={() => addToList('specialists', { name: "", kla: "", cycle: 1 })} className="h-8 gap-1">
+                                    <PlusIcon className="w-4 h-4 mr-1" /> Add Specialist
+                                </Button>
+                            </div>
+
+                            <div id="list-container-specialists" className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar p-1 -m-1">
+                                {data.specialists.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
+                                        <p className="text-sm font-medium text-slate-700 mb-2">No specialist teachers added</p>
+                                        <Button variant="outline" size="sm" onClick={() => addToList('specialists', { name: "", kla: "", cycle: 1 })}>Add Specialist</Button>
+                                    </div>
+                                ) : (
+                                    data.specialists.map((s, i) => (
+                                        <div key={s.id} className="flex flex-col sm:flex-row items-start gap-2 animate-pop bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                            <div className="w-full sm:flex-1">
+                                                <Label className="text-xs mb-1 block">Specialist Name</Label>
+                                                <Input placeholder="e.g. Mr. Smith" value={s.name} onChange={(e) => updateList('specialists', i, 'name', e.target.value)} error={errors.specialists?.[i]?.name} />
+                                            </div>
+                                            <div className="w-full sm:flex-1">
+                                                <Label className="text-xs mb-1 block">Assigned KLA</Label>
+                                                <Select value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
+                                                    <option value="">Select KLA...</option>
+                                                    {data.klas.filter(k => k.name.trim()).map(k => (
+                                                        <option key={k.id} value={k.name}>{k.name}</option>
+                                                    ))}
+                                                </Select>
+                                            </div>
+                                            <div className="w-full sm:w-40">
+                                                <Label className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
+                                                <Input type="number" min="1" step="1" value={s.cycle} onChange={(e) => {
+                                                    const val = parseInt(e.target.value, 10);
+                                                    updateList('specialists', i, 'cycle', isNaN(val) ? 1 : Math.max(1, val));
+                                                }} error={errors.specialists?.[i]?.cycle} />
+                                            </div>
+                                            <div className="w-full sm:w-auto">
+                                                <Label className="text-xs mb-1 block">&nbsp;</Label>
+                                                <Button variant="bin" className="px-2 shadow-sm w-full sm:w-10 h-10" onClick={() => removeFromList('specialists', s.id)}>
+                                                    <TrashIcon />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Extracurricular Activities */}
+                        <div className="border-t border-slate-200 pt-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h4 className="text-base font-semibold flex items-center gap-2"><ActivityIcon className="w-5 h-5 text-brand-dark" /> Extra-Curricular Activities</h4>
+                                    <p className="text-sm text-slate-500 mt-1">Add any Extra Curricular events which will be included as teaching time</p>
+                                </div>
+                                <Button variant="brand" size="sm" onClick={() => addToList('activities', { name: "" })} className="h-8 gap-1">
+                                    <PlusIcon className="w-4 h-4 mr-1" /> Add Activity
+                                </Button>
+                            </div>
+
+                            <div id="list-container-activities" className="space-y-1.5 max-h-[calc(100vh-24rem)] overflow-y-auto custom-scrollbar p-1 -m-1">
+                                {data.activities.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
+                                        <p className="text-sm font-medium text-slate-700 mb-2">No extra-curriculars added</p>
+                                        <Button variant="outline" size="sm" onClick={() => addToList('activities', { name: "" })}>Add Activity</Button>
+                                    </div>
+                                ) : (
+                                    data.activities.map((a, i) => (
+                                        <div key={a.id} className="flex items-center gap-2 animate-pop">
+                                            <div className="flex-1">
+                                                <Input id={`input-${a.id}`} placeholder="Activity Name (e.g. Debate Club)" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} />
+                                            </div>
+                                            <Button variant="bin" className="px-2 shadow-sm" onClick={() => removeFromList('activities', a.id)}>
+                                                <TrashIcon />
+                                            </Button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderStep4 = () => {
+                const weeklyTeachingMins = dailyTeachingMins * 5;
+
+                // Group staffing by grade
+                const expectedGroups = data.grades.filter(g => g.classes > 0).map(g => {
+                    const classList = data.staffing.filter(s => s.gradeId === g.id).map(s => ({
+                        name: s.className,
+                        teacher: s.teacher || 'Unassigned',
+                        color: s.color || CLASS_COLOR_PALETTE[0]
+                    }));
+                    return { grade: g.name, cycle: `${g.cycle} Week${g.cycle > 1 ? 's' : ''}`, classes: classList };
+                });
+
+                const toggleSummary = (key) => {
+                    setExpandedSummary(prev => ({...prev, [key]: !prev[key]}));
+                };
+
+                return (
+                    <div className="space-y-6 animate-step" key="step4">
+                        <div className="mb-4">
+                            <h4 className="text-xl font-semibold text-slate-800">Summary Review</h4>
+                            <p className="text-base text-slate-500">Please review your configurations before generating the timetable template.</p>
+                        </div>
+
+                        <div className="max-h-[calc(100vh-24rem)] overflow-y-auto custom-scrollbar p-1 -m-1 space-y-6">
+
+                            {/* Core Schedule & Calculations */}
+                            <div className="space-y-3">
+                                <h5 className="text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 flex items-center gap-2"><BellIcon className="w-4 h-4 text-slate-500" /> Core Schedule</h5>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                                    {/* Box 1: School Day */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col shadow-sm relative">
+                                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">School Day</span>
+                                        <span className="text-2xl sm:text-3xl font-black text-slate-800 mb-6">{formatMinutes(totalSchoolMins)}</span>
+
+                                        <div className="space-y-2 mt-auto">
+                                            <div className="flex justify-between items-center text-sm border-t border-slate-200/60 pt-2">
+                                                <span className="text-slate-500 font-medium">Start</span>
+                                                <span className="font-bold text-slate-700">{formatAMPM(data.schoolStart) || 'Not set'}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-500 font-medium">End</span>
+                                                <span className="font-bold text-slate-700">{formatAMPM(data.schoolEnd) || 'Not set'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Box 2: Break Time */}
+                                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col shadow-sm">
+                                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Break Time</span>
+                                        <span className="text-2xl sm:text-3xl font-black text-slate-800 mb-6">{formatMinutes(totalBreakMins)}</span>
+
+                                        <div className="space-y-3 mt-auto">
+                                            {data.breaks.length === 0 && <span className="text-sm text-slate-500 italic block border-t border-slate-200/60 pt-2">No breaks configured.</span>}
+                                            {data.breaks.map((b, idx) => {
+                                                const dur = timeToMinutes(b.end) - timeToMinutes(b.start);
+                                                return (
+                                                <div key={b.id} className={`flex flex-col gap-0.5 text-sm ${idx === 0 ? 'border-t border-slate-200/60 pt-2' : ''}`}>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-slate-700 font-semibold truncate pr-2" title={b.name}>{b.name || 'Unnamed'}</span>
+                                                        <span className="font-bold text-slate-700 shrink-0 text-right">{dur > 0 ? formatMinutes(dur) : '0 min'}</span>
+                                                    </div>
+                                                    <span className="text-xs text-slate-500 font-medium">
+                                                        {formatAMPM(b.start) || 'Not set'} - {formatAMPM(b.end) || 'Not set'}
+                                                    </span>
+                                                </div>
+                                            )})}
+                                        </div>
+                                    </div>
+
+                                    {/* Box 3: Teaching Time */}
+                                    <div className="border rounded-lg p-4 flex flex-col shadow-sm relative bg-brand-green/10 border-brand-green/20">
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block text-brand-dark">Teaching Time</span>
+                                        </div>
+                                        <span className="text-2xl sm:text-3xl font-black mb-6 text-brand-dark">{formatMinutes(dailyTeachingMins)}</span>
+
+                                        <div className="space-y-2 mt-auto">
+                                            <div className="flex justify-between items-center text-sm border-t pt-2 border-brand-green/20">
+                                                <span className="font-medium text-slate-600">Weekly Total</span>
+                                                <span className="font-bold text-brand-dark">{formatMinutes(weeklyTeachingMins)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Grouped Staffing by Grade */}
+                            <div className="space-y-3 pt-2">
+                                <button
+                                    onClick={() => toggleSummary('staff')}
+                                    className="w-full flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 hover:text-brand-dark transition-colors"
+                                >
+                                    <span className="flex items-center gap-2"><LayersIcon className="w-4 h-4 text-slate-500" /> Classes & Staffing ({data.staffing.length} total)</span>
+                                    {expandedSummary.staff ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+                                </button>
+
+                                {expandedSummary.staff && (
+                                    <div className="space-y-4 animate-pop">
+                                        {expectedGroups.map((group, idx) => (
+                                            <div key={idx} className="bg-slate-50 rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                                                <div className="bg-slate-200/50 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
+                                                    <span className="font-bold text-slate-800 text-sm">{group.grade}</span>
+                                                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded tracking-wider">{group.cycle}</span>
+                                                </div>
+                                                <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                    {group.classes.map((cls, cIdx) => (
+                                                        <div key={cIdx} className="bg-white border border-slate-200 p-2.5 rounded-md flex items-start gap-2 shadow-sm">
+                                                            <span className="w-3 h-3 rounded-full border border-slate-200 mt-1 shrink-0" style={{ backgroundColor: cls.color }} title={cls.color}></span>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{cls.name || 'Unnamed Class'}</span>
+                                                                <span className={`text-sm font-medium ${cls.teacher === 'Unassigned' ? 'text-red-500 italic' : 'text-brand-dark'}`}>{cls.teacher}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {group.classes.length === 0 && <span className="text-xs italic text-slate-500">No classes configured.</span>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {expectedGroups.length === 0 && <p className="text-sm text-slate-500 italic">No grades configured.</p>}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Specialists */}
+                            <div className="space-y-3 pt-2">
+                                <button
+                                    onClick={() => toggleSummary('specialists')}
+                                    className="w-full flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 hover:text-brand-dark transition-colors"
+                                >
+                                    <span className="flex items-center gap-2"><StarIcon className="w-4 h-4 text-slate-500" /> Specialist Profiles ({data.specialists.length})</span>
+                                    {expandedSummary.specialists ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+                                </button>
+
+                                {expandedSummary.specialists && (
+                                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
+                                        {data.specialists.filter(s => s.name).map(s => (
+                                            <li key={s.id} className="bg-slate-50 p-2.5 rounded-md border border-slate-100 flex flex-col gap-1 shadow-sm">
+                                                <span className="font-semibold text-slate-900">{s.name}</span>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-xs text-brand-dark font-medium bg-brand-green/10 px-2 py-0.5 rounded-md">{s.kla || 'No KLA Assigned'}</span>
+                                                    <span className="text-xs text-slate-600 font-medium bg-slate-200/70 px-2 py-0.5 rounded-md">{s.cycle || 1} Week{(s.cycle || 1) > 1 ? 's' : ''}</span>
+                                                </div>
+                                            </li>
+                                        ))}
+                                        {data.specialists.filter(s => s.name).length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
+                                    </ul>
+                                )}
+                            </div>
+
+                            {/* Activities */}
+                            <div className="space-y-3 pt-2">
+                                <button
+                                    onClick={() => toggleSummary('activities')}
+                                    className="w-full flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 hover:text-brand-dark transition-colors"
+                                >
+                                    <span className="flex items-center gap-2"><ActivityIcon className="w-4 h-4 text-slate-500" /> Extra-Curriculars ({data.activities.length})</span>
+                                    {expandedSummary.activities ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+                                </button>
+
+                                {expandedSummary.activities && (
+                                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
+                                        {data.activities.filter(a => a.name).map(a => (
+                                            <li key={a.id} className="bg-slate-50 p-2.5 rounded-md border border-slate-100 flex items-center gap-2 shadow-sm">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>{a.name}
+                                            </li>
+                                        ))}
+                                        {data.activities.filter(a => a.name).length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="w-full flex flex-col items-center">
+
+                    {/* BRANDING HEADER */}
+                    <div className="w-full flex flex-col sm:flex-row items-center sm:items-start gap-5 mb-8 sm:mb-10">
+                        <div className="w-[84px] h-[84px] rounded-[1.25rem] bg-brand-bg flex items-center justify-center shrink-0 shadow-sm">
+                            <GridIcon />
+                        </div>
+                        <div className="flex flex-col justify-center text-center sm:text-left pt-1">
+                            <h1 className="text-[34px] leading-none font-extrabold tracking-tighter text-slate-900 mb-3">
+                                the<span className="text-brand-green">timetable</span>tool<span className="text-brand-green">.</span>
+                            </h1>
+                            <p className="text-slate-500 text-[13.5px] font-medium leading-snug max-w-md">
+                                Automated spreadsheet designed to help primary schools create NESA-compliant timetables.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* GENERATION PROGRESS SCREEN */}
+                    {isGenerating ? (
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden animate-pop flex flex-col">
+                            <CardHeader className="border-b border-slate-200 bg-white p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 z-10 relative shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)]">
+                                <div className="flex items-center gap-3">
+                                    <div className="relative">
+                                        <div className="w-10 h-10 rounded-full border-2 border-slate-200 border-t-brand-green animate-spin"></div>
+                                        <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-800">
+                                            {loadingProgress}%
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold text-slate-900 leading-tight">Generating Timetable</h3>
+                                        <p className="text-xs text-slate-500">Google Apps Script Execution Engine</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4 text-xs bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600">
+                                    <div className="flex items-center gap-1.5">
+                                        <ClockIcon />
+                                        <span>Elapsed: <strong className="text-slate-900 font-mono">{formatElapsed(elapsedSeconds)}</strong></span>
+                                    </div>
+                                </div>
+                            </CardHeader>
+
+                            <CardContent className="p-6 sm:p-8 bg-slate-50 flex flex-col gap-6">
+                                {/* Progress Bar */}
+                                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                                    <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                                        <span className="uppercase tracking-wider text-slate-500">Total Completion</span>
+                                        <span className="text-brand-dark font-mono text-sm">{loadingProgress}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                                        <div
+                                            className="bg-brand-dark h-full rounded-full transition-all duration-500 ease-out"
+                                            style={{ width: `${loadingProgress}%` }}
+                                        ></div>
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-1 text-xs font-semibold text-slate-800 animate-pulse">
+                                        <span className="w-2 h-2 rounded-full bg-brand-green"></span>
+                                        <span>Current Action: <span className="font-normal text-slate-600">{loadingMessage || 'Processing...'}</span></span>
+                                    </div>
+                                </div>
+
+                                {/* Live Activity Log Stream */}
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                                    <div className="bg-slate-100/70 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                                            <ActivityIcon className="w-3.5 h-3.5 text-brand-dark" />
+                                            Live Execution Log ({logs.length} events)
+                                        </span>
+                                        <span className="text-[10px] font-mono text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded">
+                                            Job ID: {activeJobId || 'Simulated'}
+                                        </span>
+                                    </div>
+
+                                    <div
+                                        ref={logContainerRef}
+                                        className="p-4 max-h-[220px] overflow-y-auto custom-scrollbar font-mono text-xs space-y-2 bg-white text-slate-800"
+                                    >
+                                        {logs.map((log) => (
+                                            <div key={log.id} className="flex items-start gap-2.5 leading-relaxed animate-pop">
+                                                <span className="text-slate-400 text-[10px] shrink-0 pt-0.5 font-sans">{log.time}</span>
+                                                <span className="text-brand-dark font-bold shrink-0">[{log.percent}%]</span>
+                                                <span className="text-slate-700 break-words flex-1 font-sans">{log.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Callout Notice */}
+                                <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-lg flex items-start gap-3 text-xs text-amber-900">
+                                    <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <p className="leading-relaxed">
+                                        Creating multi-week timetable structures and copying templates takes up to 1-2 minutes depending on class count. <strong>Please keep this window open</strong> while Google Apps Script sets up your spreadsheet.
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : isSuccess ? (
+                        /* SUCCESS SCREEN */
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden animate-pop flex flex-col">
+                            <CardContent className="p-12 flex flex-col items-center justify-center text-center min-h-[500px]">
+                                <div className="animate-success mb-8">
+                                    <div className="mx-auto bg-brand-green/10 w-24 h-24 rounded-full flex items-center justify-center text-brand-dark shadow-sm">
+                                        <CheckIcon className="w-12 h-12" />
+                                    </div>
+                                </div>
+                                <h3 className="text-3xl font-bold text-slate-800 mb-3">Timetable Generated</h3>
+                                <p className="text-base text-slate-500 mb-10 max-w-md">Your template has been copied and configured successfully. The data has been written to the <strong>DATA</strong> tab.</p>
+
+                                <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
+                                    <a href={generatedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-base font-bold transition-all duration-200 active:scale-95 h-12 px-8 bg-brand-dark text-white hover:bg-[#00663C] shadow-lg">
+                                        Open Spreadsheet
+                                    </a>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        /* WIZARD SCREEN */
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden flex flex-col">
+                            <CardHeader className="border-b border-slate-200 bg-slate-50 px-6 py-8 sm:px-10 z-10 relative shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)]">
+                                {/* Stepper Header */}
+                                <div className="flex items-center justify-between relative">
+                                    <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-[2px] bg-slate-300 -z-10"></div>
+
+                                    {[1, 2, 3, 4].map((s) => (
+                                        <div key={s} aria-current={step === s ? "step" : undefined} className="flex flex-col items-center gap-2 bg-slate-50 px-2 sm:px-4">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors ${
+                                                step === s ? 'border-slate-900 bg-slate-900 text-white shadow-md' :
+                                                step > s ? 'border-brand-green bg-brand-green text-white' : 'border-slate-300 bg-white text-slate-400'
+                                            }`}>
+                                                {step > s ? <CheckIcon /> : s}
+                                            </div>
+                                            <span className={`text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${step >= s ? 'text-slate-900' : 'text-slate-400'} hidden md:block`}>
+                                                {s === 1 ? 'Core Schedule' : s === 2 ? 'Grades' : s === 3 ? 'Staff' : 'Summary'}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardHeader>
+
+                            <CardContent className="p-6 sm:p-10 min-h-[400px] bg-white relative flex-1">
+                                {step === 1 && renderStep1()}
+                                {step === 2 && renderStep2()}
+                                {step === 3 && renderStep3()}
+                                {step === 4 && renderStep4()}
+                            </CardContent>
+
+                            <CardFooter className="flex items-start justify-between bg-slate-50 border-t border-slate-200 p-6 sm:px-10 h-28 pt-8 shrink-0">
+                                <Button variant="outline" onClick={handleBack} disabled={step === 1 || isSubmitting}>
+                                    Back
+                                </Button>
+
+                                {step < 4 ? (
+                                    <Button variant="default" onClick={handleNext}>Continue to Step {step + 1}</Button>
+                                ) : (
+                                    <Button variant="footerSolid" onClick={handleSubmit} disabled={isSubmitting} className="gap-2 px-6">
+                                        Generate Timetable Template
+                                    </Button>
+                                )}
+                            </CardFooter>
+                        </Card>
+                    )}
+
+                    {/* SUITE TAG */}
+                    <div className="mt-12 mb-4 text-[11px] font-medium text-brand-green tracking-widest text-center uppercase">
+                        A Sydney Catholic Schools Curriculum Tool - 2026
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
