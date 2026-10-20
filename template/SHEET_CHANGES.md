@@ -119,7 +119,7 @@ and `template/TemplateSync.gs`, then check:
 No sheet changes. Paste the updated `wizard/Code.gs`, `wizard/Index.html`
 and `template/TemplateSync.gs`.
 
-- [ ] **Load test:** first run took 504s (too slow; see PLAN step 17). in the wizard project, add a script file `LoadTest` and paste `wizard/LoadTest.gs` into it. Choose `runLoadTest` in the toolbar and click Run. The log shows how long 28 classes and 6 specialists took (the limit is 360s). Note the time for step 28, delete the generated file, then delete the `LoadTest` file again.
+- [x] **Load test:** first run took 504s (too slow; see PLAN step 17). In the wizard project, add a script file `LoadTest` and paste `wizard/LoadTest.gs` into it. Choose `runLoadTest` in the toolbar and click Run. The log shows how long 28 classes and 6 specialists took (the limit is 360s). Note the time for step 28, delete the generated file, then delete the `LoadTest` file again.
 - [x] Generate a normal timetable from the wizard and check:
   - Class tabs look as before: headers, times, grey break rows, dropdowns, subject colours, compliance table.
   - Two classes with the same cycle length have identical grids; a class with a different cycle has its own layout.
@@ -128,7 +128,7 @@ and `template/TemplateSync.gs`.
 - [x] Force an error (for example, set the `TEMPLATE_ID` script property to `x`) and check the wizard shows the error panel with **Try again** instead of a pop-up. Then set it back.
 - [x] Sync and lock still work as in Phase 2.
 - [x] **Load test with timings:** 429s. Copying class tabs (244s) and writing their details (117s) were 85% of the time.
-- [ ] **Load test with the Sheets API:**
+- [ ] **Load test with the Sheets API:** 93s (steps 1–3 done; step 4 to confirm). Afterwards delete the test timetables and the `LoadTest` file.
   1. In the wizard project, click **Services** (the + next to it in the left sidebar), choose **Google Sheets API**, keep the identifier `Sheets`, and click **Add**.
   2. Paste the updated `wizard/Code.gs` (and keep `LoadTest.gs` for now).
   3. Run `runLoadTest` and copy the whole log. Copies should now appear as lines like "Copy Kindergarten Red, … (one request)".
