@@ -647,12 +647,14 @@ function applySpecialistClashFormatting(ss) {
     const lastColumn = sheet.getLastColumn();
     if (lastRow < 5 || lastColumn < 10) return;
 
+    // Day-name columns only (spacer columns have no heading in row 4).
+    const dayHeadings = sheet.getRange(4, 10, 1, lastColumn - 9).getDisplayValues()[0];
     const scheduleRanges = [];
-    for (let column = 10; column <= lastColumn; column++) {
-      if (String(sheet.getRange(4, column).getDisplayValue()).trim()) {
-        scheduleRanges.push(sheet.getRange(5, column, lastRow - 4, 1));
+    dayHeadings.forEach((heading, index) => {
+      if (String(heading).trim()) {
+        scheduleRanges.push(sheet.getRange(5, index + 10, lastRow - 4, 1));
       }
-    }
+    });
 
     if (!scheduleRanges.length) return;
 
@@ -754,15 +756,22 @@ function parseCycleFromSpecialistSheet(specialistSheet) {
  */
 function buildScheduleColumnMap(sheet, lastColumn) {
   const map = {};
+  if (lastColumn < 10) return map;
+
+  // Both header rows in one read each, rather than one read per cell.
+  const width = lastColumn - 9;
+  const termWeekHeaders = sheet.getRange(1, 10, 1, width).getDisplayValues()[0];
+  const dayHeaders = sheet.getRange(4, 10, 1, width).getDisplayValues()[0];
+
   let currentLabel = null;
-  for (let column = 10; column <= lastColumn; column++) {
-    const headerText = String(sheet.getRange(1, column).getDisplayValue() || '').trim();
+  for (let index = 0; index < width; index++) {
+    const headerText = String(termWeekHeaders[index] || '').trim();
     if (headerText) {
       currentLabel = parseTermWeekLabel(headerText);
     }
-    const dayName = String(sheet.getRange(4, column).getDisplayValue() || '').trim();
+    const dayName = String(dayHeaders[index] || '').trim();
     if (dayName && currentLabel) {
-      map[column] = { term: currentLabel.term, week: currentLabel.week, day: dayName };
+      map[index + 10] = { term: currentLabel.term, week: currentLabel.week, day: dayName };
     }
   }
   return map;

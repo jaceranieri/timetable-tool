@@ -254,6 +254,7 @@
                 };
             }, [colorPickerFor]);
             const [generatedUrl, setGeneratedUrl] = useState("");
+            const [generationError, setGenerationError] = useState("");
 
             // App state for wizard data
             const [data, setData] = useState({
@@ -340,7 +341,7 @@
                                                     });
                                                 } else if (data.percent === -1) {
                                                     setIsGenerating(false);
-                                                    alert("Error during timetable generation: " + data.status);
+                                                    setGenerationError(data.status);
                                                 }
                                             } catch (e) {
                                                 console.error("Error parsing progress response:", e);
@@ -562,9 +563,25 @@
                 if (valid && step < 4) setStep(step + 1);
             };
 
-            const handleBack = () => setStep(step - 1);
+            const handleBack = () => {
+                setGenerationError("");
+                setStep(step - 1);
+            };
+
+            // Message for a failed generateTimetable call. The server already
+            // words its own errors; a timeout comes from Google instead.
+            const describeFailure = (error) => {
+                const text = String((error && error.message) || error || "").replace(/^((Error|Exception):\s*)+/i, "");
+                if (/exceeded maximum execution time/i.test(text)) {
+                    return "Generating took longer than Google allows (6 minutes), so it was stopped. " +
+                        "The unfinished copy is named \"INCOMPLETE - ...\" in your Drive and can be deleted. " +
+                        "Please try again.";
+                }
+                return text || "Something went wrong while generating the timetable. Please try again.";
+            };
 
             const handleSubmit = () => {
+                setGenerationError("");
                 const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
                 setActiveJobId(jobId);
                 setIsGenerating(true);
@@ -641,7 +658,7 @@
                             }, 800);
                         })
                         .withFailureHandler((error) => {
-                            alert("Failed to generate timetable: " + error.message);
+                            setGenerationError(describeFailure(error));
                             setIsGenerating(false);
                         })
                         .generateTimetable(payloadToSubmit);
@@ -1426,6 +1443,16 @@
                                 {step === 1 && renderStep1()}
                                 {step === 2 && renderStep2()}
                                 {step === 3 && renderStep3()}
+                                {step === 4 && generationError && (
+                                    <div role="alert" className="mb-6 bg-red-50 border border-red-200 p-4 rounded-lg flex items-start gap-3 text-sm text-red-900 animate-pop">
+                                        <AlertTriangleIcon className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                                        <div className="flex-1">
+                                            <p className="font-semibold mb-1">The timetable wasn't generated</p>
+                                            <p className="whitespace-pre-line leading-relaxed">{generationError}</p>
+                                        </div>
+                                        <Button variant="outline" onClick={handleSubmit} className="shrink-0">Try again</Button>
+                                    </div>
+                                )}
                                 {step === 4 && renderStep4()}
                             </CardContent>
 

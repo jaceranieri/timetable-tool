@@ -62,8 +62,14 @@ function updateJobProgress(jobId, percent, statusText) {
 }
 
 
+const GENERATED_FILE_PREFIX = 'Generated Timetable - Resource First - ';
+// The copy keeps this prefix until generation finishes, so a copy left
+// behind by a failed or timed-out run is easy to spot and delete.
+const INCOMPLETE_FILE_PREFIX = 'INCOMPLETE - ';
+
 function generateTimetable(payload) {
   const jobId = payload ? payload.jobId : null;
+  const startedAt = Date.now();
 
 
   try {
@@ -76,10 +82,8 @@ function generateTimetable(payload) {
 
 
     const templateFile = DriveApp.getFileById(getTemplateId());
-    const timeStamp = new Date().toLocaleDateString('en-AU');
-    const newFile = templateFile.makeCopy(
-      'Generated Timetable - Resource First - ' + timeStamp
-    );
+    const fileName = GENERATED_FILE_PREFIX + new Date().toLocaleDateString('en-AU');
+    const newFile = templateFile.makeCopy(INCOMPLETE_FILE_PREFIX + fileName);
 
 
     updateJobProgress(jobId, 12, 'Opening duplicated spreadsheet...');
@@ -100,15 +104,40 @@ function generateTimetable(payload) {
     populateDataSheet(dataSheet, payload, config, ss);
     buildSpecialistSheets(ss, config, jobId);
     buildAllClassSheets(ss, config, jobId);
+    newFile.setName(fileName);
 
 
+    console.log(
+      'Generated ' + config.classes.length + ' class and ' + config.specialists.length +
+      ' specialist tab(s) in ' + Math.round((Date.now() - startedAt) / 1000) + 's'
+    );
     updateJobProgress(jobId, 100, 'Timetable generation complete!');
     return ss.getUrl();
   } catch (error) {
     console.error('Error generating timetable:', error);
-    updateJobProgress(jobId, -1, 'Error: ' + error.toString());
-    throw new Error(error.toString());
+    const message = describeGenerationError(error);
+    updateJobProgress(jobId, -1, message);
+    throw new Error(message);
   }
+}
+
+
+/** Turns an error from generateTimetable into a message for the wizard. */
+function describeGenerationError(error) {
+  const text = String((error && error.message) || error || '')
+    .replace(/^(Error|Exception):\s*/i, '');
+
+  // Setup problems from validateConfig are already written for the user.
+  if (text.indexOf('Please fix the following') === 0) return text;
+
+  if (/no item with the given id|do not have permission|access denied/i.test(text)) {
+    return "You don't have access to the master timetable template. Ask the person who " +
+      'manages the timetable tool to share it with you (view access is enough).';
+  }
+
+  return 'Something went wrong while generating the timetable: ' + text + '\n\n' +
+    'If a file named "' + INCOMPLETE_FILE_PREFIX + '..." was created in your Drive, it can ' +
+    'be deleted. Please try again.';
 }
 
 
@@ -455,6 +484,27 @@ function populateDataSheet(dataSheet, payload, config, ss) {
 }
 
 
+/**
+ * Grid layout shared by class and specialist tabs. TemplateSync.gs reads
+ * the same layout back from the headers ("Term X - Week Y" in row 1, day
+ * names in row 4), so changing it here needs no change there.
+ */
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const TERM_COUNT = 4;
+const FIRST_DATA_ROW = 5;
+const TIME_COLUMN = 9;
+const FIRST_GRID_COLUMN = 10;
+const DAY_COLUMN_WIDTH = 120;
+const WEEK_SPACER_WIDTH = 20;
+const TERM_SPACER_WIDTH = 40;
+const BREAK_BACKGROUND = '#F2F2F2';
+
+/**
+ * Builds a specialist tab for every specialist. The first specialist with
+ * each cycle length gets a tab built from SPEC_Template; the others with the
+ * same cycle length are copies of it, which is much faster than building
+ * each one cell by cell.
+ */
 function buildSpecialistSheets(ss, config, jobId) {
   const specTemplateSheet = ss.getSheetByName('SPEC_Template');
   const classListRange = ss.getRangeByName('ClassList');
@@ -469,28 +519,16 @@ function buildSpecialistSheets(ss, config, jobId) {
   }
 
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const timeSlots = createTimeSlots(
-    config.startTime,
-    config.endTime,
-    ss.getSpreadsheetTimeZone()
-  );
-  const firstDataRow = 5;
-  const lastDataRow = firstDataRow + timeSlots.length - 1;
-
-
+  const slots = createTimeSlots(config.startTime, config.endTime);
+  const breakLabels = getBreakLabels(slots, config.breaks);
   const validationRule = SpreadsheetApp.newDataValidation()
     .requireValueInRange(classListRange, true)
     .setAllowInvalid(false)
     .build();
+  const prototypes = {}; // cycle length -> first tab built with it
 
 
   config.specialists.forEach((specialist, specialistIndex) => {
-    const sheetName = (
-      'SPEC_' + sanitizeSheetName(specialist.name)
-    ).substring(0, 99);
-
-
     updateJobProgress(
       jobId,
       25 + (specialistIndex / config.specialists.length) * 20,
@@ -498,119 +536,36 @@ function buildSpecialistSheets(ss, config, jobId) {
         config.specialists.length + ': ' + specialist.name
     );
 
+    const sheetName = (
+      'SPEC_' + sanitizeSheetName(specialist.name)
+    ).substring(0, 99);
+    let sheet = ss.getSheetByName(sheetName);
 
-    if (ss.getSheetByName(sheetName)) return;
-
-
-    const columnsPerTerm =
-      specialist.cycle * days.length + Math.max(0, specialist.cycle - 1);
-    const totalScheduleColumns = 4 * columnsPerTerm + 3;
-    const lastRequiredColumn = 9 + totalScheduleColumns;
-
-
-    const sheet = specTemplateSheet.copyTo(ss);
-    sheet.setName(sheetName).showSheet();
-    ensureSheetSize(sheet, Math.max(lastDataRow, 30), lastRequiredColumn);
-
-
-    // Start from a clean slate: don't inherit any conditional formatting
-    // rules that happen to exist on SPEC_Template (e.g. a leftover "cell is
-    // not empty" rule). Only the rules this script adds below should apply.
-    sheet.clearConditionalFormatRules();
-
-
-    sheet.getRangeList(['B1', 'B3']).setNumberFormat('@');
-    sheet.getRange('B1').setValue(specialist.name);
-    sheet.getRange('B3').setValue(specialist.kla);
-    sheet.getRange('D3').setValue(specialist.cycle);
-
-
-    sheet.getRange(
-      4,
-      9,
-      sheet.getMaxRows() - 3,
-      lastRequiredColumn - 8
-    ).clearContent().clearDataValidations();
-
-
-    sheet.getRange(firstDataRow, 9, timeSlots.length, 1).setValues(timeSlots);
-    sheet.setColumnWidth(9, 100);
-
-
-    let currentColumn = 10;
-    for (let term = 1; term <= 4; term++) {
-      for (let week = 0; week < specialist.cycle; week++) {
-        const blockStartColumn = currentColumn;
-        const weekLabel = String.fromCharCode(65 + week);
-
-
-        applyTemplateGridFormatting(
-          specTemplateSheet,
-          sheet,
-          blockStartColumn,
-          firstDataRow,
-          lastDataRow,
-          days.length
+    if (!sheet) {
+      const prototype = prototypes[specialist.cycle];
+      if (prototype) {
+        sheet = prototype.copyTo(ss).setName(sheetName);
+      } else {
+        sheet = specTemplateSheet.copyTo(ss).setName(sheetName).showSheet();
+        // Start from a clean slate: don't inherit any conditional formatting
+        // rules that happen to exist on SPEC_Template. Only the rules this
+        // script adds below should apply.
+        sheet.clearConditionalFormatRules();
+        const grid = buildGrid(
+          sheet, specTemplateSheet, specialist.cycle, slots, breakLabels, validationRule
         );
-
-
-        sheet.getRange(1, blockStartColumn, 1, days.length)
-          .breakApart()
-          .merge()
-          .setValue('Term ' + term + ' - Week ' + weekLabel)
-          .setFontSize(12)
-          .setFontFamily('Poppins')
-          .setFontWeight('bold');
-
-
-        for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
-          sheet.getRange(4, currentColumn)
-            .setValue(days[dayIndex])
-            .setFontWeight('bold');
-          sheet.setColumnWidth(currentColumn, 120);
-          currentColumn++;
-        }
-
-
-        sheet.getRange(
-          firstDataRow,
-          blockStartColumn,
-          timeSlots.length,
-          days.length
-        ).setDataValidation(validationRule);
-
-
-        if (week < specialist.cycle - 1) {
-          sheet.setColumnWidth(currentColumn, 20);
-          currentColumn++;
-        }
-      }
-
-
-      if (term < 4) {
-        sheet.setColumnWidth(currentColumn, 40);
-        currentColumn++;
+        applyClassColorFormatting(
+          sheet,
+          config.classes,
+          FIRST_DATA_ROW,
+          grid.lastDataRow,
+          grid.layout.lastColumn
+        );
+        prototypes[specialist.cycle] = sheet;
       }
     }
 
-
-    applyBreakRows(
-      sheet,
-      specialist,
-      config.breaks,
-      days,
-      firstDataRow,
-      lastDataRow
-    );
-
-
-    applyClassColorFormatting(
-      sheet,
-      config.classes,
-      firstDataRow,
-      lastDataRow,
-      lastRequiredColumn
-    );
+    writeSpecialistDetails(sheet, specialist);
   });
 
 
@@ -618,6 +573,13 @@ function buildSpecialistSheets(ss, config, jobId) {
 }
 
 
+/**
+ * Builds a class tab for every class, the same way as the specialist tabs:
+ * built from TEMPLATE once per cycle length, copied for the rest.
+ *
+ * A tab that already exists only has its details (C27:C31) refreshed, so
+ * its timetable entries are never touched.
+ */
 function buildAllClassSheets(ss, config, jobId) {
   const templateSheet = ss.getSheetByName('TEMPLATE');
   const klaListRange = ss.getRangeByName('KLAList');
@@ -629,27 +591,16 @@ function buildAllClassSheets(ss, config, jobId) {
   }
 
 
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const timeSlots = createTimeSlots(
-    config.startTime,
-    config.endTime,
-    ss.getSpreadsheetTimeZone()
-  );
-  const firstDataRow = 5;
-  const lastDataRow = firstDataRow + timeSlots.length - 1;
-
-
+  const slots = createTimeSlots(config.startTime, config.endTime);
+  const breakLabels = getBreakLabels(slots, config.breaks);
   const validationRule = SpreadsheetApp.newDataValidation()
     .requireValueInRange(klaListRange, true)
     .setAllowInvalid(false)
     .build();
+  const prototypes = {}; // cycle length -> first tab built with it
 
 
   config.classes.forEach((classConfig, classIndex) => {
-    const sheetName = sanitizeSheetName(classConfig.name).substring(0, 99);
-    if (ss.getSheetByName(sheetName)) return;
-
-
     updateJobProgress(
       jobId,
       45 + (classIndex / config.classes.length) * 50,
@@ -657,237 +608,272 @@ function buildAllClassSheets(ss, config, jobId) {
         config.classes.length + ': ' + classConfig.name
     );
 
+    const sheetName = sanitizeSheetName(classConfig.name).substring(0, 99);
+    let sheet = ss.getSheetByName(sheetName);
 
-    const columnsPerTerm =
-      classConfig.cycle * days.length + Math.max(0, classConfig.cycle - 1);
-    const totalScheduleColumns = 4 * columnsPerTerm + 3;
-    const lastRequiredColumn = 9 + totalScheduleColumns;
-
-
-    const sheet = templateSheet.copyTo(ss);
-    sheet.setName(sheetName).showSheet();
-    ensureSheetSize(sheet, Math.max(lastDataRow, 30), lastRequiredColumn);
-
-
-    sheet.getRange('C27:C29').setNumberFormat('@');
-    sheet.getRange('C27:C30').setValues([
-      [classConfig.teacher],
-      [classConfig.name],
-      [classConfig.grade],
-      [classConfig.cycle + ' week cycle']
-    ]);
-
-    // C18 (Amadeus compliance) reads C31 to decide whether Amadeus applies.
-    sheet.getRange('B31:C31').setValues([
-      ['Amadeus', isAmadeusGrade(classConfig.grade)]
-    ]);
-
-
-    sheet.getRange(
-      4,
-      9,
-      sheet.getMaxRows() - 3,
-      lastRequiredColumn - 8
-    ).clearContent().clearDataValidations();
-
-
-    sheet.getRange(firstDataRow, 9, timeSlots.length, 1).setValues(timeSlots);
-    sheet.setColumnWidth(9, 100);
-
-
-    let currentColumn = 10;
-    for (let term = 1; term <= 4; term++) {
-      for (let week = 0; week < classConfig.cycle; week++) {
-        const blockStartColumn = currentColumn;
-        const weekLabel = String.fromCharCode(65 + week);
-
-
-        applyTemplateGridFormatting(
-          templateSheet,
-          sheet,
-          blockStartColumn,
-          firstDataRow,
-          lastDataRow,
-          days.length
+    if (!sheet) {
+      const prototype = prototypes[classConfig.cycle];
+      if (prototype) {
+        sheet = prototype.copyTo(ss).setName(sheetName);
+      } else {
+        sheet = templateSheet.copyTo(ss).setName(sheetName).showSheet();
+        const grid = buildGrid(
+          sheet, templateSheet, classConfig.cycle, slots, breakLabels, validationRule
         );
-
-
-        sheet.getRange(1, blockStartColumn, 1, days.length)
-          .breakApart()
-          .merge()
-          .setValue('Term ' + term + ' - Week ' + weekLabel)
-          .setFontSize(12)
-          .setFontFamily('Poppins')
-          .setFontWeight('bold');
-
-
-        for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
-          sheet.getRange(4, currentColumn)
-            .setValue(days[dayIndex])
-            .setFontWeight('bold');
-          sheet.setColumnWidth(currentColumn, 120);
-          currentColumn++;
-        }
-
-
-        sheet.getRange(
-          firstDataRow,
-          blockStartColumn,
-          timeSlots.length,
-          days.length
-        ).setDataValidation(validationRule);
-
-
-        if (week < classConfig.cycle - 1) {
-          sheet.setColumnWidth(currentColumn, 20);
-          currentColumn++;
-        }
-      }
-
-
-      if (term < 4) {
-        sheet.setColumnWidth(currentColumn, 40);
-        currentColumn++;
+        pasteTemplateConditionalFormatting(templateSheet, sheet, grid.layout, slots.length);
+        prototypes[classConfig.cycle] = sheet;
       }
     }
 
-
-    applyBreakRows(
-      sheet,
-      classConfig,
-      config.breaks,
-      days,
-      firstDataRow,
-      lastDataRow
-    );
+    writeClassDetails(sheet, classConfig);
+  });
+}
 
 
-    copyConditionalFormattingToClassSheet(
-      templateSheet,
-      sheet,
-      firstDataRow,
-      lastDataRow
+function writeClassDetails(sheet, classConfig) {
+  sheet.getRange('C27:C29').setNumberFormat('@');
+  sheet.getRange('C27:C30').setValues([
+    [classConfig.teacher],
+    [classConfig.name],
+    [classConfig.grade],
+    [classConfig.cycle + ' week cycle']
+  ]);
+
+  // C18 (Amadeus compliance) reads C31 to decide whether Amadeus applies.
+  sheet.getRange('B31:C31').setValues([
+    ['Amadeus', isAmadeusGrade(classConfig.grade)]
+  ]);
+}
+
+
+function writeSpecialistDetails(sheet, specialist) {
+  sheet.getRangeList(['B1', 'B3']).setNumberFormat('@');
+  sheet.getRange('B1').setValue(specialist.name);
+  sheet.getRange('B3').setValue(specialist.kla);
+  sheet.getRange('D3').setValue(specialist.cycle);
+}
+
+
+/**
+ * Lays out the timetable grid on a freshly copied TEMPLATE or SPEC_Template
+ * tab: times, term/week headers, day names, column widths, the template's
+ * cell formatting, dropdowns and break rows. Writes are batched (one call
+ * per row or block rather than per cell) to stay well inside Apps Script's
+ * time limit.
+ */
+function buildGrid(sheet, formatSource, cycle, slots, breakLabels, validationRule) {
+  const layout = getGridLayout(cycle);
+  const lastDataRow = FIRST_DATA_ROW + slots.length - 1;
+  const gridWidth = layout.lastColumn - FIRST_GRID_COLUMN + 1;
+
+  ensureSheetSize(sheet, Math.max(lastDataRow, 30), layout.lastColumn);
+  sheet.getRange(
+    4,
+    TIME_COLUMN,
+    sheet.getMaxRows() - 3,
+    layout.lastColumn - TIME_COLUMN + 1
+  ).clearContent().clearDataValidations();
+
+  // The template's formatting for one week, repeated for every week block.
+  const sourceLastRow = Math.max(5, Math.min(formatSource.getMaxRows(), lastDataRow));
+  const sourceHeader = formatSource.getRange(4, FIRST_GRID_COLUMN, 1, DAYS.length);
+  const sourceData = formatSource.getRange(5, FIRST_GRID_COLUMN, sourceLastRow - 4, DAYS.length);
+  layout.blocks.forEach(block => {
+    const blockLastColumn = block.startColumn + DAYS.length - 1;
+    sourceHeader.copyFormatToRange(sheet, block.startColumn, blockLastColumn, 4, 4);
+    sourceData.copyFormatToRange(sheet, block.startColumn, blockLastColumn, FIRST_DATA_ROW, lastDataRow);
+  });
+
+  sheet.getRange(FIRST_DATA_ROW, TIME_COLUMN, slots.length, 1)
+    .setValues(slots.map(slot => [slot.label]));
+  sheet.setColumnWidth(TIME_COLUMN, 100);
+
+  // Row 1 (term/week headers), row 4 (day names) and the grid itself
+  // (blank, apart from break labels) are each written in one call.
+  const headerRow = new Array(gridWidth).fill('');
+  const dayRow = new Array(gridWidth).fill('');
+  const gridValues = slots.map(() => new Array(gridWidth).fill(''));
+  layout.blocks.forEach(block => {
+    const offset = block.startColumn - FIRST_GRID_COLUMN;
+    headerRow[offset] = block.label;
+    DAYS.forEach((day, dayIndex) => {
+      dayRow[offset + dayIndex] = day;
+      breakLabels.forEach((label, slotIndex) => {
+        if (label) gridValues[slotIndex][offset + dayIndex] = label;
+      });
+    });
+  });
+
+  sheet.getRange(1, FIRST_GRID_COLUMN, 1, gridWidth).breakApart().setValues([headerRow]);
+  layout.blocks.forEach(block => {
+    sheet.getRange(1, block.startColumn, 1, DAYS.length).merge();
+  });
+  sheet.getRangeList(layout.blocks.map(block => toA1(1, block.startColumn, 1, DAYS.length)))
+    .setFontSize(12)
+    .setFontFamily('Poppins')
+    .setFontWeight('bold');
+
+  sheet.getRange(4, FIRST_GRID_COLUMN, 1, gridWidth).setValues([dayRow]);
+  sheet.getRangeList(layout.blocks.map(block => toA1(4, block.startColumn, 1, DAYS.length)))
+    .setFontWeight('bold');
+  sheet.getRange(FIRST_DATA_ROW, FIRST_GRID_COLUMN, slots.length, gridWidth)
+    .setValues(gridValues);
+
+  layout.blocks.forEach(block => {
+    sheet.setColumnWidths(block.startColumn, DAYS.length, DAY_COLUMN_WIDTH);
+    sheet.getRange(FIRST_DATA_ROW, block.startColumn, slots.length, DAYS.length)
+      .setDataValidation(validationRule);
+  });
+  layout.spacers.forEach(spacer => {
+    sheet.setColumnWidth(spacer.column, spacer.width);
+  });
+
+  // Break rows: no dropdown, grey, centred. One range per block and run of
+  // consecutive break slots.
+  const breakRanges = [];
+  getBreakRuns(breakLabels).forEach(run => {
+    layout.blocks.forEach(block => {
+      breakRanges.push(
+        toA1(FIRST_DATA_ROW + run.startIndex, block.startColumn, run.length, DAYS.length)
+      );
+    });
+  });
+  if (breakRanges.length) {
+    sheet.getRangeList(breakRanges)
+      .clearDataValidations()
+      .setBackground(BREAK_BACKGROUND)
+      .setHorizontalAlignment('center')
+      .setVerticalAlignment('middle');
+  }
+
+  return { layout: layout, lastDataRow: lastDataRow };
+}
+
+
+/**
+ * Copies only the conditional formatting from TEMPLATE!B5 to every week
+ * block of a class tab (one paste per block, so the spacer columns between
+ * weeks and terms do not receive timetable conditional formatting).
+ */
+function pasteTemplateConditionalFormatting(templateSheet, sheet, layout, slotCount) {
+  const sourceRange = templateSheet.getRange('B5');
+  layout.blocks.forEach(block => {
+    sourceRange.copyTo(
+      sheet.getRange(FIRST_DATA_ROW, block.startColumn, slotCount, DAYS.length),
+      SpreadsheetApp.CopyPasteType.PASTE_CONDITIONAL_FORMATTING,
+      false
     );
   });
 }
 
 
-function applyTemplateGridFormatting(
-  templateSheet,
-  targetSheet,
-  targetStartColumn,
-  firstDataRow,
-  lastDataRow,
-  dayCount
-) {
-  const sourceLastRow = Math.max(
-    5,
-    Math.min(templateSheet.getMaxRows(), lastDataRow)
-  );
-  const sourceHeader = templateSheet.getRange(4, 10, 1, dayCount);
-  const sourceData = templateSheet.getRange(
-    5,
-    10,
-    sourceLastRow - 4,
-    dayCount
-  );
-
-
-  sourceHeader.copyFormatToRange(
-    targetSheet,
-    targetStartColumn,
-    targetStartColumn + dayCount - 1,
-    4,
-    4
-  );
-
-
-  sourceData.copyFormatToRange(
-    targetSheet,
-    targetStartColumn,
-    targetStartColumn + dayCount - 1,
-    firstDataRow,
-    lastDataRow
-  );
-}
-
-
 /**
- * Copies only the conditional formatting from TEMPLATE!B5 to all completed
- * timetable cells on a newly generated class sheet.
- *
- * The target sheet is passed directly because a web-app execution does not
- * reliably have the newly generated class tab as its active sheet.
+ * Column layout of the grid for a cycle length: a block of five day columns
+ * per term and week, a narrow spacer between weeks and a wider one between
+ * terms.
  */
-function copyConditionalFormattingToClassSheet(
-  templateSheet,
-  targetSheet,
-  firstDataRow,
-  lastDataRow
-) {
-  if (!templateSheet) {
-    throw new Error("Could not find a sheet named 'TEMPLATE'.");
-  }
-  const sourceRange = templateSheet.getRange('B5');
-  const startColumn = 10;
-  const lastColumn = targetSheet.getLastColumn();
-  if (lastDataRow < firstDataRow || lastColumn < startColumn) return;
-  // Apply to each weekday column separately so spacer columns between weeks
-  // and terms do not receive timetable conditional formatting.
-  for (let column = startColumn; column <= lastColumn; column++) {
-    const dayHeading = String(
-      targetSheet.getRange(4, column).getDisplayValue()
-    ).trim();
+function getGridLayout(cycle) {
+  const blocks = [];
+  const spacers = [];
+  let column = FIRST_GRID_COLUMN;
 
-    if (!dayHeading) continue;
-    const targetRange = targetSheet.getRange(
-      firstDataRow,
-      column,
-      lastDataRow - firstDataRow + 1,
-      1
+  for (let term = 1; term <= TERM_COUNT; term++) {
+    for (let week = 0; week < cycle; week++) {
+      blocks.push({
+        term: term,
+        week: week,
+        label: 'Term ' + term + ' - Week ' + String.fromCharCode(65 + week),
+        startColumn: column
+      });
+      column += DAYS.length;
+      if (week < cycle - 1) {
+        spacers.push({ column: column, width: WEEK_SPACER_WIDTH });
+        column++;
+      }
+    }
+    if (term < TERM_COUNT) {
+      spacers.push({ column: column, width: TERM_SPACER_WIDTH });
+      column++;
+    }
+  }
+
+  return { blocks: blocks, spacers: spacers, lastColumn: column - 1 };
+}
+
+
+/** Every 5-minute slot of the school day, labelled "HH:MM - HH:MM". */
+function createTimeSlots(startTime, endTime) {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+
+  if (start === null || end === null || start >= end) {
+    throw new Error('Invalid school start or end time.');
+  }
+
+  const slots = [];
+  for (let minutes = start; minutes < end; minutes += SLOT_MINUTES) {
+    slots.push({
+      start: minutes,
+      end: minutes + SLOT_MINUTES,
+      label: minutesToTime(minutes) + ' - ' + minutesToTime(minutes + SLOT_MINUTES)
+    });
+  }
+  return slots;
+}
+
+
+/** The break name for each slot that overlaps a break, '' for the rest. */
+function getBreakLabels(slots, breaks) {
+  return slots.map(slot => {
+    const match = breaks.find(item =>
+      slot.start < timeToMinutes(item.end) && slot.end > timeToMinutes(item.start)
     );
-
-    sourceRange.copyTo(      targetRange,
-      SpreadsheetApp.CopyPasteType.PASTE_CONDITIONAL_FORMATTING,      false    );
-  }
+    return match ? match.label : '';
+  });
 }
 
 
-function applyBreakRows(sheet, cycleConfig, breaks, days, firstDataRow, lastDataRow) {
-  for (let row = firstDataRow; row <= lastDataRow; row++) {
-    const timeRange = parseTimeRange(sheet.getRange(row, 9).getValue());
-    if (!timeRange) continue;
-
-    let breakLabel = '';
-    for (let index = 0; index < breaks.length; index++) {
-      if (
-        timeRange.start < parseTime(breaks[index].end) &&
-        timeRange.end > parseTime(breaks[index].start)
-      ) {
-        breakLabel = breaks[index].label;
-        break;
-      }
+/** Runs of consecutive break slots, as {startIndex, length}. */
+function getBreakRuns(breakLabels) {
+  const runs = [];
+  breakLabels.forEach((label, index) => {
+    if (!label) return;
+    const lastRun = runs[runs.length - 1];
+    if (lastRun && lastRun.startIndex + lastRun.length === index) {
+      lastRun.length++;
+    } else {
+      runs.push({ startIndex: index, length: 1 });
     }
-
-    if (!breakLabel) continue;
-
-    let currentColumn = 10;
-    for (let term = 1; term <= 4; term++) {
-      for (let week = 0; week < cycleConfig.cycle; week++) {
-        sheet.getRange(row, currentColumn, 1, days.length)
-          .setValue(breakLabel)
-          .clearDataValidations()
-          .setBackground('#F2F2F2')
-          .setHorizontalAlignment('center')
-          .setVerticalAlignment('middle');
-
-        currentColumn += days.length;
-        if (week < cycleConfig.cycle - 1) currentColumn++;
-      }
-      if (term < 4) currentColumn++;
-    }
-  }
+  });
+  return runs;
 }
+
+
+function minutesToTime(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return (hours < 10 ? '0' : '') + hours + ':' + (minutes < 10 ? '0' : '') + minutes;
+}
+
+
+/** A1 notation for a range, e.g. toA1(1, 10, 1, 5) is "J1:N1". */
+function toA1(row, column, numRows, numColumns) {
+  const start = columnToLetters(column) + row;
+  if (numRows === 1 && numColumns === 1) return start;
+  return start + ':' + columnToLetters(column + numColumns - 1) + (row + numRows - 1);
+}
+
+
+function columnToLetters(column) {
+  let letters = '';
+  while (column > 0) {
+    const remainder = (column - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    column = Math.floor((column - 1) / 26);
+  }
+  return letters;
+}
+
 
 /**
  * Applies conditional formatting mapping each class's chosen colour onto a
@@ -983,12 +969,14 @@ function applySpecialistClashFormatting(ss) {
     const lastColumn = sheet.getLastColumn();
     if (lastRow < 5 || lastColumn < 10) return;
 
+    // Day-name columns only (spacer columns have no heading in row 4).
+    const dayHeadings = sheet.getRange(4, 10, 1, lastColumn - 9).getDisplayValues()[0];
     const scheduleRanges = [];
-    for (let column = 10; column <= lastColumn; column++) {
-      if (String(sheet.getRange(4, column).getDisplayValue()).trim()) {
-        scheduleRanges.push(sheet.getRange(5, column, lastRow - 4, 1));
+    dayHeadings.forEach((heading, index) => {
+      if (String(heading).trim()) {
+        scheduleRanges.push(sheet.getRange(5, index + 10, lastRow - 4, 1));
       }
-    }
+    });
 
     if (!scheduleRanges.length) return;
 
@@ -1060,26 +1048,6 @@ function ensureSheetSize(sheet, requiredRows, requiredColumns) {
   }
 }
 
-function createTimeSlots(startValue, endValue, timezone) {
-  const start = parseTime(startValue);
-  const end = parseTime(endValue);
-
-  if (!start || !end || start >= end) {
-    throw new Error('Invalid school start or end time.');
-  }
-
-  const slots = [];
-  let current = start;
-
-  while (current < end) {
-    const next = new Date(current.getTime() + 5 * 60 * 1000);
-    slots.push([formatTimeRange(current, next, timezone)]);
-    current = next;
-  }
-
-  return slots;
-}
-
 function uniqueNonBlank(values) {
   const seen = {};
   return values.filter(value => {
@@ -1089,33 +1057,6 @@ function uniqueNonBlank(values) {
     seen[key] = true;
     return true;
   }).map(value => String(value).trim());
-}
-
-function isValidTime(value) {
-  return (value instanceof Date && !isNaN(value.getTime())) ||
-    (typeof value === 'string' && /^(?:2[0-3]|[01]?[0-9]):[0-5][0-9]$/.test(value));
-}
-
-function parseTime(value) {
-  if (value instanceof Date) return value;
-  if (isValidTime(value)) return new Date('2000-01-01T' + value + ':00');
-  return null;
-}
-
-function formatTimeRange(start, end, timezone) {
-  return Utilities.formatDate(start, timezone, 'HH:mm') + ' - ' +
-    Utilities.formatDate(end, timezone, 'HH:mm');
-}
-
-function parseTimeRange(value) {
-  if (!value || typeof value !== 'string') return null;
-
-  const parts = value.split(' - ');
-  if (parts.length !== 2) return null;
-
-  const start = parseTime(parts[0]);
-  const end = parseTime(parts[1]);
-  return start && end ? { start: start, end: end } : null;
 }
 
 function sanitizeSheetName(name) {

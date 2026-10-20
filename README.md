@@ -8,7 +8,25 @@ A timetable helper wizard tool that assists Primary schools creating their timet
 | `wizard/` | The standalone web app project | `Index.html` is the setup wizard; `Code.gs` copies the master template and builds the class and specialist tabs |
 | `template/` | The project bound to the master template spreadsheet | `TemplateSync.gs` adds the **Timetable Admin** menu (sync, lock, clash formatting). It is copied into every generated timetable along with the spreadsheet. |
 
-`PLAN.md` lists the planned fixes and features in priority order.
+`PLAN.md` lists the planned fixes and features in priority order, and
+`template/SHEET_CHANGES.md` the edits made in the template spreadsheet itself.
+
+`wizard/LoadTest.gs` is a development-only load test; don't include it in the
+live wizard project.
+
+## Running the tests
+
+The `tests/` folder runs both scripts against an in-memory stand-in for
+Google Sheets, so changes can be checked before they're pasted into Apps
+Script. It needs Node.js 18 or later and no other packages:
+
+```
+npm test
+```
+
+`tests/fixtures/Code.before-phase4.gs` is the previous generator, kept so the
+tests can check the new one produces the same timetable with far fewer
+spreadsheet calls.
 
 ## Deploying the wizard
 

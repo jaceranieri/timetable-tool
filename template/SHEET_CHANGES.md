@@ -100,16 +100,30 @@ Nothing in the scripts or the remaining tabs reads any of these.
   - Specialist tabs show class colours and grey break rows.
   - Sync, then Lock Synced Cells, then delete one specialist lesson and run both again: the deleted slot is cleared and no longer locked.
 
-## Phase 3
+## Phase 3 (tested)
 
 No sheet changes. Paste the updated `wizard/Code.gs`, `wizard/Index.html`
 and `template/TemplateSync.gs`, then check:
 
-- [ ] The wizard flags, on the field itself:
+- [x] The wizard flags, on the field itself:
   - a duplicate class name in another grade (the wizard opens that grade's tab),
   - a class called `Data`, `SPEC_Test` or `Year 3/4`, or containing an apostrophe,
   - a specialist called `Template` or two specialists with the same name,
   - a start, end or break time not on a 5-minute mark (e.g. 10:32),
   - two overlapping breaks.
-- [ ] A normal setup generates as before, and DATA shows times such as `08:30` as typed (plain text).
-- [ ] The hidden SPEC_Template tab gets no clash formatting, and "Sync Specialist Schedules" doesn't list it.
+- [x] A normal setup generates as before, and DATA shows times such as `08:30` as typed (plain text).
+- [x] The hidden SPEC_Template tab gets no clash formatting, and "Sync Specialist Schedules" doesn't list it.
+
+## Phase 4
+
+No sheet changes. Paste the updated `wizard/Code.gs`, `wizard/Index.html`
+and `template/TemplateSync.gs`.
+
+- [ ] **Load test:** in the wizard project, add a script file `LoadTest` and paste `wizard/LoadTest.gs` into it. Choose `runLoadTest` in the toolbar and click Run. The log shows how long 28 classes and 6 specialists took (the limit is 360s). Note the time for step 28, delete the generated file, then delete the `LoadTest` file again.
+- [ ] Generate a normal timetable from the wizard and check:
+  - Class tabs look as before: headers, times, grey break rows, dropdowns, subject colours, compliance table.
+  - Two classes with the same cycle length have identical grids; a class with a different cycle has its own layout.
+  - Specialist tabs: class colours, grey break rows, red clashes between two specialists.
+  - The file name has no `INCOMPLETE - ` prefix.
+- [ ] Force an error (for example, set the `TEMPLATE_ID` script property to `x`) and check the wizard shows the error panel with **Try again** instead of a pop-up. Then set it back.
+- [ ] Sync and lock still work as in Phase 2.
