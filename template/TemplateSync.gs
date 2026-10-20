@@ -249,10 +249,8 @@ function syncSpecialistSchedules() {
 
             // Successful, non-conflict write: only the value changes. Background/
             // font are explicitly reset to default (in case this cell was
-            // previously flagged red as a conflict, or marked with the old
-            // flat-blue marker from an earlier version of this script) so
-            // your own subject-colour conditional formatting is free to
-            // control how the cell looks. A note (invisible, no effect on
+            // previously flagged red as a conflict) so your own subject-colour
+            // conditional formatting is free to control how the cell looks. A note (invisible, no effect on
             // appearance) marks the cell as sync-managed so "Lock Synced
             // Cells" can find it later.
             classInfo.values[gridRow][gridCol] = assignedKla;
@@ -384,8 +382,7 @@ function releasePreviousSyncCells(info, specialistKlaMap) {
           info.values[r][c] = '';
         }
       } else if (isConflictValue) {
-        // Conflicts flagged by older versions of this script have no note,
-        // so there is nothing to restore.
+        // A conflict whose note has been deleted has nothing to restore.
         info.values[r][c] = isConflictNote ? note.substring(CONFLICT_NOTE_PREFIX.length + 1) : '';
       }
 
@@ -454,7 +451,6 @@ function lockSyncedSpecialistCells() {
   let removedLockCount = 0;
   let sheetsScanned = 0;
   const failures = [];
-  const unexpectedSamples = []; // {sheet, cell, text, note} for populated cells NOT matching the sync marker
 
   classNames.forEach((className, index) => {
     const classSheet = ss.getSheetByName(className) || ss.getSheetByName(sanitizeSheetName(className));
@@ -469,8 +465,6 @@ function lockSyncedSpecialistCells() {
 
     const region = classSheet.getRange(5, 10, numRows, numCols);
     const notes = region.getNotes();
-    const backgrounds = region.getBackgrounds(); // fallback check for cells synced by an older version of this script
-    const values = region.getValues();
 
     // Remove the locks made by the previous run, so slots that are no longer
     // synced (moved or deleted lessons) don't stay locked, then lock the
@@ -501,19 +495,10 @@ function lockSyncedSpecialistCells() {
 
     const needsLock = Array.from({ length: numRows }, (_, r) =>
       Array.from({ length: numCols }, (_, c) => {
-        const hasNoteMarker = String(notes[r][c] || '').indexOf('[SPEC_SYNC]') === 0;
-        const hasLegacyColourMarker = String(backgrounds[r][c]).toUpperCase() === '#E8F0FE';
-        const isMarked = hasNoteMarker || hasLegacyColourMarker;
+        const isMarked = String(notes[r][c] || '').indexOf(SYNC_NOTE_PREFIX) === 0;
         if (isMarked) {
           matchedCellCount++;
           if (alreadyProtected[r][c]) alreadyProtectedCellCount++;
-        } else if (values[r][c] && unexpectedSamples.length < 5) {
-          unexpectedSamples.push({
-            sheet: className,
-            cell: classSheet.getRange(r + 5, c + 10).getA1Notation(),
-            text: String(values[r][c]),
-            note: notes[r][c] || '(none)'
-          });
         }
         return isMarked && !alreadyProtected[r][c];
       })
@@ -530,7 +515,6 @@ function lockSyncedSpecialistCells() {
         rect.colEnd - rect.colStart + 1
       );
       try {
-        range.setBackground(null); // clean up any leftover marker colour from an older script version
         const protection = range.protect().setDescription(LOCK_DESCRIPTION);
         protection.addEditor(owner);
         if (runner.getEmail() !== owner.getEmail()) {
@@ -559,13 +543,6 @@ function lockSyncedSpecialistCells() {
       '"Sync Specialist Schedules" hasn\'t been run yet on this spreadsheet, or (2) it ran but ' +
       "didn't actually match any specialist entries to a class (check the sync's own completion " +
       'message for a "Populated 0 specialist slot(s)" result).';
-
-    if (unexpectedSamples.length > 0) {
-      message += '\n\nHere is what was actually found instead, on populated (non-blank) cells:\n' +
-        unexpectedSamples.map(s =>
-          s.sheet + ' ' + s.cell + ': text="' + s.text + '", note=' + s.note
-        ).join('\n');
-    }
   }
 
   if (failures.length > 0) {

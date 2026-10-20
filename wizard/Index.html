@@ -93,8 +93,6 @@
             <div className={`rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm ${className}`}>{children}</div>
         );
         const CardHeader = ({ children, className = "" }) => <div className={`flex flex-col space-y-1.5 p-6 ${className}`}>{children}</div>;
-        const CardTitle = ({ children, className = "" }) => <h3 className={`font-semibold leading-none tracking-tight text-xl ${className}`}>{children}</h3>;
-        const CardDescription = ({ children, className = "" }) => <p className={`text-sm text-slate-500 ${className}`}>{children}</p>;
         const CardContent = ({ children, className = "" }) => <div className={`p-6 pt-0 ${className}`}>{children}</div>;
         const CardFooter = ({ children, className = "" }) => <div className={`flex items-center p-6 pt-0 ${className}`}>{children}</div>;
 
@@ -187,7 +185,6 @@
 
         const App = () => {
             const [step, setStep] = useState(1);
-            const [isSubmitting, setIsSubmitting] = useState(false);
 
             // Real-time Generation & Polling States
             const [isGenerating, setIsGenerating] = useState(false);
@@ -308,7 +305,6 @@
                                                     });
                                                 } else if (data.percent === -1) {
                                                     setIsGenerating(false);
-                                                    setIsSubmitting(false);
                                                     alert("Error during timetable generation: " + data.status);
                                                 }
                                             } catch (e) {
@@ -507,7 +503,6 @@
             const handleSubmit = () => {
                 const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
                 setActiveJobId(jobId);
-                setIsSubmitting(true);
                 setIsGenerating(true);
                 setLoadingProgress(5);
 
@@ -560,10 +555,7 @@
 
                 const payloadToSubmit = {
                     jobId: jobId,
-                    exportVariables: exportVariables,
-                    metadata: {
-                        generatedAt: new Date().toISOString()
-                    }
+                    exportVariables: exportVariables
                 };
 
                 // Check environment and invoke backend function
@@ -581,14 +573,12 @@
                             setTimeout(() => {
                                 setGeneratedUrl(url);
                                 setIsGenerating(false);
-                                setIsSubmitting(false);
                                 setIsSuccess(true);
                             }, 800);
                         })
                         .withFailureHandler((error) => {
                             alert("Failed to generate timetable: " + error.message);
                             setIsGenerating(false);
-                            setIsSubmitting(false);
                         })
                         .generateTimetable(payloadToSubmit);
                 } else {
@@ -618,7 +608,6 @@
                                 setTimeout(() => {
                                     setGeneratedUrl("https://docs.google.com/spreadsheets/d/dummy-link-for-dev");
                                     setIsGenerating(false);
-                                    setIsSubmitting(false);
                                     setIsSuccess(true);
                                 }, 600);
                             }
@@ -771,8 +760,6 @@
                             <p className="text-sm text-slate-500 mt-1">Configure the cycle and class distribution per grade.</p>
                         </div>
                     </div>
-
-                    {errors.general && <p className="text-sm text-red-500 bg-red-50 p-2 rounded animate-pop">{errors.general}</p>}
 
                     <div id="list-container-grades" className="space-y-3 max-h-[calc(100vh-20rem)] overflow-y-auto custom-scrollbar p-1 -m-1">
                         {data.grades.map((g, i) => {
@@ -1379,14 +1366,14 @@
                             </CardContent>
 
                             <CardFooter className="flex items-start justify-between bg-slate-50 border-t border-slate-200 p-6 sm:px-10 h-28 pt-8 shrink-0">
-                                <Button variant="outline" onClick={handleBack} disabled={step === 1 || isSubmitting}>
+                                <Button variant="outline" onClick={handleBack} disabled={step === 1}>
                                     Back
                                 </Button>
 
                                 {step < 4 ? (
                                     <Button variant="default" onClick={handleNext}>Continue to Step {step + 1}</Button>
                                 ) : (
-                                    <Button variant="footerSolid" onClick={handleSubmit} disabled={isSubmitting} className="gap-2 px-6">
+                                    <Button variant="footerSolid" onClick={handleSubmit} disabled={isGenerating} className="gap-2 px-6">
                                         Generate Timetable Template
                                     </Button>
                                 )}

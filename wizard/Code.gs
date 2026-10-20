@@ -234,7 +234,6 @@ function populateDataSheet(dataSheet, payload, config, ss) {
   const classNames = uniqueNonBlank(config.classes.map(item => item.name));
   const specialistRows = config.specialists.map(item => [item.name, item.kla]);
   const classColorRows = config.classes.map(item => [item.name, item.color || '']);
-  const activityNames = uniqueNonBlank(config.activities.map(item => item.name));
   const breakNames = uniqueNonBlank(config.breaks.map(item => item.label));
 
 
@@ -245,7 +244,6 @@ function populateDataSheet(dataSheet, payload, config, ss) {
     classNames.length + 1,
     specialistRows.length + 1,
     classColorRows.length + 1,
-    activityNames.length + 1,
     breakNames.length + 1
   );
 
@@ -295,13 +293,6 @@ function populateDataSheet(dataSheet, payload, config, ss) {
       'ClassColorMapping',
       dataSheet.getRange(2, 11, classColorRows.length, 2)
     );
-  }
-
-
-  dataSheet.getRange('N1').setValue('ActivityList');
-  if (activityNames.length) {
-    const activityValues = activityNames.map(name => [name]);
-    dataSheet.getRange(2, 14, activityValues.length, 1).setValues(activityValues);
   }
 
 
