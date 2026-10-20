@@ -622,17 +622,12 @@ function isSpecialistSheet(sheet) {
  * template/TemplateSync.gs: the wizard applies it when generating a
  * timetable, and the Timetable Admin menu re-applies it later.
  *
- * NOTE ON CYCLE MISMATCHES: this live conditional-formatting clash check
- * compares specialist sheets column-for-column, which is only guaranteed
- * correct when the specialist sheets being compared share the same cycle
- * length. It still gives useful, immediate feedback while specialists are
- * filling in their sheets, but it is a heuristic, not the source of truth.
- * The authoritative, cycle-aware clash + conflict check is the Timetable
- * Admin menu's "Sync Specialist Schedules" (TemplateSync.gs), which
- * resolves real repeating weeks via each sheet's own cycle length before
- * comparing anything. Re-run it periodically (or after specialists finish
- * editing), then run "Lock Synced Cells" once you're happy with the result,
- * to catch clashes this live check might miss when cycles differ.
+ * Adds two conditional-formatting rules to every specialist tab: break rows
+ * in grey, and a live red clash warning when another specialist has the
+ * same class at the same time in the same real week. Specialists can have
+ * different cycle lengths, so their columns don't line up; the clash rule
+ * works out which cells to compare (see buildClashFormula), the same way
+ * "Sync Specialist Schedules" does.
  */
 function applySpecialistClashFormatting(ss) {
   const specialistSheets = ss.getSheets()
@@ -641,8 +636,13 @@ function applySpecialistClashFormatting(ss) {
   if (!specialistSheets.length) return;
 
   const breakListRange = ss.getRangeByName('BreakList');
+  // Each tab's cycle length, from D3 (written by the wizard).
+  const specialists = specialistSheets.map(sheet => ({
+    name: sheet.getName(),
+    cycle: Math.max(1, parseInt(sheet.getRange('D3').getValue(), 10) || 1)
+  }));
 
-  specialistSheets.forEach(sheet => {
+  specialistSheets.forEach((sheet, sheetIndex) => {
     const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
     if (lastRow < 5 || lastColumn < 10) return;
@@ -693,15 +693,11 @@ function applySpecialistClashFormatting(ss) {
     }
 
     if (specialistSheets.length >= 2) {
-      const counts = specialistSheets.map(specialistSheet => {
-        const escapedName = specialistSheet.getName().replace(/'/g, "''");
-        return 'COUNTIF(INDIRECT("\'' + escapedName +
-          '\'!"&ADDRESS(ROW(),COLUMN(),4)),' + referenceCell + ')';
-      }).join('+');
-
       newRules.push(
         SpreadsheetApp.newConditionalFormatRule()
-          .whenFormulaSatisfied('=AND(LEN(' + referenceCell + ')>0,(' + counts + ')>1)')
+          .whenFormulaSatisfied(
+            buildClashFormula(referenceCell, specialists[sheetIndex].cycle, specialists)
+          )
           .setBackground('#FF0000')
           .setFontColor('#FFFFFF')
           .setBold(true)
@@ -712,6 +708,50 @@ function applySpecialistClashFormatting(ss) {
 
     sheet.setConditionalFormatRules(newRules.concat(retainedRules));
   });
+}
+
+/**
+ * Keep this function identical in wizard/Code.gs and
+ * template/TemplateSync.gs.
+ *
+ * The clash rule's formula for a specialist tab with the given cycle length.
+ * It counts how many specialist tabs (this one included) have the same
+ * class at the same time, on the same day, in the same term and in a week
+ * that is the same real week, and is true when that count is above 1.
+ *
+ * Grid layout (from the wizard): columns start at J (10); each week block is
+ * 5 day columns plus a spacer, so 6 columns, and a term is 6 x cycle
+ * columns wide. For the cell being checked, COLUMN() gives its term, week
+ * and day. Cycles restart each term, so week w of a C-week cycle falls on
+ * real weeks w, w + C, w + 2C, ...; it shares a real week with week x of a
+ * D-week cycle when w and x are equal modulo gcd(C, D). Those are the cells
+ * compared on each other tab. With equal cycle lengths that is just the
+ * cell in the same position.
+ */
+function buildClashFormula(referenceCell, cycle, specialists) {
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+  const offset = '(COLUMN()-10)';
+  const term = 'INT(' + offset + '/' + (6 * cycle) + ')';
+  const week = 'INT(MOD(' + offset + ',' + (6 * cycle) + ')/6)';
+  const day = 'MOD(' + offset + ',6)';
+
+  const counts = [];
+  specialists.forEach(other => {
+    const sheetName = "'" + other.name.replace(/'/g, "''").replace(/"/g, '""') + "'!";
+    if (other.cycle === cycle) {
+      counts.push('COUNTIF(INDIRECT("' + sheetName + '"&ADDRESS(ROW(),COLUMN(),4)),' + referenceCell + ')');
+      return;
+    }
+    const shared = gcd(cycle, other.cycle);
+    const firstWeek = shared === 1 ? '0' : 'MOD(' + week + ',' + shared + ')';
+    for (let k = 0; k < other.cycle / shared; k++) {
+      const otherWeek = firstWeek + '+' + (k * shared);
+      const column = '10+' + term + '*' + (6 * other.cycle) + '+6*(' + otherWeek + ')+' + day;
+      counts.push('COUNTIF(INDIRECT("' + sheetName + '"&ADDRESS(ROW(),' + column + ',4)),' + referenceCell + ')');
+    }
+  });
+
+  return '=AND(LEN(' + referenceCell + ')>0,(' + counts.join('+') + ')>1)';
 }
 
 function computeGcd(a, b) {

@@ -73,6 +73,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 - [x] **15. Rebuild tab generation (L).** Build one finished class tab per cycle length and copy it for each class; batched writes; conditional-formatting rules built once. Each step is written as "make sure this tab exists and is set up" so step 32 can reuse it.
 - [x] **16. Clean up after a failed run (S).** The copy is named `INCOMPLETE - …` until generation finishes (this also covers timeouts, which can't run clean-up code); plain-English error messages; one in-app error panel with Try again.
 - [x] **17. Load test (S).** 28 classes (3-week cycle) and 6 specialists: 504s before, **93s** after copying tabs through the Google Sheets API (target 120s). Remaining time: building the first tab of each cycle (45s), clash formatting (18s), setup (10s), copies (20s). Use about 1.5 minutes for a school this size in step 28.
+- [x] **18a. Live clash check across cycle lengths (M).** The red clash rule on specialist tabs compared the same cell on every tab, which only lines up for equal cycle lengths: a weekly lesson against a week-B lesson wasn't flagged, and the same column in different terms was. The rule now works out, for each other specialist, the cells in the same real week, term, day and time (the same definition the sync uses). Equal cycles keep the simple same-cell formula.
 - [x] **18. Faster sync (S).** Header rows are read in bulk in `buildScheduleColumnMap` and the clash formatting.
 
 ## Phase 5: Deployment polish
@@ -99,6 +100,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 - [ ] **25. Draft autosave (S)** with Resume and Start new; "Back to wizard" and "Start new" on the success screen.
 - [ ] **26. Step 3 errors (S).** ~~Jump to the first grade tab with an error~~ (done in Phase 3); show a summary, clear errors as fields are edited. Allow "TBC" teachers; ignore fully blank rows.
+- [ ] **26a. Grade tabs in Step 3 (S).** A grade's classes sit in a panel with its own small scroll area (`max-h-[350px]`) and a thin scrollbar, so with four or more classes the last one is hidden below the fold; when it has an error the wizard reports it but you can't see where. Let the class list grow with the page (or make the scroll obvious), show "4 classes, 1 needs attention" on each tab, and scroll to and highlight the first class with an error.
 - [ ] **27. School name field (S)** and specialist/class cycle warning. (5-minute time steps, overlapping-break errors and the 10-week cycle cap were done in Phase 3.)
 - [ ] **28. Preview before generating (S):** "14 class tabs, 3 specialist tabs, about 1 minute".
 - [ ] **29. Paste from a spreadsheet (S):** paste class names and teachers in bulk.

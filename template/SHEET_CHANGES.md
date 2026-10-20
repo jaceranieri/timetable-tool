@@ -133,3 +133,11 @@ and `template/TemplateSync.gs`.
   2. Paste the updated `wizard/Code.gs` (and keep `LoadTest.gs` for now).
   3. Run `runLoadTest` and copy the whole log. Copies should now appear as lines like "Copy Kindergarten Red, … (one request)".
   4. Generate a normal timetable from the wizard and check the tabs are in the same order as the classes in the wizard, and each copied class shows its own teacher, name, grade and cycle in `C27:C31`.
+
+### Live clash check across cycle lengths (PLAN step 18a)
+
+- [ ] Paste the updated `template/TemplateSync.gs` into the **template's** script project, and the updated `wizard/Code.gs` into the wizard project.
+- [ ] Generate a new timetable (timetables generated earlier keep their own copy of the old script and rules) with a 1-week and a 2-week specialist, then check:
+  - 1-week specialist: a class in Term 1 Monday 9:00 (column J). 2-week specialist: the same class in Term 1 **Week B** Monday 9:00 (column P). Both cells turn red.
+  - 1-week specialist: a class in Term 2 Monday 9:00 (column P). 2-week specialist: the same class in Term 1 Week B Monday 9:00 (also column P). Neither turns red.
+  - Two specialists with the same cycle length and the same class in the same cell still turn red.
