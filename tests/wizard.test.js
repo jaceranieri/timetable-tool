@@ -93,11 +93,19 @@ test('a teacher is required, and stand-ins like TBC are refused', () => {
 });
 
 test('default and pasted classes named after a colour get that colour', () => {
-  const defaults = wizard.makeInitialData().staffing.map(s => [s.className, s.color]);
+  const defaults = wizard.makeInitialData().staffing.slice(0, 6).map(s => [s.className, s.color]);
   assert.deepEqual(plain(defaults), [
     ['Kindergarten Blue', '#A0C4FF'], ['Kindergarten Red', '#FFADAD'], ['Year 1 Gold', '#FDFFB6'],
     ['Year 1 Green', '#CAFFBF'], ['Year 2 Amber', '#FFD6A5'], ['Year 2 Jade', '#C1FFD7']
   ]);
   assert.equal(wizard.colourForName('3/4 Purple'), '#BDB2FF');
   assert.equal(wizard.colourForName('Year 3 - 1'), null);
+});
+
+test('the default setup has two classes in every grade, and the counts match the rows', () => {
+  const data = wizard.makeInitialData();
+  assert.deepEqual(plain(data.grades.map(g => [g.name, data.staffing.filter(s => s.gradeId === g.id).length, g.classes])), [
+    ['Kindergarten', 2, 2], ['Year 1', 2, 2], ['Year 2', 2, 2], ['Year 3', 2, 2], ['Year 4', 2, 2], ['Year 5', 2, 2], ['Year 6', 2, 2]
+  ]);
+  assert.equal(new Set(data.staffing.map(s => s.id)).size, 14);
 });
