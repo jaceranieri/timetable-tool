@@ -245,6 +245,9 @@ test('Google Doc of a week: details, merged lessons with their times, coloured l
   const weekTable = doc.html.slice(doc.html.indexOf('<table><tr><th class="time">'));
   tableShape(weekTable).forEach((cells, r) => assert.equal(cells, 6, 'row ' + r));
   assert.ok(!doc.children.some(child => child.type === 'PAGE_BREAK'), 'one week, no page breaks');
+  // The tables are stretched to the page: the time column narrow, the days equal.
+  const tables = doc.children.filter(child => child.type === 'TABLE');
+  assert.deepEqual(tables.map(table => table.widths), [[94, 299, 94, 299], [79, 141, 141, 141, 141, 143]]);
   assert.match(result, /href="https:\/\/docs\.google\.com\/document\/d\/doc1\/edit" target="_blank">Open the document</);
 
   // Listed on Start here, replacing the "None yet" line; the next one goes below it.
@@ -276,6 +279,18 @@ test('Google Doc of all terms: one page per week, details once at the top', () =
   assert.equal(doc.children.filter(child => child.type === 'PAGE_BREAK').length, 7);
 });
 
+test('Google Doc of a class tab: synced specialist lessons show the specialist, short lessons keep their times', () => {
+  const { world, tools, open } = setUp();
+  open('SPEC_Mr Smith').getRange('J11:J16').setValue('K Blue'); // Monday 9:00-9:30
+  tools.syncSpecialistSchedules();
+  const sheet = open('K Blue');
+  sheet.getRange('J17').setValue('Religion');                    // Monday 9:30-9:35, one row
+  tools.makeTimetableDocFromDialog('K Blue', '1|0');
+  const html = world.docs[0].html;
+  assert.match(html, /<b>PDHPE<\/b><br><span class="small">Mr Smith<\/span><br><span class="small">09:00 - 09:30<\/span>/);
+  assert.match(html, /<b>Religion<\/b><br><span class="small">09:30 - 09:35<\/span>/);
+});
+
 test('Google Doc of a specialist tab: specialist details, classes keep their colours', () => {
   const { world, tools, open } = setUp();
   const spec = open('SPEC_Mr Smith');
@@ -288,7 +303,7 @@ test('Google Doc of a specialist tab: specialist details, classes keep their col
   assert.match(doc.html, /style="background-color:#FFADAD"><b>K Blue<\/b>/);
 });
 
-test('Google Doc of the compliance summary: a row per class, out-of-range values in red', () => {
+test('Google Doc of the compliance summary: a row per class, in-range values green, out-of-range red, page width', () => {
   const { world, ss, tools, lastDialog } = setUp();
   setCompliance(ss.getSheetByName('K Red'), BALANCED, { empty: 0, compliant: true, amadeus: 'N/A', tutorials: 0, tutorialsPercent: 0 });
   tools.makeComplianceDoc();
@@ -296,10 +311,14 @@ test('Google Doc of the compliance summary: a row per class, out-of-range values
   assert.equal(doc.name, 'St Example Primary - Compliance summary');
   assert.match(doc.html, /<td class="label">Classes compliant<\/td><td>1 of 3<\/td><td class="label">Generated<\/td><td>21 October 2026, 2:05 PM by coordinator@school\.example<\/td>/);
   assert.match(doc.html, /<th>Class<\/th><th>Teacher<\/th><th>English<\/th>/);
-  assert.match(doc.html, /<td><b>K Red<\/b><\/td><td>Mr Brown<\/td><td>33\.0%<\/td>/);
+  assert.match(doc.html, /<td><b>K Red<\/b><\/td><td>Mr Brown<\/td><td style="background-color:#D9EAD3;color:#274E13">33\.0%<\/td>/);
   assert.match(doc.html, /<td style="background-color:#F4CCCC;color:#990000"><b>3\.0%<\/b><\/td>/); // Creative Arts under
   assert.match(doc.html, /<td style="background-color:#D9EAD3;color:#274E13"><b>Yes<\/b><\/td>/);
   assert.match(lastDialog().html, /Open the document/);
+  // Both tables fill the width inside the margins (786pt).
+  doc.children.filter(child => child.type === 'TABLE').forEach(table => {
+    assert.equal(table.widths.reduce((sum, width) => sum + width, 0), 786);
+  });
 });
 
 test('without the Drive API service, making a Google Doc explains what to turn on', () => {

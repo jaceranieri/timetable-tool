@@ -477,7 +477,10 @@ function makeTimetableDocFromDialog(sheetName, choice) {
   );
 
   // One page per week (or term): a page break before every heading but the first.
-  const doc = createDocFromHtml(ss, docTitle, html, blocks.length > 1);
+  const doc = createDocFromHtml(ss, docTitle, html, {
+    pageBreaks: blocks.length > 1,
+    tableWidths: [DETAILS_TABLE_WIDTHS].concat(blocks.map(() => WEEK_TABLE_WIDTHS))
+  });
   recordDocOnStartHere(ss, doc.url, docTitle, sheet.getName() + ', ' + madeFrom);
 
   return '<p class="ok"><b>Your Google Doc is ready:</b> ' + escapeHtml(docTitle) + '.</p>' +
@@ -591,7 +594,7 @@ function makeComplianceDoc() {
         const percent = (Number(row[3]) || 0).toFixed(1) + '%';
         return outOfRange[String(row[0])]
           ? '<td style="background-color:#F4CCCC;color:#990000"><b>' + percent + '</b></td>'
-          : '<td>' + percent + '</td>';
+          : '<td style="background-color:#D9EAD3;color:#274E13">' + percent + '</td>';
       }).join('') +
       '<td>' + result.emptySlots + '</td>' +
       (result.compliant
@@ -609,10 +612,13 @@ function makeComplianceDoc() {
       ['Classes compliant', compliantCount + ' of ' + classSheets.length],
       ['Generated', generated + (who ? ' by ' + who : '')]
     ] }) +
-    '<p>Percentage of teaching time per KLA, averaged over the year. Values outside their range are in red.</p>' +
+    '<p>Percentage of teaching time per KLA, averaged over the year. Green is within its range, red is outside it.</p>' +
     '<table>' + header + rows + '</table>'
   );
-  const doc = createDocFromHtml(ss, docTitle, html, false);
+  const kla = 0.64 / klaNames.length;
+  const doc = createDocFromHtml(ss, docTitle, html, {
+    tableWidths: [DETAILS_TABLE_WIDTHS, [0.1, 0.12].concat(klaNames.map(() => kla), [0.07, 0.07])]
+  });
   recordDocOnStartHere(ss, doc.url, docTitle, 'Compliance summary, all classes');
   showDialog(ui, title,
     '<p class="ok"><b>Your Google Doc is ready.</b> It is saved in the same folder as this timetable and ' +
@@ -631,15 +637,22 @@ function buildWeekTableHtml(grid, days, colours, breakNames) {
     .map((time, r) => ({ r: r, start: String(time || '').split(' - ')[0], end: String(time || '').split(' - ')[1] }))
     .filter(slot => slot.start && slot.end);
   const valueAt = (slotIndex, day) => String(grid.values[slots[slotIndex].r][day.index] || '').trim();
+  // The specialist teaching a synced lesson, from the note the sync leaves on the cell.
+  const specialistAt = (slotIndex, day) => {
+    const note = String((grid.notes[slots[slotIndex].r] || [])[day.index] || '');
+    return note.indexOf(SYNC_NOTE_PREFIX) === 0 ? note.substring(SYNC_NOTE_PREFIX.length).trim() : '';
+  };
 
-  // Each day's runs of the same entry (empty runs too).
+  // Each day's runs of the same entry (empty runs too); back-to-back lessons
+  // of the same KLA with different specialists stay separate.
   const runsByDay = days.map(day => {
     const runs = [];
     slots.forEach((slot, i) => {
       const value = valueAt(i, day);
+      const specialist = value ? specialistAt(i, day) : '';
       const last = runs[runs.length - 1];
-      if (last && last.value === value) last.end = i;
-      else runs.push({ value: value, start: i, end: i });
+      if (last && last.value === value && last.specialist === specialist) last.end = i;
+      else runs.push({ value: value, specialist: specialist, start: i, end: i });
     });
     return runs;
   });
@@ -670,9 +683,9 @@ function buildWeekTableHtml(grid, days, colours, breakNames) {
         ? ' style="background-color:' + colour.background + (colour.font ? ';color:' + colour.font : '') + '"'
         : '';
       const text = run.value
-        ? '<b>' + escapeHtml(run.value) + '</b>' + (run.end > run.start
-          ? '<br><span class="small">' + slots[run.start].start + ' - ' + slots[run.end].end + '</span>'
-          : '')
+        ? '<b>' + escapeHtml(run.value) + '</b>' +
+          (run.specialist ? '<br><span class="small">' + escapeHtml(run.specialist) + '</span>' : '') +
+          '<br><span class="small">' + slots[run.start].start + ' - ' + slots[run.end].end + '</span>'
         : '';
       html += '<td' + (span > 1 ? ' rowspan="' + span + '"' : '') + style + '>' + text + '</td>';
     });
@@ -698,12 +711,22 @@ function docHtmlPage(body) {
 }
 
 
+// Column widths as fractions of the page width (Google's conversion ignores
+// width:100%, so the widths are set once the Doc exists).
+const DOC_PAGE_WIDTH = 842; // A4 landscape, in points
+const DOC_MARGIN = 28;
+const DETAILS_TABLE_WIDTHS = [0.12, 0.38, 0.12, 0.38];
+const WEEK_TABLE_WIDTHS = [0.1, 0.18, 0.18, 0.18, 0.18, 0.18];
+
 /**
  * Converts HTML into a Google Doc in the timetable's folder, sets it to
- * landscape A4 and, with pageBreaks, starts a new page before every
- * second-level heading after the first. Returns { id, url }.
+ * landscape A4 and stretches each table to the page width
+ * (options.tableWidths: one list of column fractions per table, in order;
+ * equal columns otherwise). With options.pageBreaks, starts a new page
+ * before every second-level heading after the first. Returns { id, url }.
  */
-function createDocFromHtml(ss, name, html, pageBreaks) {
+function createDocFromHtml(ss, name, html, options) {
+  options = options || {};
   const parents = Drive.Files.get(ss.getId(), { fields: 'parents' }).parents || [];
   const file = Drive.Files.create(
     { name: name, mimeType: 'application/vnd.google-apps.document', parents: parents },
@@ -711,22 +734,39 @@ function createDocFromHtml(ss, name, html, pageBreaks) {
   );
   const doc = DocumentApp.openById(file.id);
   const body = doc.getBody();
-  body.setPageWidth(842).setPageHeight(595); // A4 landscape, in points
-  body.setMarginTop(28).setMarginBottom(28).setMarginLeft(28).setMarginRight(28);
-  if (pageBreaks) {
-    let headingsSeen = 0;
-    const headingIndexes = [];
-    for (let i = 0; i < body.getNumChildren(); i++) {
-      const child = body.getChild(i);
-      if (child.getType() === DocumentApp.ElementType.PARAGRAPH &&
-          child.asParagraph().getHeading() === DocumentApp.ParagraphHeading.HEADING2) {
-        headingsSeen++;
-        if (headingsSeen > 1) headingIndexes.push(i);
-      }
+  body.setPageWidth(DOC_PAGE_WIDTH).setPageHeight(595);
+  body.setMarginTop(DOC_MARGIN).setMarginBottom(DOC_MARGIN).setMarginLeft(DOC_MARGIN).setMarginRight(DOC_MARGIN);
+
+  const usableWidth = DOC_PAGE_WIDTH - 2 * DOC_MARGIN;
+  const tableWidths = options.tableWidths || [];
+  let headingsSeen = 0;
+  let tablesSeen = 0;
+  const headingIndexes = [];
+  for (let i = 0; i < body.getNumChildren(); i++) {
+    const child = body.getChild(i);
+    const type = child.getType();
+    if (type === DocumentApp.ElementType.TABLE) {
+      const table = child.asTable();
+      const columnCount = table.getNumRows() ? table.getRow(0).getNumCells() : 0;
+      const fractions = tableWidths[tablesSeen++];
+      const widths = fractions && fractions.length === columnCount
+        ? fractions
+        : new Array(columnCount).fill(1 / columnCount);
+      // Whole points; the last column takes what rounding leaves, so the table is exactly the page width.
+      let used = 0;
+      widths.forEach((fraction, column) => {
+        const width = column === widths.length - 1 ? usableWidth - used : Math.round(usableWidth * fraction);
+        used += width;
+        table.setColumnWidth(column, width);
+      });
+    } else if (type === DocumentApp.ElementType.PARAGRAPH &&
+        child.asParagraph().getHeading() === DocumentApp.ParagraphHeading.HEADING2) {
+      headingsSeen++;
+      if (headingsSeen > 1) headingIndexes.push(i);
     }
-    // From the last heading back, so each insert doesn't shift the ones still to do.
-    headingIndexes.reverse().forEach(index => body.insertPageBreak(index));
   }
+  // From the last heading back, so each insert doesn't shift the ones still to do.
+  if (options.pageBreaks) headingIndexes.reverse().forEach(index => body.insertPageBreak(index));
   doc.saveAndClose();
   return { id: file.id, url: 'https://docs.google.com/document/d/' + file.id + '/edit' };
 }
@@ -755,7 +795,7 @@ function recordDocOnStartHere(ss, url, name, madeFrom) {
     madeFrom,
     Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'd MMM yyyy, h:mm a'),
     who || ''
-  ]]).setFontColor(null);
+  ]]).setFontColor('#1F2933'); // Start here's text colour (the "None yet" line is grey)
 }
 
 

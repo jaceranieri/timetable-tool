@@ -221,6 +221,7 @@ class FakeRangeList {
   setNumberFormat(...args) { return this._each('setNumberFormat', args); }
   setHorizontalAlignment(...args) { return this._each('setHorizontalAlignment', args); }
   setVerticalAlignment(...args) { return this._each('setVerticalAlignment', args); }
+  setBorder(...args) { return this._each('setBorder', args); }
   clearDataValidations() { return this._each('clearDataValidations', []); }
   clearContent() { return this._each('clearContent', []); }
   breakApart() { return this._each('breakApart', []); }
@@ -294,6 +295,9 @@ class FakeSheet {
   }
   showSheet() { this._hidden = false; return this; }
   hideSheet() { this._hidden = true; return this; }
+  setHiddenGridlines(hidden) { this._hiddenGridlines = hidden; return this; }
+  setTabColor(color) { this._tabColor = color; return this; }
+  setFrozenRows(rows) { this._frozenRows = rows; }
   isSheetHidden() { return this._hidden; }
   getMaxRows() { return this._rows; }
   getMaxColumns() { return this._cols; }
@@ -507,7 +511,8 @@ function createWorld() {
       newDataValidation: () => builder('validation'),
       newConditionalFormatRule: () => builder('rule'),
       CopyPasteType: { PASTE_CONDITIONAL_FORMATTING: 'PASTE_CONDITIONAL_FORMATTING' },
-      ProtectionType: { RANGE: 'RANGE' }
+      ProtectionType: { RANGE: 'RANGE' },
+      BorderStyle: { SOLID: 'SOLID' }
     },
     DriveApp: {
       getRootFolder: () => world.root,
@@ -572,11 +577,17 @@ function createWorld() {
           doc.children = [];
           const tokens = doc.html.match(/<(h1|h2|p|table)[\s>]|<\/table>/g) || [];
           let depth = 0;
+          let position = 0;
           tokens.forEach(token => {
+            const at = doc.html.indexOf(token, position);
+            position = at + token.length;
             if (token === '</table>') { depth--; return; }
             const tag = token.slice(1, -1).trim();
             if (tag === 'table') {
-              if (depth++ === 0) doc.children.push({ type: 'TABLE' });
+              // Columns: the cells in the table's first row.
+              const firstRow = doc.html.slice(at).match(/<tr[^>]*>([\s\S]*?)<\/tr>/);
+              const columns = firstRow ? (firstRow[1].match(/<t[hd][\s>]/g) || []).length : 0;
+              if (depth++ === 0) doc.children.push({ type: 'TABLE', columns: columns, widths: [] });
             } else if (depth === 0) {
               doc.children.push({ type: 'PARAGRAPH', heading: tag === 'h1' ? 'HEADING1' : tag === 'h2' ? 'HEADING2' : 'NORMAL' });
             }
@@ -584,7 +595,12 @@ function createWorld() {
         }
         const element = item => ({
           getType: () => item.type,
-          asParagraph: () => ({ getHeading: () => item.heading })
+          asParagraph: () => ({ getHeading: () => item.heading }),
+          asTable: () => ({
+            getNumRows: () => 1,
+            getRow: () => ({ getNumCells: () => item.columns }),
+            setColumnWidth: (column, width) => { item.widths[column] = width; }
+          })
         });
         const body = {
           getNumChildren: () => doc.children.length,

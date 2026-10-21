@@ -196,3 +196,14 @@ No sheet changes. Paste the updated `template/TemplateSync.gs` and `template/Tim
 - [ ] On a specialist tab the details show the specialist, KLA and cycle.
 - [ ] **Make a Google Doc of the compliance summary**: details show how many classes are compliant and when it was made.
 - [ ] Each Doc is added to the **Google Docs** list on Start here (a link, what it was made from, when and by whom), newest at the bottom.
+
+### Phase 6 changes: Doc layout, specialist names, compliance colours, Start here style
+
+No sheet changes. Paste the updated `template/TimetableTools.gs` into the template's script project, and the updated `wizard/Code.gs` into the wizard project.
+
+- [ ] Generate a new timetable. **Start here** has no gridlines, a navy title band that stays at the top when scrolling, section headings in navy, light grey table headings and thin dividers. In the class list, Compliant shows green Yes / red No, Conflicts above 0 are red, and 0 empty slots are green. The sync stage's status turns red when there are conflicts and green when there are none.
+- [ ] Sync a specialist, then **Make a Google Doc of this timetable** on a class tab:
+  - The tables stretch across the page.
+  - Every lesson shows its start and end times, including 5-minute ones (e.g. the last slot of the day).
+  - Synced specialist lessons show the specialist's name under the KLA.
+- [ ] **Make a Google Doc of the compliance summary**: percentages within their range are green, outside it red; the table stretches across the page.

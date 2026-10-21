@@ -387,6 +387,23 @@ test('Start here: first tab, stages with live status formulas, and a linked row 
   assert.equal(sheet.getRange('B20').getNumberFormats()[0][0], '@');
 });
 
+test('Start here is styled: no gridlines, frozen title band, live green and red status chips', () => {
+  const { ss } = generate();
+  const sheet = ss.getSheetByName('Start here');
+  assert.equal(sheet._hiddenGridlines, true);
+  assert.equal(sheet._frozenRows, 2);
+  const rules = JSON.parse(JSON.stringify(sheet.getConditionalFormatRules().map(rule => [
+    rule.getRanges().map(range => range.getA1Notation()).join(','),
+    rule.getBooleanCondition().getCriteriaValues()[0],
+    rule.getBooleanCondition().getBackground()
+  ])));
+  assert.deepEqual(rules.filter(rule => rule[0] === 'F18:F20'), [
+    ['F18:F20', '=F18="Yes"', '#E3F4E8'],
+    ['F18:F20', '=F18="No"', '#FDECEC']
+  ]);
+  assert.deepEqual(rules.find(rule => rule[0] === 'E18:E20'), ['E18:E20', '=AND(ISNUMBER(E18),E18>0)', '#FDECEC']);
+});
+
 test('Start here links copied tabs too (their ids come from the Sheets API requests)', () => {
   const { ss } = generate(makeLargeSchoolPayload());
   const sheet = ss.getSheetByName('Start here');

@@ -1018,26 +1018,114 @@ function buildStartHereSheet(ss, config, tabs) {
   sheet.getRangeList(textCells).setNumberFormat('@');
   sheet.getRange(1, 1, rows.length, 6).setValues(rows);
 
-  sheet.getRange('A1').setFontSize(18).setFontWeight('bold');
-  sheet.getRange('A2').setFontColor('#555555');
-  sheet.getRangeList(['A11', 'A' + classHeadingRow, 'A' + docsHeadingRow]).setFontSize(13).setFontWeight('bold');
-  sheet.getRange('A' + (docsHeadingRow + 2)).setFontColor('#777777');
-  sheet.getRangeList(['A4:E4', 'A12:D12', 'A' + (classHeadingRow + 1) + ':F' + (classHeadingRow + 1),
-    'A' + (docsHeadingRow + 1) + ':D' + (docsHeadingRow + 1)])
-    .setFontWeight('bold')
-    .setBackground('#E8EEF2');
-  sheet.getRange('A5:A9').setFontWeight('bold');
-  sheet.getRange('A5:E9').setVerticalAlignment('top').setWrap(true);
-  sheet.setColumnWidth(1, 260);
-  sheet.setColumnWidth(2, 170);
-  sheet.setColumnWidth(3, 420);
-  sheet.setColumnWidth(4, 260);
-  sheet.setColumnWidth(5, 220);
-  sheet.setColumnWidth(6, 100);
+  styleStartHereSheet(sheet, {
+    lastRow: rows.length,
+    headingRows: [4, 12, classHeadingRow + 1, docsHeadingRow + 1],
+    sectionRows: [11, classHeadingRow, docsHeadingRow],
+    tableRanges: ['A5:E9', 'A' + specialistFirstRow + ':D' + specialistLastRow,
+      'A' + classFirstRow + ':F' + Math.max(classFirstRow, classLastRow)],
+    docsFirstRow: docsHeadingRow + 2,
+    classRows: classCount ? { first: classFirstRow, last: classLastRow } : null
+  });
 
   ss.setNamedRange('StartHereSyncStatus', sheet.getRange('E6'));
   ss.setNamedRange('StartHereLockStatus', sheet.getRange('E7'));
   ss.setNamedRange('StartHereDocs', sheet.getRange('A' + (docsHeadingRow + 1) + ':D' + (docsHeadingRow + 1)));
+}
+
+
+/** Start here's colours: a navy title band, light grey headings, thin dividers. */
+const START_HERE_STYLE = {
+  font: 'Roboto',
+  text: '#1F2933',
+  muted: '#5F6B7A',
+  accent: '#1E3A5F',
+  accentText: '#FFFFFF',
+  accentMuted: '#C9D6E8',
+  headingBackground: '#EEF2F6',
+  headingBorder: '#CBD5E0',
+  divider: '#E5E9F0',
+  good: { background: '#E3F4E8', font: '#1E7B3A' },
+  bad: { background: '#FDECEC', font: '#B42318' }
+};
+
+
+/**
+ * Gives the Start here tab a clean look: no gridlines, a title band, section
+ * headings in the accent colour, light table headings, thin row dividers, and
+ * green or red status chips (Yes/No, conflicts, empty slots) that update live.
+ */
+function styleStartHereSheet(sheet, layout) {
+  const style = START_HERE_STYLE;
+  const solid = SpreadsheetApp.BorderStyle.SOLID;
+  const lastRow = Math.max(layout.lastRow, layout.docsFirstRow + 20);
+
+  sheet.setHiddenGridlines(true);
+  sheet.setTabColor(style.accent);
+  sheet.getRange(1, 1, lastRow, 6)
+    .setFontFamily(style.font).setFontSize(10).setFontColor(style.text)
+    .setVerticalAlignment('middle');
+
+  // Title band.
+  sheet.getRange('A1:F1').merge();
+  sheet.getRange('A2:F2').merge();
+  sheet.getRange('A1:F2').setBackground(style.accent);
+  sheet.getRange('A1').setFontSize(20).setFontWeight('bold').setFontColor(style.accentText);
+  sheet.getRange('A2').setFontColor(style.accentMuted);
+  sheet.setRowHeights(1, 1, 52);
+  sheet.setRowHeights(2, 1, 28);
+  sheet.setRowHeights(3, 1, 16);
+  sheet.setFrozenRows(2);
+
+  // Section headings and table headings.
+  sheet.getRangeList(layout.sectionRows.map(row => 'A' + row))
+    .setFontSize(14).setFontWeight('bold').setFontColor(style.accent).setVerticalAlignment('bottom');
+  layout.sectionRows.forEach(row => sheet.setRowHeights(row, 1, 40));
+  sheet.getRangeList(layout.headingRows.map(row => 'A' + row + ':F' + row))
+    .setBackground(style.headingBackground).setFontColor(style.muted).setFontWeight('bold').setFontSize(9)
+    .setBorder(null, null, true, null, null, null, style.headingBorder, solid);
+  layout.headingRows.forEach(row => sheet.setRowHeights(row, 1, 28));
+
+  // Rows: thin dividers; the stages wrap, the lists stay one line each.
+  sheet.getRangeList(layout.tableRanges.concat(['A' + layout.docsFirstRow + ':D' + lastRow]))
+    .setBorder(null, null, true, null, null, true, style.divider, solid);
+  sheet.getRange('A5:E9').setVerticalAlignment('top').setWrap(true);
+  sheet.getRange('A5:A9').setFontWeight('bold').setFontColor(style.accent);
+  sheet.getRange('B5:B9').setFontColor(style.muted);
+  sheet.getRange('D5:D9').setFontWeight('bold');
+  sheet.getRange('E5:E9').setFontColor(style.muted);
+  sheet.getRange('A' + layout.docsFirstRow).setFontColor(style.muted);
+
+  sheet.setColumnWidth(1, 260);
+  sheet.setColumnWidth(2, 170);
+  sheet.setColumnWidth(3, 440);
+  sheet.setColumnWidth(4, 260);
+  sheet.setColumnWidth(5, 220);
+  sheet.setColumnWidth(6, 110);
+
+  // Live status chips.
+  const chip = (range, formula, colours) => SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(formula)
+    .setBackground(colours.background).setFontColor(colours.font)
+    .setRanges([sheet.getRange(range)])
+    .build();
+  const rules = [
+    chip('D6', '=ISNUMBER(SEARCH("to resolve",D6))', style.bad),
+    chip('D6', '=D6="No conflicts"', style.good),
+    chip('D7', '=ISNUMBER(SEARCH("Resolve",D7))', style.bad)
+  ];
+  if (layout.classRows) {
+    const first = layout.classRows.first;
+    const last = layout.classRows.last;
+    rules.push(
+      chip('D' + first + ':D' + last, '=AND(ISNUMBER(D' + first + '),D' + first + '=0)', style.good),
+      chip('E' + first + ':E' + last, '=AND(ISNUMBER(E' + first + '),E' + first + '>0)', style.bad),
+      chip('F' + first + ':F' + last, '=F' + first + '="Yes"', style.good),
+      chip('F' + first + ':F' + last, '=F' + first + '="No"', style.bad)
+    );
+    sheet.getRange('D' + first + ':F' + last).setHorizontalAlignment('center');
+  }
+  sheet.setConditionalFormatRules(rules);
 }
 
 
