@@ -114,9 +114,9 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 - Classes named after a colour get that colour ("Kindergarten Blue" is blue), for the defaults, renamed and pasted classes, until a colour is picked.
 - A compact summary: the school day on one line, classes as a table by grade, specialists and activities as short lists, each with Edit links.
 - The generating screen is a progress bar; the log is behind "View the log".
-- The step header shows "Step N of 4", the step's name, what it covers and a figure for it (e.g. teaching time a day), above a progress bar in four segments; finished steps can be clicked to go back.
-- "Save / Load" is a labelled button; the summary starts with info cards (class tabs, specialist tabs, teaching time, time to generate) and shows each part of the setup as a card.
-- Toasts appear at the top; the subtitle is "Timetabling made easy"; while generating, the "keep this window open" reminder alternates with teacher in-jokes.
+- The step header shows "Step N of 4", the step's name and what it covers, above a progress bar in four segments; finished steps can be clicked to go back.
+- Save and load are in a menu (☰) above the wizard, beside a new logo (a mini timetable on a green tile); the font is Figtree. The summary starts with info cards (class tabs, specialist tabs, teaching time, time to generate) and shows each part of the setup as a card.
+- Toasts appear at the top; no subtitle under the name; while generating, the "keep this window open" reminder alternates with teacher in-jokes.
 
 ## Phase 8: Edit setup after generating, and start next year
 
