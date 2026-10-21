@@ -159,7 +159,7 @@
 
         // A "..." button with a short menu. Arrow keys move through the items;
         // Escape or a click elsewhere closes it.
-        const MoreMenu = ({ label, items, className = "" }) => {
+        const MoreMenu = ({ label, items, className = "", buttonText }) => {
             const [open, setOpen] = useState(false);
             const buttonRef = useRef(null);
             const menuRef = useRef(null);
@@ -183,11 +183,21 @@
             };
             return (
                 <div className={`relative ${className}`}>
-                    <button ref={buttonRef} type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
-                        onClick={() => setOpen(prev => !prev)}
-                        className="w-9 h-9 inline-flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-200/70 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
-                        <DotsIcon />
-                    </button>
+                    {buttonText ? (
+                        <button ref={buttonRef} type="button" aria-haspopup="menu" aria-expanded={open}
+                            onClick={() => setOpen(prev => !prev)}
+                            className={`h-9 px-3 inline-flex items-center gap-2 rounded-md border text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                                open ? 'border-slate-400 bg-slate-100 text-slate-900' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}>
+                            <DotsIcon />
+                            {buttonText}
+                        </button>
+                    ) : (
+                        <button ref={buttonRef} type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
+                            onClick={() => setOpen(prev => !prev)}
+                            className="w-9 h-9 inline-flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-200/70 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                            <DotsIcon />
+                        </button>
+                    )}
                     {open && (
                         <div ref={menuRef} role="menu" aria-label={label} onKeyDown={onKeyDown}
                             className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-slate-200 rounded-lg shadow-xl py-1 animate-pop">
@@ -318,6 +328,29 @@
         };
         const SETUP_FILE_TYPE = 'timetable-tool-setup';
         const STEP_NAMES = ['Core Schedule', 'Grades', 'Staff', 'Summary'];
+        const STEP_INFO = [
+            "Your school's name, bell times and breaks.",
+            "How many classes each grade has, and how many weeks its timetable runs before repeating.",
+            "Class names and teachers, specialist teachers and extra-curricular activities.",
+            "Check everything, then generate the timetable."
+        ];
+
+        // Shown in turn while the timetable is generated, between reminders of
+        // how long it takes.
+        const GENERATING_QUIPS = [
+            "Asking the photocopier nicely. It said no.",
+            "Finding the last clean mug in the staffroom...",
+            "Writing \"see me\" next to the clashes...",
+            "Rounding up the specialists. Has anyone seen the music teacher?",
+            "Colour-coding with the dedication of a Kindy teacher...",
+            "Checking every class has enough Creative Arts. And glue sticks.",
+            "Making sure Friday afternoon sport isn't double-booked...",
+            "Taking the roll: all classes present.",
+            "Reminding Year 6 that the timetable is not a suggestion.",
+            "Laminating... just kidding, that's next week's job.",
+            "Hiding the good whiteboard markers from everyone else...",
+            "Counting down the minutes to recess duty. We mean teaching minutes."
+        ];
         const DEFAULT_GRADES = [
             { id: "k", name: "Kindergarten" },
             { id: "y1", name: "Year 1" },
@@ -529,7 +562,8 @@
                 classTabs: classes.length,
                 specialistTabs: specialists.length,
                 seconds: Math.round(seconds),
-                text: seconds < 45 ? 'under a minute' : `about ${minutes} minute${halfMinutes > 2 ? 's' : ''}`
+                text: seconds < 45 ? 'under a minute' : `about ${minutes} minute${halfMinutes > 2 ? 's' : ''}`,
+                short: seconds < 45 ? 'Under 1 min' : `About ${minutes} min`
             };
         };
 
@@ -596,6 +630,15 @@
 
             const [errors, setErrors] = useState({});
             const [showLogs, setShowLogs] = useState(false);
+            const [quipTick, setQuipTick] = useState(0);
+            const quipStart = useRef(0);
+            useEffect(() => {
+                if (!isGenerating) return;
+                setQuipTick(0);
+                quipStart.current = Math.floor(Math.random() * GENERATING_QUIPS.length);
+                const timer = setInterval(() => setQuipTick(prev => prev + 1), 4500);
+                return () => clearInterval(timer);
+            }, [isGenerating]);
             const logContainerRef = useRef(null);
             const stepHeadingRef = useRef(null);
             const fileInputRef = useRef(null);
@@ -737,6 +780,17 @@
             }, [logs]);
 
             const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
+            // A figure for the header, about what the current step sets.
+            const stepFactFor = () => {
+                if (step === 1) return `${formatMinutes(dailyTeachingMins)} teaching a day`;
+                if (step === 2) {
+                    const classCount = data.grades.reduce((sum, g) => sum + (g.classes || 0), 0);
+                    return `${plural(classCount, 'class', 'classes')} in ${plural(data.grades.filter(g => g.classes > 0).length, 'grade', 'grades')}`;
+                }
+                if (step === 3) return `${plural(getClassesToGenerate(data).length, 'class', 'classes')} · ${plural(getSpecialistsToGenerate(data).length, 'specialist', 'specialists')}`;
+                return `Takes ${estimateGeneration(data).text}`;
+            };
 
             // Helper to format elapsed time
             const formatElapsed = (seconds) => {
@@ -1754,28 +1808,41 @@
                         {text}<span className="sr-only"> {what}</span>
                     </button>
                 );
-                const renderSection = (title, editLinks, content) => (
-                    <section className="py-3 border-t border-slate-200">
-                        <div className="flex items-center justify-between gap-3 mb-2">
-                            <h5 className="text-xs font-bold text-slate-600 uppercase tracking-wider">{title}</h5>
+                // A card for one part of the setup, with its Edit links.
+                const renderCard = (title, editLinks, content, className = "") => (
+                    <section className={`rounded-lg border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                            <h5 className="text-sm font-bold text-slate-900">{title}</h5>
                             <div className="flex items-center gap-1">{editLinks}</div>
                         </div>
                         {content}
                     </section>
                 );
+                // A headline figure.
+                const renderStat = (label, value, detail, highlight) => (
+                    <div className={`rounded-lg border p-3 ${highlight ? 'bg-brand-green/10 border-brand-green/30' : 'bg-slate-50 border-slate-200'}`}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">{label}</p>
+                        <p className={`text-2xl font-bold mt-1 leading-tight ${highlight ? 'text-brand-dark' : 'text-slate-900'}`}>{value}</p>
+                        <p className="text-xs text-slate-600 mt-0.5">{detail}</p>
+                    </div>
+                );
 
                 return (
-                    <div className="animate-step" key="step4">
-                        <div className="mb-3">
+                    <div className="animate-step space-y-4" key="step4">
+                        <div>
                             <h4 className="text-xl font-semibold text-slate-800">Ready to generate{schoolName ? <> for <span className="text-brand-dark">{schoolName}</span></> : ''}</h4>
-                            <p className="text-sm text-slate-600 mt-1">
-                                {plural(estimate.classTabs, 'class tab', 'class tabs')} and {plural(estimate.specialistTabs, 'specialist tab', 'specialist tabs')},
-                                plus Start here, DATA and OVERVIEW. Generating takes {estimate.text}.
-                            </p>
+                            <p className="text-sm text-slate-600 mt-1">Check the details, then generate. Use Edit to change anything.</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="At a glance" role="group">
+                            {renderStat('Class tabs', classesToGenerate.length, plural(gradeGroups.length, 'grade', 'grades'))}
+                            {renderStat('Specialist tabs', specialists.length, specialists.length ? [...new Set(specialists.map(s => s.kla))].join(', ') : 'None')}
+                            {renderStat('Teaching time', formatMinutes(dailyTeachingMins), `a day · ${formatMinutes(dailyTeachingMins * 5)} a week`, true)}
+                            {renderStat('Generating takes', estimate.short, 'plus Start here, DATA and OVERVIEW')}
                         </div>
 
                         {Object.keys(cycleMismatches).length > 0 && (
-                            <div className="mb-3 flex items-start gap-1.5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                            <div className="flex items-start gap-1.5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                                 <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
                                 <div className="space-y-1">
                                     {specialists.filter(s => cycleMismatches[s.id]).map(s => (
@@ -1785,32 +1852,38 @@
                             </div>
                         )}
 
-                        {renderSection('School day', [renderEditLink(1, 'school day and breaks')],
-                            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-sm">
-                                <div>
-                                    <dt className="text-xs text-slate-600">Hours</dt>
-                                    <dd className="font-semibold text-slate-900">{formatAMPM(data.schoolStart)} - {formatAMPM(data.schoolEnd)}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-xs text-slate-600">Breaks</dt>
-                                    <dd className="text-slate-900">
-                                        {data.breaks.length ? data.breaks.map(b => (
-                                            <span key={b.id} className="block">{b.name || 'Unnamed'} {formatAMPM(b.start)} - {formatAMPM(b.end)}</span>
-                                        )) : 'None'}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt className="text-xs text-slate-600">Teaching time a day</dt>
-                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins)}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-xs text-slate-600">A week</dt>
-                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins * 5)}</dd>
-                                </div>
-                            </dl>
-                        )}
+                        <div className="grid gap-4 md:grid-cols-2">
+                            {renderCard('School day', [renderEditLink(1, 'school day and breaks')],
+                                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                    <div>
+                                        <dt className="text-xs text-slate-600">Hours</dt>
+                                        <dd className="font-semibold text-slate-900">{formatAMPM(data.schoolStart)} - {formatAMPM(data.schoolEnd)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-xs text-slate-600">Breaks</dt>
+                                        <dd className="text-slate-900">
+                                            {data.breaks.length ? data.breaks.map(b => (
+                                                <span key={b.id} className="block">{b.name || 'Unnamed'} {formatAMPM(b.start)} - {formatAMPM(b.end)}</span>
+                                            )) : 'None'}
+                                        </dd>
+                                    </div>
+                                </dl>
+                            )}
+                            {renderCard(`Specialists (${specialists.length})`, [renderEditLink(3, 'specialists')],
+                                specialists.length ? (
+                                    <ul className="space-y-1 text-sm">
+                                        {specialists.map(s => (
+                                            <li key={s.id} className="flex items-baseline justify-between gap-3">
+                                                <span className="font-medium text-slate-900">{s.name}</span>
+                                                <span className="text-slate-600 text-right">{s.kla} · {s.cycle || 1}-week cycle</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : <p className="text-sm text-slate-600">None</p>
+                            )}
+                        </div>
 
-                        {renderSection(`Classes (${classesToGenerate.length})`,
+                        {renderCard(`Classes (${classesToGenerate.length})`,
                             [renderEditLink(2, 'grades and cycle lengths', 'Edit grades'), renderEditLink(3, 'classes and teachers', 'Edit classes')],
                             <table className="w-full text-sm">
                                 <tbody>
@@ -1837,21 +1910,14 @@
                             </table>
                         )}
 
-                        {renderSection(`Specialists (${specialists.length})`, [renderEditLink(3, 'specialists')],
-                            specialists.length ? (
+                        {renderCard(`Extra-curricular activities (${activities.length})`, [renderEditLink(3, 'extra-curricular activities')],
+                            activities.length ? (
                                 <ul className="flex flex-wrap gap-1.5 text-sm">
-                                    {specialists.map(s => (
-                                        <li key={s.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-0.5">
-                                            <span className="font-medium text-slate-900">{s.name}</span>
-                                            <span className="text-slate-600">{s.kla} · {s.cycle || 1}-week cycle</span>
-                                        </li>
+                                    {activities.map(a => (
+                                        <li key={a.id} className="bg-slate-50 border border-slate-200 rounded px-2 py-0.5 text-slate-900">{a.name.trim()}</li>
                                     ))}
                                 </ul>
                             ) : <p className="text-sm text-slate-600">None</p>
-                        )}
-
-                        {renderSection(`Extra-curricular activities (${activities.length})`, [renderEditLink(3, 'extra-curricular activities')],
-                            <p className="text-sm text-slate-900">{activities.length ? activities.map(a => a.name.trim()).join(', ') : 'None'}</p>
                         )}
                     </div>
                 );
@@ -1870,7 +1936,7 @@
                                 the<span className="text-brand-green">timetable</span>tool<span className="text-brand-green">.</span>
                             </h1>
                             <p className="text-slate-500 text-[13.5px] font-medium leading-snug max-w-md">
-                                Automated spreadsheet designed to help primary schools create NESA-compliant timetables.
+                                Timetabling made easy
                             </p>
                         </div>
                     </div>
@@ -1887,9 +1953,20 @@
                                     </div>
                                     <span className="text-sm font-mono font-semibold text-slate-700 w-12 text-right" aria-hidden="true">{loadingProgress}%</span>
                                 </div>
-                                <p className="text-sm text-slate-600 max-w-md">
-                                    This usually takes {estimateGeneration(data).text}. Please keep this window open.
-                                </p>
+                                {(() => {
+                                    // The reminder, then three quips, then the reminder again...
+                                    const reminder = `This usually takes ${estimateGeneration(data).text}. Please keep this window open.`;
+                                    const quipNumber = quipTick - Math.floor(quipTick / 4) - 1;
+                                    const text = quipTick % 4 === 0
+                                        ? reminder
+                                        : GENERATING_QUIPS[(quipStart.current + quipNumber) % GENERATING_QUIPS.length];
+                                    return (
+                                        <React.Fragment>
+                                            <p key={quipTick} aria-hidden="true" className="text-sm text-slate-600 max-w-md min-h-[2.5rem] animate-pop">{text}</p>
+                                            <p className="sr-only">{reminder}</p>
+                                        </React.Fragment>
+                                    );
+                                })()}
                                 <Button variant="ghost" className="h-9 text-slate-700" aria-expanded={showLogs} aria-controls="generation-log" onClick={() => setShowLogs(prev => !prev)}>
                                     {showLogs ? 'Hide the log' : 'View the log'}
                                 </Button>
@@ -1956,41 +2033,61 @@
                         <React.Fragment>
                         <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={loadSetupFile} aria-hidden="true" tabIndex={-1} />
                         <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 flex flex-col">
-                            <CardHeader className="border-b border-slate-200 bg-slate-50 rounded-t-xl px-6 py-8 sm:px-10 z-10 relative shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)]">
-                                <div className="absolute top-2 right-2 z-20">
-                                <MoreMenu
-                                    label="Setup options"
-                                    items={[
-                                        { label: 'Save setup to a file', hint: 'Download this setup to load again later, e.g. next year', onSelect: saveSetupFile },
-                                        { label: 'Load a saved setup', hint: 'Fill the wizard from a setup file', onSelect: () => fileInputRef.current && fileInputRef.current.click() }
-                                    ]}
-                                />
+                            <CardHeader className="border-b border-slate-200 bg-slate-50 rounded-t-xl px-6 py-6 sm:px-10 z-10 relative">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-brand-dark" aria-hidden="true">Step {step} of 4</p>
+                                        <h2 ref={stepHeadingRef} tabIndex={-1} className="text-2xl font-bold text-slate-900 mt-1 focus:outline-none">
+                                            <span className="sr-only">Step {step} of 4: </span>{STEP_NAMES[step - 1]}
+                                        </h2>
+                                        <p className="text-sm text-slate-600 mt-1">{STEP_INFO[step - 1]}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2 shrink-0">
+                                        <MoreMenu
+                                            buttonText="Save / Load"
+                                            label="Save or load the setup"
+                                            items={[
+                                                { label: 'Save setup to a file', hint: 'Download this setup to load again later, e.g. next year', onSelect: saveSetupFile },
+                                                { label: 'Load a saved setup', hint: 'Fill the wizard from a setup file', onSelect: () => fileInputRef.current && fileInputRef.current.click() }
+                                            ]}
+                                        />
+                                        <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-full px-2.5 py-1">
+                                            {stepFactFor()}
+                                        </span>
+                                    </div>
                                 </div>
-                                {/* Stepper Header */}
-                                <div className="relative">
-                                <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-[2px] bg-slate-300 -z-10" aria-hidden="true"></div>
-                                <ol aria-label="Steps" className="flex items-center justify-between relative">
 
-                                    {[1, 2, 3, 4].map((s) => (
-                                        <li key={s} aria-current={step === s ? "step" : undefined} className="flex flex-col items-center gap-2 bg-slate-50 px-2 sm:px-4">
-                                            <div aria-hidden="true" className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors ${
-                                                step === s ? 'border-slate-900 bg-slate-900 text-white shadow-md' :
-                                                step > s ? 'border-brand-dark bg-brand-dark text-white' : 'border-slate-300 bg-white text-slate-500'
-                                            }`}>
-                                                {step > s ? <CheckIcon /> : s}
-                                            </div>
-                                            <span aria-hidden="true" className={`text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${step >= s ? 'text-slate-900' : 'text-slate-500'} hidden md:block`}>
-                                                {STEP_NAMES[s - 1]}
-                                            </span>
-                                            <span className="sr-only">Step {s}: {STEP_NAMES[s - 1]}{step > s ? ' (done)' : step === s ? ' (current step)' : ''}</span>
+                                {/* Progress: one segment per step */}
+                                <div className="mt-5 flex gap-1.5" role="progressbar" aria-label="Wizard progress"
+                                    aria-valuemin={1} aria-valuemax={4} aria-valuenow={step} aria-valuetext={`Step ${step} of 4: ${STEP_NAMES[step - 1]}`}>
+                                    {[1, 2, 3, 4].map(s => (
+                                        <div key={s} className="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden">
+                                            <div className={`h-full rounded-full transition-all duration-500 ease-out ${s < step ? 'w-full bg-brand-dark' : s === step ? 'w-1/2 bg-brand-green' : 'w-0'}`}></div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <ol aria-label="Steps" className="mt-2 grid grid-cols-4 gap-1.5">
+                                    {[1, 2, 3, 4].map(s => (
+                                        <li key={s} aria-current={step === s ? "step" : undefined} className="min-w-0">
+                                            {s < step ? (
+                                                <button type="button" onClick={() => goToStep(s)}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-brand-dark hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                                                    <CheckIcon />
+                                                    <span className="truncate">{STEP_NAMES[s - 1]}</span>
+                                                    <span className="sr-only"> (done, go back)</span>
+                                                </button>
+                                            ) : (
+                                                <span className={`block truncate text-[11px] font-semibold uppercase tracking-wider ${s === step ? 'text-slate-900' : 'text-slate-500'}`}>
+                                                    {STEP_NAMES[s - 1]}
+                                                    <span className="sr-only">{s === step ? ' (current step)' : ''}</span>
+                                                </span>
+                                            )}
                                         </li>
                                     ))}
                                 </ol>
-                                </div>
                             </CardHeader>
 
                             <CardContent className="p-6 sm:p-10 min-h-[400px] bg-white relative flex-1">
-                                <h2 ref={stepHeadingRef} tabIndex={-1} className="sr-only">Step {step} of 4: {STEP_NAMES[step - 1]}</h2>
                                 {(() => {
                                     const problems = listProblems();
                                     if (!problems.length) return null;
@@ -2046,7 +2143,7 @@
                     )}
 
                     {/* Toast: always present so screen readers announce what appears in it */}
-                    <div aria-live="polite" className="fixed bottom-4 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
+                    <div aria-live="polite" className="fixed top-4 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
                         {toast && (
                             <div role="status" className={`pointer-events-auto max-w-lg flex items-start gap-3 rounded-lg shadow-lg px-4 py-2.5 text-sm animate-pop ${
                                 toast.tone === 'error' ? 'bg-red-700 text-white' : toast.tone === 'ok' ? 'bg-brand-dark text-white' : 'bg-slate-800 text-white'}`}>
