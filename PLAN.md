@@ -116,6 +116,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 - The generating screen is a progress bar; the log is behind "View the log".
 - The step header shows "Step N of 4", the step's name and what it covers, above a progress bar in four segments; finished steps can be clicked to go back.
 - Save and load are in a menu (☰) above the wizard, beside a new logo (a mini timetable on a green tile); the font is Figtree. The summary starts with info cards (class tabs, specialist tabs, teaching time, time to generate) and shows each part of the setup as a card.
+- Step 3's grade tabs replaced by one card per grade (all visible at once): the header shows the class count, cycle and "Ready" or "N to fix", with "Add class" and a "..." menu for pasting; each class is one compact row (name, teacher, colour, remove). The problem list shows the first 6 with "Show all".
 - Toasts appear at the top; no subtitle under the name; while generating, the "keep this window open" reminder alternates with teacher in-jokes.
 
 ## Phase 8: Edit setup after generating, and start next year
