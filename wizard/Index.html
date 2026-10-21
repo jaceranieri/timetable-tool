@@ -136,9 +136,12 @@
             </div>
         );
 
-        const Select = ({ className = "", error, id, children, ...props }) => (
+        const Select = ({ className = "", error, id, boxLabel, children, ...props }) => (
             <div className="relative w-full flex items-center">
-                <select id={id} aria-invalid={error ? true : undefined} aria-describedby={errorIdFor(id, error)} className={`flex h-10 w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
+                {boxLabel && (
+                    <label htmlFor={id} className="absolute left-3 top-1.5 z-10 text-[10px] font-semibold uppercase tracking-wider text-slate-500 pointer-events-none">{boxLabel}</label>
+                )}
+                <select id={id} aria-invalid={error ? true : undefined} aria-describedby={errorIdFor(id, error)} className={`flex ${boxLabel ? 'h-12 pt-5 pb-1' : 'h-10 py-2'} w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
                     {children}
                 </select>
                 {!error && (
@@ -198,12 +201,12 @@
                 else if (e.key === 'Tab') setOpen(false);
             };
             return (
-                <div className={`relative ${className}`}>
+                <div className={`relative inline-flex ${className}`}>
                     <button ref={buttonRef} type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
                         onClick={() => setOpen(prev => !prev)}
                         className={`inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${boxed
                             ? `w-10 h-10 border shadow-sm ${open ? 'border-slate-400 bg-slate-100 text-slate-900' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`
-                            : 'w-9 h-9 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'}`}>
+                            : 'w-9 h-10 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'}`}>
                         {icon || <DotsIcon />}
                     </button>
                     {open && (
@@ -222,6 +225,14 @@
                 </div>
             );
         };
+
+        // A light bin button, the same height as the boxes with labels inside.
+        const RemoveButton = ({ label, className = "", ...props }) => (
+            <button type="button" aria-label={label} title={props.title || label} {...props}
+                className={`w-9 h-12 shrink-0 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${className}`}>
+                <TrashIcon />
+            </button>
+        );
 
         const InfoIcon = () => <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
 
@@ -264,9 +275,32 @@
             );
         };
 
+        // An "i" that shows a short explanation while hovered or focused.
+        const HoverInfo = ({ id, text, label, className = "" }) => {
+            const [open, setOpen] = useState(false);
+            return (
+                <span className={`relative inline-flex ${className}`}
+                    onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+                    <button type="button" aria-label={label} aria-describedby={open ? id : undefined}
+                        onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
+                        onClick={() => setOpen(prev => !prev)}
+                        className="w-7 h-7 inline-flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                        <InfoIcon />
+                    </button>
+                    {open && (
+                        <span id={id} role="tooltip"
+                            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-30 w-64 rounded-lg bg-slate-900 text-white text-xs leading-relaxed shadow-xl px-3 py-2 text-left animate-pop">
+                            {text}
+                        </span>
+                    )}
+                </span>
+            );
+        };
+
         // A cycle length shown as its number inside a circular arrow, on a
         // square button. Click to choose 1-10 weeks; arrow keys step it.
-        const CycleButton = ({ id, value, onChange, owner, className = "" }) => {
+        const CycleButton = ({ id, value, onChange, owner, className = "", size = "md" }) => {
             const [open, setOpen] = useState(false);
             const ref = useRef(null);
             const weeks = Number(value) || 1;
@@ -285,7 +319,7 @@
             }, [open]);
             const step = (by) => onChange(Math.min(MAX_CYCLE_WEEKS, Math.max(1, weeks + by)));
             return (
-                <div ref={ref} className={`relative ${className}`}>
+                <div ref={ref} className={`relative inline-flex ${className}`}>
                     <button id={id} type="button" aria-haspopup="true" aria-expanded={open}
                         aria-label={`${owner} cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}. Change`}
                         title={`Cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}`}
@@ -294,12 +328,15 @@
                             if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); step(1); }
                             if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
                         }}
-                        className={`w-10 h-10 inline-flex items-center justify-center rounded-md border shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
-                            open ? 'border-brand-dark bg-brand-green/10 text-brand-dark' : 'border-slate-300 bg-white text-slate-700 hover:border-brand-dark hover:text-brand-dark'}`}>
-                        <svg viewBox="0 0 24 24" className="w-8 h-8" aria-hidden="true">
-                            <path d="M20 12a8 8 0 1 1-8-8c2.24 0 4.38.89 5.99 2.44L20 8.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M20 4v4.5h-4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                            <text x="12" y="15.4" textAnchor="middle" fontSize={weeks > 9 ? 7.5 : 9.5} fontWeight="800" fill="currentColor" fontFamily="Figtree, sans-serif">{weeks}</text>
+                        className={`group ${size === 'lg' ? 'w-12 h-12' : 'w-10 h-10'} inline-flex items-center justify-center rounded-md border shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                            open ? 'border-brand-dark bg-brand-green/10' : 'border-slate-300 bg-white hover:border-brand-dark'}`}>
+                        <svg viewBox="0 0 24 24" className={size === 'lg' ? 'w-9 h-9' : 'w-8 h-8'} aria-hidden="true">
+                            {/* Light arrow, dark number */}
+                            <g className={open ? 'text-brand-green' : 'text-slate-300 group-hover:text-brand-green'} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 12a8 8 0 1 1-8-8c2.24 0 4.38.89 5.99 2.44L20 8.5" />
+                                <path d="M20 4v4.5h-4.5" />
+                            </g>
+                            <text x="12" y="15.4" textAnchor="middle" fontSize={weeks > 9 ? 7.5 : 9.5} fontWeight="800" className="fill-slate-900" fontFamily="Figtree, sans-serif">{weeks}</text>
                         </svg>
                     </button>
                     {open && (
@@ -323,6 +360,101 @@
                 </div>
             );
         };
+
+        // The success screen's picture: a timetable tab in a spreadsheet window.
+        const TimetableIllustration = () => (
+            <svg viewBox="0 0 560 300" className="w-full h-auto" aria-hidden="true">
+                <defs>
+                    <filter id="sheet-shadow" x="-10%" y="-10%" width="120%" height="130%">
+                        <feDropShadow dx="0" dy="12" stdDeviation="14" floodColor="#003D24" floodOpacity="0.35" />
+                    </filter>
+                </defs>
+                <g filter="url(#sheet-shadow)">
+                    <rect x="20" y="10" width="520" height="280" rx="14" fill="#FFFFFF" />
+                </g>
+                <rect x="20" y="10" width="520" height="34" rx="14" fill="#F1F5F9" />
+                <rect x="20" y="30" width="520" height="14" fill="#F1F5F9" />
+                <circle cx="42" cy="27" r="5" fill="#F87171" />
+                <circle cx="58" cy="27" r="5" fill="#FBBF24" />
+                <circle cx="74" cy="27" r="5" fill="#34D399" />
+                <rect x="96" y="20" width="150" height="14" rx="7" fill="#E2E8F0" />
+                <rect x="20" y="44" width="520" height="16" fill="#00A35F" opacity="0.12" />
+                <rect x="34" y="49" width="60" height="6" rx="3" fill="#00A35F" opacity="0.6" />
+                <rect x="104" y="49" width="40" height="6" rx="3" fill="#00A35F" opacity="0.35" />
+                <rect x="154" y="49" width="50" height="6" rx="3" fill="#00A35F" opacity="0.35" />
+                <rect x="96" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="96" y="92" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="103" y="97" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="96" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="96" y="144" width="76" height="36" rx="4" fill="#FCE5CD" />
+                <rect x="103" y="149" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="96" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="96" y="196" width="76" height="23" rx="4" fill="#D0E0E3" />
+                <rect x="103" y="201" width="42" height="4" rx="2" fill="#45818E" opacity="0.7" />
+                <rect x="96" y="222" width="76" height="23" rx="4" fill="#F4CCCC" />
+                <rect x="103" y="227" width="42" height="4" rx="2" fill="#CC0000" opacity="0.7" />
+                <rect x="178" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="178" y="92" width="76" height="23" rx="4" fill="#FCE5CD" />
+                <rect x="185" y="97" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="178" y="118" width="76" height="10" rx="4" fill="#FFF2CC" />
+                <rect x="178" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="178" y="144" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="185" y="149" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="178" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="178" y="196" width="76" height="49" rx="4" fill="#C9DAF8" />
+                <rect x="185" y="201" width="42" height="4" rx="2" fill="#3D85C6" opacity="0.7" />
+                <rect x="260" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="260" y="92" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="267" y="97" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="260" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="260" y="144" width="76" height="23" rx="4" fill="#FCE5CD" />
+                <rect x="267" y="149" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="260" y="170" width="76" height="10" rx="4" fill="#D9D2E9" />
+                <rect x="260" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="260" y="196" width="76" height="49" rx="4" fill="#F4CCCC" />
+                <rect x="267" y="201" width="42" height="4" rx="2" fill="#CC0000" opacity="0.7" />
+                <rect x="342" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="342" y="92" width="76" height="10" rx="4" fill="#FFF2CC" />
+                <rect x="342" y="105" width="76" height="23" rx="4" fill="#FCE5CD" />
+                <rect x="349" y="110" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="342" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="342" y="144" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="349" y="149" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="342" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="342" y="196" width="76" height="23" rx="4" fill="#D9D2E9" />
+                <rect x="349" y="201" width="42" height="4" rx="2" fill="#674EA7" opacity="0.7" />
+                <rect x="342" y="222" width="76" height="23" rx="4" fill="#D0E0E3" />
+                <rect x="349" y="227" width="42" height="4" rx="2" fill="#45818E" opacity="0.7" />
+                <rect x="424" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="424" y="92" width="76" height="23" rx="4" fill="#C9DAF8" />
+                <rect x="431" y="97" width="42" height="4" rx="2" fill="#3D85C6" opacity="0.7" />
+                <rect x="424" y="118" width="76" height="10" rx="4" fill="#D9EAD3" />
+                <rect x="424" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="424" y="144" width="76" height="36" rx="4" fill="#FCE5CD" />
+                <rect x="431" y="149" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="424" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="424" y="196" width="76" height="49" rx="4" fill="#F4CCCC" />
+                <rect x="431" y="201" width="42" height="4" rx="2" fill="#CC0000" opacity="0.7" />
+                <rect x="56" y="92" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="105" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="118" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="131" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="144" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="157" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="170" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="183" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="196" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="209" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="222" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="235" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="248" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="20" y="268" width="520" height="22" fill="#F8FAFC" />
+                <rect x="34" y="273" width="58" height="12" rx="4" fill="#FFFFFF" stroke="#CBD5E1" />
+                <rect x="98" y="273" width="52" height="12" rx="4" fill="#E2E8F0" />
+                <rect x="156" y="273" width="52" height="12" rx="4" fill="#E2E8F0" />
+                <rect x="214" y="273" width="52" height="12" rx="4" fill="#E2E8F0" />
+            </svg>
+        );
 
         // The logo: a mini timetable, three days of lesson blocks on a green tile.
         const LogoMark = () => (
@@ -1414,9 +1546,8 @@
                     {/* School */}
                     <div>
                         <SectionHeader id="school" title="School" info="The school's name is used in the timetable's file name and on its Start here tab." />
-                        <div className="space-y-2">
-                            <Label htmlFor="school-name">School Name</Label>
-                            <Input id="school-name" placeholder="e.g. St Mary's Primary" value={data.schoolName} onChange={(e) => updateField('schoolName', e.target.value)} error={errors.schoolName} />
+                        <div>
+                            <Input id="school-name" boxLabel="School name" placeholder="e.g. St Mary's Primary" value={data.schoolName} onChange={(e) => updateField('schoolName', e.target.value)} error={errors.schoolName} />
                         </div>
                     </div>
 
@@ -1424,13 +1555,11 @@
                     <div className="border-t border-slate-200 pt-6">
                         <SectionHeader id="bell-times" title="Bell Times" info="When the school day starts and ends. All grades and days use the same times, in 5-minute steps." />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="school-start">School Start Time</Label>
-                                <Input id="school-start" type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
+                            <div>
+                                <Input id="school-start" boxLabel="School starts" type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="school-end">School End Time</Label>
-                                <Input id="school-end" type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
+                            <div>
+                                <Input id="school-end" boxLabel="School ends" type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
                             </div>
                         </div>
                     </div>
@@ -1443,7 +1572,7 @@
                             </Button>
                         </SectionHeader>
 
-                        <div id="list-container-breaks" className="space-y-3">
+                        <div id="list-container-breaks" className="space-y-1">
                             {data.breaks.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
                                     <CalendarIcon className="w-8 h-8 mb-3 text-slate-400" />
@@ -1455,31 +1584,20 @@
                                 data.breaks.map((b, i) => {
                                     const bMins = (b.start && b.end) ? (timeToMinutes(b.end) - timeToMinutes(b.start)) : 0;
                                     return (
-                                    <div key={b.id} className="flex flex-col sm:flex-row items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg animate-pop">
-                                        <div className="w-full sm:w-1/4 lg:w-1/3">
-                                            <Label htmlFor={`break-${b.id}-name`} className="text-xs mb-1 block">Break Name</Label>
-                                            <Input id={`break-${b.id}-name`} placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
+                                    <div key={b.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 py-1 animate-pop">
+                                        <div className="flex-1 min-w-[10rem]">
+                                            <Input id={`break-${b.id}-name`} boxLabel="Break" placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
                                         </div>
-                                        <div className="flex gap-3 w-full sm:w-auto sm:flex-1 items-end">
-                                            <div className="flex-1 sm:w-28">
-                                                <Label htmlFor={`break-${b.id}-start`} className="text-xs mb-1 block">Start</Label>
-                                                <Input id={`break-${b.id}-start`} type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
-                                            </div>
-                                            <div className="flex-1 sm:w-28 relative">
-                                                <Label htmlFor={`break-${b.id}-end`} className="text-xs mb-1 block">End</Label>
-                                                <Input id={`break-${b.id}-end`} type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
-                                            </div>
-                                            <div className="flex items-center">
-                                                <div className="h-10 px-3 flex items-center justify-center bg-slate-200/50 border border-slate-200 text-slate-600 text-xs font-bold rounded-md whitespace-nowrap min-w-[72px]">
-                                                    {bMins > 0 ? formatMinutes(bMins) : '0 min'}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <Button variant="bin" className="px-2 h-10 w-10 shadow-sm shrink-0" onClick={() => removeFromList('breaks', b.id)} aria-label={`Remove ${b.name.trim() || 'this break'}`}>
-                                                    <TrashIcon />
-                                                </Button>
-                                            </div>
+                                        <div className="w-36">
+                                            <Input id={`break-${b.id}-start`} boxLabel="Starts" type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
                                         </div>
+                                        <div className="w-36">
+                                            <Input id={`break-${b.id}-end`} boxLabel="Ends" type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
+                                        </div>
+                                        <div className="h-12 px-3 flex items-center justify-center bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-md whitespace-nowrap min-w-[72px]">
+                                            {bMins > 0 ? formatMinutes(bMins) : '0 min'}
+                                        </div>
+                                        <RemoveButton label={`Remove ${b.name.trim() || 'this break'}`} onClick={() => removeFromList('breaks', b.id)} />
                                     </div>
                                 )})
                             )}
@@ -1641,15 +1759,7 @@
                                                                     <div className="flex-1 min-w-[10rem]">
                                                                         <Input id={`class-${s.id}-teacher`} boxLabel="Teacher" aria-label={`${g.name} class ${idx + 1} teacher`} placeholder={isBlank ? "Blank row: skipped" : "e.g. Ms Lee"} value={s.teacher} onChange={(e) => updateList('staffing', globalIdx, 'teacher', e.target.value)} error={errors.staffing?.[globalIdx]?.teacher} />
                                                                     </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => removeClass(s.id)}
-                                                                        aria-label={`Remove ${rowName}`}
-                                                                        title={`Remove ${rowName}`}
-                                                                        className="w-9 h-12 shrink-0 inline-flex items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
-                                                                    >
-                                                                        <TrashIcon />
-                                                                    </button>
+                                                                    <RemoveButton label={`Remove ${rowName}`} onClick={() => removeClass(s.id)} />
                                                                     {colorPickerFor === s.id && ReactDOM.createPortal(
                                                                         <React.Fragment>
                                                                             <div className="fixed inset-0 z-40" onClick={() => setColorPickerFor(null)} />
@@ -1722,7 +1832,7 @@
                                 </Button>
                             </SectionHeader>
 
-                            <div id="list-container-specialists" className="space-y-2">
+                            <div id="list-container-specialists" className="space-y-1">
                                 {data.specialists.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
                                         <p className="text-sm font-medium text-slate-700 mb-2">No specialist teachers added</p>
@@ -1730,32 +1840,22 @@
                                     </div>
                                 ) : (
                                     data.specialists.map((s, i) => (
-                                        <div key={s.id} className="animate-pop bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-2">
-                                        <div className="flex flex-col sm:flex-row items-start gap-2">
-                                            <div className="w-full sm:flex-1">
-                                                <Label htmlFor={`spec-${s.id}-name`} className="text-xs mb-1 block">Specialist Name</Label>
-                                                <Input id={`spec-${s.id}-name`} placeholder="e.g. Mr. Smith" value={s.name} onChange={(e) => updateList('specialists', i, 'name', e.target.value)} error={errors.specialists?.[i]?.name} />
+                                        <div key={s.id} className="animate-pop py-1 space-y-1.5">
+                                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                                            <div className="flex-1 min-w-[10rem]">
+                                                <Input id={`spec-${s.id}-name`} boxLabel="Specialist" placeholder="e.g. Mr Smith" value={s.name} onChange={(e) => updateList('specialists', i, 'name', e.target.value)} error={errors.specialists?.[i]?.name} />
                                             </div>
-                                            <div className="w-full sm:flex-1">
-                                                <Label htmlFor={`spec-${s.id}-kla`} className="text-xs mb-1 block">Assigned KLA</Label>
-                                                <Select id={`spec-${s.id}-kla`} value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
-                                                    <option value="">Select KLA...</option>
+                                            <div className="flex-1 min-w-[10rem]">
+                                                <Select id={`spec-${s.id}-kla`} boxLabel="KLA" value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
+                                                    <option value="">Choose a KLA...</option>
                                                     {data.klas.filter(k => k.name.trim() && !/^non[- ]?curricul(?:ar|um)$/i.test(k.name.trim())).map(k => (
                                                         <option key={k.id} value={k.name}>{k.name}</option>
                                                     ))}
                                                 </Select>
                                             </div>
-                                            <div className="w-full sm:w-auto">
-                                                <span className="text-xs font-medium leading-none mb-1 block" aria-hidden="true">Cycle</span>
-                                                <CycleButton id={`spec-${s.id}-cycle`} owner={s.name.trim() || `Specialist ${i + 1}`} value={s.cycle}
-                                                    onChange={(weeks) => updateList('specialists', i, 'cycle', clampCycle(weeks))} />
-                                            </div>
-                                            <div className="w-full sm:w-auto">
-                                                <Label className="text-xs mb-1 block">&nbsp;</Label>
-                                                <Button variant="bin" className="px-2 shadow-sm w-full sm:w-10 h-10" onClick={() => removeFromList('specialists', s.id)} aria-label={`Remove ${s.name.trim() || 'this specialist'}`}>
-                                                    <TrashIcon />
-                                                </Button>
-                                            </div>
+                                            <CycleButton id={`spec-${s.id}-cycle`} size="lg" owner={s.name.trim() || `Specialist ${i + 1}`} value={s.cycle}
+                                                onChange={(weeks) => updateList('specialists', i, 'cycle', clampCycle(weeks))} />
+                                            <RemoveButton label={`Remove ${s.name.trim() || 'this specialist'}`} onClick={() => removeFromList('specialists', s.id)} />
                                         </div>
                                         {cycleMismatches[s.id] && (
                                             <p className="flex items-start gap-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
@@ -1784,7 +1884,7 @@
                                 </Button>
                             </SectionHeader>
 
-                            <div id="list-container-activities" className="space-y-1.5">
+                            <div id="list-container-activities" className="space-y-1">
                                 {data.activities.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
                                         <p className="text-sm font-medium text-slate-700 mb-2">No extra-curriculars added</p>
@@ -1792,13 +1892,11 @@
                                     </div>
                                 ) : (
                                     data.activities.map((a, i) => (
-                                        <div key={a.id} className="flex items-center gap-2 animate-pop">
+                                        <div key={a.id} className="flex items-center gap-2 py-1 animate-pop">
                                             <div className="flex-1">
-                                                <Input id={`activity-${a.id}`} aria-label="Activity name" placeholder="Activity Name (e.g. Debate Club)" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} disabled={a.locked} title={a.locked ? "Required for Years 3-6" : undefined} />
+                                                <Input id={`activity-${a.id}`} boxLabel={a.locked ? "Activity (required for Years 3-6)" : "Activity"} placeholder="e.g. Debate Club" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} disabled={a.locked} />
                                             </div>
-                                            <Button variant="bin" className="px-2 shadow-sm" onClick={() => removeFromList('activities', a.id)} disabled={a.locked} aria-label={`Remove ${a.name.trim() || 'this activity'}`}>
-                                                <TrashIcon />
-                                            </Button>
+                                            <RemoveButton label={`Remove ${a.name.trim() || 'this activity'}`} onClick={() => removeFromList('activities', a.id)} disabled={a.locked} />
                                         </div>
                                     ))
                                 )}
@@ -2061,28 +2159,41 @@
                         </Card>
                     ) : isSuccess ? (
                         /* SUCCESS SCREEN */
-                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden animate-pop flex flex-col">
-                            <CardContent className="p-12 flex flex-col items-center justify-center text-center min-h-[500px]">
-                                <div className="animate-success mb-8">
-                                    <div className="mx-auto bg-brand-green/10 w-24 h-24 rounded-full flex items-center justify-center text-brand-dark shadow-sm">
-                                        <CheckIcon className="w-12 h-12" />
+                        <div className="w-full rounded-2xl shadow-xl overflow-hidden animate-pop bg-gradient-to-br from-[#00C774] via-[#00A35F] to-[#00663C] text-white">
+                            <div className="px-6 sm:px-12 pt-10 pb-10 flex flex-col items-center text-center">
+                                <div className="animate-success mb-4 w-16 h-16 rounded-full bg-white/20 ring-4 ring-white/20 flex items-center justify-center" aria-hidden="true">
+                                    <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                </div>
+                                <h2 className="text-3xl font-extrabold tracking-tight">Your timetable is ready</h2>
+                                <p className="text-base text-white/85 mt-2 max-w-md">Saved in the <strong className="text-white">Timetables</strong> folder in your My Drive.</p>
+
+                                {/* The picture, with the button on top of it */}
+                                <div className="relative w-full max-w-2xl mt-8">
+                                    <TimetableIllustration />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <a href={generatedUrl} target="_blank" rel="noopener noreferrer"
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-10 py-4 text-xl font-bold text-brand-dark shadow-2xl ring-1 ring-black/5 transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70">
+                                            Open Sheet<span className="sr-only"> (opens in a new tab)</span>
+                                        </a>
                                     </div>
                                 </div>
-                                <h3 className="text-3xl font-bold text-slate-800 mb-3">Timetable Generated</h3>
-                                <p className="text-base text-slate-500 mb-10 max-w-md">Your timetable has been created and saved in the <strong>Timetables</strong> folder in your My Drive.</p>
 
-                                <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
-                                    <a href={generatedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-base font-bold transition-all duration-200 active:scale-95 h-12 px-8 bg-brand-dark text-white hover:bg-[#00663C] shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2">
-                                        Open Spreadsheet<span className="sr-only"> (opens in a new tab)</span>
-                                    </a>
+                                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
+                                    <span className="inline-flex items-center gap-1">
+                                        <button type="button" onClick={() => { setIsSuccess(false); setStep(LAST_STEP); }}
+                                            className="h-11 px-6 rounded-xl border border-white/50 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                                            Keep Editing
+                                        </button>
+                                        <HoverInfo id="keep-editing-info" label="About Keep Editing"
+                                            text="Keep Editing goes back to the wizard with this setup, for example to change something and generate again." />
+                                    </span>
+                                    <button type="button" onClick={startNew}
+                                        className="h-11 px-6 rounded-xl border border-white/50 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                                        New Timetable
+                                    </button>
                                 </div>
-                                <div className="flex flex-col sm:flex-row gap-3 w-full justify-center mt-6">
-                                    <Button variant="outline" onClick={() => { setIsSuccess(false); setStep(LAST_STEP); }}>Back to the wizard</Button>
-                                    <Button variant="outline" onClick={startNew}>Start a new timetable</Button>
-                                </div>
-                                <p className="text-xs text-slate-600 mt-4 max-w-md">"Back to the wizard" keeps this setup, for example to change something and generate again.</p>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
                     ) : draftOffer ? (
                         /* RESUME SCREEN */
                         <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden animate-pop flex flex-col">
