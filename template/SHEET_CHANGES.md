@@ -255,3 +255,33 @@ No sheet changes and no change in behaviour: the code both scripts share now liv
 - [ ] Generate a small timetable: specialist clashes still turn red, and the Start here tab counts conflicts.
 - [ ] Sync a specialist and lock: both work as before.
 - [ ] In the wizard, a 7-minute start time, an 11-week cycle and a teacher typed as "TBC" are still refused.
+
+## OVERVIEW: compare each class with its own minimums
+
+**Problem.** On a class tab, English and Mathematics are checked the NESA way: together at least 50%, Mathematics at least 20% (TEMPLATE!F5 `=50 - MAX(20, E6)`, F6 `=MAX(20, 50 - E5)`), and Religion's minimum depends on the grade (F7: 10% for K-2, 12% for Years 3-6). OVERVIEW instead colours every class against the fixed Min/Max in its own columns B and C, so a class with Mathematics 23% and English 28% (compliant on its tab) shows English as non-compliant.
+
+**Fix** (in the master template's OVERVIEW tab):
+
+- [ ] **Format > Conditional formatting**, select the **green** rule on `E6:AA19, AB6:CH13` (custom formula `=AND(ISNUMBER(E6), E6 >= $B6, E6 <= $C6)`) and change its formula to:
+
+  ```
+  =AND(ISNUMBER(E6), ROUND(E6,1) >= ROUND(IFERROR(INDIRECT("'"&E$5&"'!F"&(ROW()-1)), $B6),1), ROUND(E6,1) <= ROUND(IFERROR(INDIRECT("'"&E$5&"'!G"&(ROW()-1)), $C6),1))
+  ```
+
+- [ ] Change the **red** rule on the same ranges (`=AND(ISNUMBER(E6), OR(E6 < $B6, E6 > $C6))`) to:
+
+  ```
+  =AND(ISNUMBER(E6), OR(ROUND(E6,1) < ROUND(IFERROR(INDIRECT("'"&E$5&"'!F"&(ROW()-1)), $B6),1), ROUND(E6,1) > ROUND(IFERROR(INDIRECT("'"&E$5&"'!G"&(ROW()-1)), $C6),1)))
+  ```
+
+  Each class column now uses its own tab's Min (F) and Max (G), rounded like the class tab's Compliant check (C16): row 6 (English) reads the class tab's row 5, and so on. Columns without a class name in row 5, such as School Average, fall back to B and C.
+
+- [ ] The School Average column follows the same rule: **B6** (English Min) `=IFERROR(50 - MAX(20, E7), 30)`, **B7** (Mathematics Min) `=IFERROR(MAX(20, 50 - E6), 20)`, **C6** and **C7** (Max) `35`.
+
+**Check:**
+
+- [ ] A class with Mathematics 23% and English 28% is green for both on OVERVIEW (and Compliant on its own tab).
+- [ ] A class with Mathematics 18% is red for Mathematics.
+- [ ] A Year 3 class with Religion at 11% is red on OVERVIEW, as on its tab (12% minimum for Years 3-6); a Kindergarten class at 11% is green.
+
+Timetables generated before this change keep their old OVERVIEW: make the same edits on their OVERVIEW tab if they're still in use. New timetables get it from the template.
