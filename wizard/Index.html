@@ -213,6 +213,47 @@
             );
         };
 
+        const InfoIcon = () => <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
+
+        // A section's heading, with its description behind an "i" button
+        // (opens on click; Escape or a click elsewhere closes it), and any
+        // buttons for the section on the right.
+        const SectionHeader = ({ id, title, info, children }) => {
+            const [open, setOpen] = useState(false);
+            const ref = useRef(null);
+            useEffect(() => {
+                if (!open) return;
+                const closeOnOutsideClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+                const closeOnEscape = (e) => { if (e.key === 'Escape') setOpen(false); };
+                document.addEventListener('mousedown', closeOnOutsideClick);
+                document.addEventListener('keydown', closeOnEscape);
+                return () => {
+                    document.removeEventListener('mousedown', closeOnOutsideClick);
+                    document.removeEventListener('keydown', closeOnEscape);
+                };
+            }, [open]);
+            return (
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div ref={ref} className="relative flex items-center gap-1.5">
+                        <h3 className="text-xl font-bold tracking-tight text-slate-900">{title}</h3>
+                        {info && (
+                            <button type="button" aria-label={`About ${title}`} aria-expanded={open} aria-controls={`${id}-info`}
+                                onClick={() => setOpen(prev => !prev)}
+                                className={`w-7 h-7 inline-flex items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${open ? 'bg-brand-green/10 text-brand-dark' : 'text-slate-500 hover:bg-slate-100 hover:text-brand-dark'}`}>
+                                <InfoIcon />
+                            </button>
+                        )}
+                        {info && open && (
+                            <div id={`${id}-info`} className="absolute left-0 top-full mt-2 z-30 w-80 max-w-[85vw] rounded-lg bg-slate-900 text-white text-sm leading-relaxed shadow-xl px-3.5 py-2.5 animate-pop">
+                                {info}
+                            </div>
+                        )}
+                    </div>
+                    {children && <div className="flex items-center gap-2">{children}</div>}
+                </div>
+            );
+        };
+
         // The logo: a mini timetable, three days of lesson blocks on a green tile.
         const LogoMark = () => (
             <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
@@ -241,12 +282,6 @@
         const CalendarIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
         const ActivityIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>;
         const ChevronDownIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>;
-        const ChevronUpIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>;
-        const BellIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>;
-        const CoffeeIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"></path><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"></path><line x1="6" y1="2" x2="6" y2="4"></line><line x1="10" y1="2" x2="10" y2="4"></line><line x1="14" y1="2" x2="14" y2="4"></line></svg>;
-        const LayersIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 12 12 17 22 12"></polyline><polyline points="2 17 12 22 22 17"></polyline></svg>;
-        const UsersIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
-        const StarIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>;
         const AlertCircleIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>;
         const PencilIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path><path d="m15 5 4 4"></path></svg>;
 
@@ -336,13 +371,16 @@
             return null;
         };
         const SETUP_FILE_TYPE = 'timetable-tool-setup';
-        const STEP_NAMES = ['Core Schedule', 'Grades', 'Staff', 'Summary'];
+        const STEP_NAMES = ['Core Schedule', 'Grades', 'Classes', 'Specialists', 'Activities', 'Summary'];
         const STEP_INFO = [
             "Your school's name, bell times and breaks.",
             "How many classes each grade has, and how many weeks its timetable runs before repeating.",
-            "Class names and teachers, specialist teachers and extra-curricular activities.",
+            "Each class's name and teacher.",
+            "Specialist teachers and the KLA each one teaches.",
+            "Extra-curricular activities that count as teaching time.",
             "Check everything, then generate the timetable."
         ];
+        const LAST_STEP = STEP_NAMES.length;
 
         // Shown in turn while the timetable is generated, between reminders of
         // how long it takes.
@@ -701,7 +739,7 @@
             const resumeDraft = () => {
                 draftsEnabled.current = true;
                 setData(draftOffer.data);
-                setStep(Math.min(4, Math.max(1, Number(draftOffer.step) || 1)));
+                setStep(Math.min(LAST_STEP, Math.max(1, Number(draftOffer.step) || 1)));
                 setErrors({});
                 setDraftOffer(null);
             };
@@ -902,7 +940,7 @@
             };
 
             const validateStep3 = () => {
-                let currentErrors = { staffing: {}, specialists: {}, activities: {} };
+                let currentErrors = { staffing: {} };
                 let isValid = true;
                 let firstErrorGradeId = null;
                 let firstErrorStaffId = null;
@@ -932,22 +970,6 @@
                     }
                 });
 
-                const duplicateSpecialists = findDuplicates(getSpecialistsToGenerate(data).map(s => s.name));
-                data.specialists.forEach((s, i) => {
-                    currentErrors.specialists[i] = {};
-                    if (isBlankSpecialist(s)) return;
-                    const nameError = getNameError(s.name, false)
-                        || (duplicateSpecialists.has(s.name.trim().toLowerCase()) ? "Duplicate name" : "");
-                    if (nameError) { currentErrors.specialists[i].name = nameError; isValid = false; }
-                    if (!s.kla) { currentErrors.specialists[i].kla = "Required"; isValid = false; }
-                    if (!s.cycle || s.cycle < 1 || s.cycle > MAX_CYCLE_WEEKS) { currentErrors.specialists[i].cycle = "1 to 10 weeks"; isValid = false; }
-                });
-
-                data.activities.forEach((a, i) => {
-                    currentErrors.activities[i] = {};
-                    if (a.name.trim().startsWith('=')) { currentErrors.activities[i].name = "Can't start with ="; isValid = false; }
-                });
-
                 setErrors(currentErrors);
                 // Bring the first class with a problem into view.
                 if (firstErrorGradeId) {
@@ -959,6 +981,36 @@
                         if (field) field.focus({ preventScroll: true });
                     }, 50);
                 }
+                return isValid;
+            };
+
+            const validateSpecialists = () => {
+                let currentErrors = { specialists: {} };
+                let isValid = true;
+                const duplicateSpecialists = findDuplicates(getSpecialistsToGenerate(data).map(s => s.name));
+                data.specialists.forEach((s, i) => {
+                    currentErrors.specialists[i] = {};
+                    if (isBlankSpecialist(s)) return;
+                    const nameError = getNameError(s.name, false)
+                        || (duplicateSpecialists.has(s.name.trim().toLowerCase()) ? "Duplicate name" : "");
+                    if (nameError) { currentErrors.specialists[i].name = nameError; isValid = false; }
+                    if (!s.kla) { currentErrors.specialists[i].kla = "Required"; isValid = false; }
+                    if (!s.cycle || s.cycle < 1 || s.cycle > MAX_CYCLE_WEEKS) { currentErrors.specialists[i].cycle = "1 to 10 weeks"; isValid = false; }
+                });
+
+                setErrors(currentErrors);
+                return isValid;
+            };
+
+            const validateActivities = () => {
+                let currentErrors = { activities: {} };
+                let isValid = true;
+                data.activities.forEach((a, i) => {
+                    currentErrors.activities[i] = {};
+                    if (a.name.trim().startsWith('=')) { currentErrors.activities[i].name = "Can't start with ="; isValid = false; }
+                });
+
+                setErrors(currentErrors);
                 return isValid;
             };
 
@@ -1006,8 +1058,10 @@
                     }
                 }
                 if (step === 3) valid = validateStep3();
+                if (step === 4) valid = validateSpecialists();
+                if (step === 5) valid = validateActivities();
 
-                if (valid && step < 4) setStep(step + 1);
+                if (valid && step < LAST_STEP) setStep(step + 1);
             };
 
             const handleBack = () => {
@@ -1056,6 +1110,8 @@
                             if (e.teacher) add(`${label} teacher: ${e.teacher}`, `class-${s.id}-teacher`, g.id);
                         });
                     });
+                }
+                if (step === 4) {
                     data.specialists.forEach((s, i) => {
                         const e = errors.specialists?.[i] || {};
                         const label = `Specialist ${i + 1}${s.name.trim() ? ` (${s.name.trim()})` : ''}`;
@@ -1063,6 +1119,8 @@
                         if (e.kla) add(`${label} KLA: ${e.kla}`, `spec-${s.id}-kla`);
                         if (e.cycle) add(`${label} cycle length: ${e.cycle}`, `spec-${s.id}-cycle`);
                     });
+                }
+                if (step === 5) {
                     data.activities.forEach((a, i) => {
                         const e = errors.activities?.[i] || {};
                         if (e.name) add(`Activity "${a.name.trim()}": ${e.name}`, `activity-${a.id}`);
@@ -1326,10 +1384,7 @@
 
                     {/* School */}
                     <div>
-                        <div className="mb-4">
-                            <h4 className="text-base font-semibold flex items-center gap-2"><LayersIcon className="w-5 h-5 text-brand-dark" /> School</h4>
-                            <p className="text-sm text-slate-500 mt-1">Used in the timetable's file name.</p>
-                        </div>
+                        <SectionHeader id="school" title="School" info="The school's name is used in the timetable's file name and on its Start here tab." />
                         <div className="space-y-2">
                             <Label htmlFor="school-name">School Name</Label>
                             <Input id="school-name" placeholder="e.g. St Mary's Primary" value={data.schoolName} onChange={(e) => updateField('schoolName', e.target.value)} error={errors.schoolName} />
@@ -1338,10 +1393,7 @@
 
                     {/* Bell Times */}
                     <div className="border-t border-slate-200 pt-6">
-                        <div className="mb-4">
-                            <h4 className="text-base font-semibold flex items-center gap-2"><BellIcon className="w-5 h-5 text-brand-dark" /> Bell Times</h4>
-                            <p className="text-sm text-slate-500 mt-1">Set standard operating hours for the day.</p>
-                        </div>
+                        <SectionHeader id="bell-times" title="Bell Times" info="When the school day starts and ends. All grades and days use the same times, in 5-minute steps." />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="school-start">School Start Time</Label>
@@ -1356,17 +1408,13 @@
 
                     {/* Global Breaks */}
                     <div className="border-t border-slate-200 pt-6">
-                        <div className="flex items-start justify-between mb-4">
-                            <div>
-                                <h4 className="text-base font-semibold flex items-center gap-2"><CoffeeIcon className="w-5 h-5 text-brand-dark" /> Global Breaks</h4>
-                                <p className="text-sm text-slate-500 mt-1">Define recess, lunch, or transitions.</p>
-                            </div>
+                        <SectionHeader id="breaks" title="Global Breaks" info="Recess, lunch and any other breaks. They apply to every class, every day, and don't count as teaching time.">
                             <Button variant="brand" size="sm" onClick={() => addToList('breaks', { name: "", start: "", end: "" })} className="h-8 gap-1">
                                 <PlusIcon className="w-4 h-4 mr-1" /> Add Break
                             </Button>
-                        </div>
+                        </SectionHeader>
 
-                        <div id="list-container-breaks" className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar p-1 -m-1">
+                        <div id="list-container-breaks" className="space-y-3">
                             {data.breaks.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
                                     <CalendarIcon className="w-8 h-8 mb-3 text-slate-400" />
@@ -1430,14 +1478,10 @@
 
             const renderStep2 = () => (
                 <div className="space-y-6 animate-step" key="step2">
-                    <div className="flex items-center justify-between mb-2">
-                        <div>
-                            <h4 className="text-base font-semibold flex items-center gap-2"><LayersIcon className="w-5 h-5 text-brand-dark" /> Grade Information</h4>
-                            <p className="text-sm text-slate-500 mt-1">Configure the cycle and class distribution per grade.</p>
-                        </div>
-                    </div>
+                    <SectionHeader id="grades" title="Grade Information"
+                        info="How many classes each grade has, and its cycle length: how many weeks its timetable runs before repeating (1 to 10). Grades with no classes are left out." />
 
-                    <div id="list-container-grades" className="space-y-3 max-h-[calc(100vh-20rem)] overflow-y-auto custom-scrollbar p-1 -m-1">
+                    <div id="list-container-grades" className="space-y-3">
                         {data.grades.map((g, i) => {
                             const isInactive = g.classes === 0;
                             return (
@@ -1494,7 +1538,6 @@
                     data.staffing.filter(s => s.gradeId === gradeId && classNeedsAttention(s)).length;
                 const countClasses = (gradeId) =>
                     data.staffing.filter(s => s.gradeId === gradeId && !isBlankClass(s)).length;
-                const cycleMismatches = findCycleMismatches(data);
 
                 const gradesWithClasses = data.grades.filter(g => g.classes > 0);
 
@@ -1502,10 +1545,8 @@
                     <div className="space-y-8 animate-step" key="step3">
                         {/* Classroom Teachers: one card per grade */}
                         <div>
-                            <div className="mb-4">
-                                <h4 className="text-base font-semibold flex items-center gap-2"><UsersIcon className="w-5 h-5 text-brand-dark" /> Teacher Assignments</h4>
-                                <p className="text-sm text-slate-500 mt-1">Name each class and add its teacher's name (needed for compliance). Add or remove classes here or in Step 2; rows left completely blank are skipped.</p>
-                            </div>
+                            <SectionHeader id="classes" title="Teacher Assignments"
+                                info="Name each class and add its teacher's name (needed for compliance). Add or remove classes here or on the Grades step; rows left completely blank are skipped." />
 
                             {gradesWithClasses.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
@@ -1684,19 +1725,24 @@
                             )}
                         </div>
 
+                    </div>
+                );
+            };
+
+            const renderSpecialistsStep = () => {
+                const cycleMismatches = findCycleMismatches(data);
+                return (
+                    <div className="space-y-8 animate-step" key="step-specialists">
                         {/* Specialist Teachers */}
-                        <div className="border-t border-slate-200 pt-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <h4 className="text-base font-semibold flex items-center gap-2"><StarIcon className="w-5 h-5 text-brand-dark" /> Specialist Profiles</h4>
-                                    <p className="text-sm text-slate-500 mt-1">Add specialist teachers and assign them to a KLA. Rows left blank are skipped.</p>
-                                </div>
+                        <div>
+                            <SectionHeader id="specialists" title="Specialist Profiles"
+                                info="Specialist teachers (e.g. PE, music) and the KLA each one teaches. Each gets their own tab to timetable their lessons, which are then synced onto the class tabs. Rows left blank are skipped.">
                                 <Button variant="brand" size="sm" onClick={() => addToList('specialists', { name: "", kla: "", cycle: 1 })} className="h-8 gap-1">
                                     <PlusIcon className="w-4 h-4 mr-1" /> Add Specialist
                                 </Button>
-                            </div>
+                            </SectionHeader>
 
-                            <div id="list-container-specialists" className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar p-1 -m-1">
+                            <div id="list-container-specialists" className="space-y-2">
                                 {data.specialists.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
                                         <p className="text-sm font-medium text-slate-700 mb-2">No specialist teachers added</p>
@@ -1745,19 +1791,22 @@
                             </div>
                         </div>
 
+                    </div>
+                );
+            };
+
+            const renderActivitiesStep = () => (
+                <div className="space-y-8 animate-step" key="step-activities">
                         {/* Extracurricular Activities */}
-                        <div className="border-t border-slate-200 pt-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <h4 className="text-base font-semibold flex items-center gap-2"><ActivityIcon className="w-5 h-5 text-brand-dark" /> Extra-Curricular Activities</h4>
-                                    <p className="text-sm text-slate-500 mt-1">Add any Extra Curricular events which will be included as teaching time</p>
-                                </div>
+                        <div>
+                            <SectionHeader id="activities" title="Extra-Curricular Activities"
+                                info="Events such as assembly or library that class teachers can put on their timetables, counted as teaching time. Amadeus - Tutorials is required for Years 3-6, so it can't be removed.">
                                 <Button variant="brand" size="sm" onClick={() => addToList('activities', { name: "" })} className="h-8 gap-1">
                                     <PlusIcon className="w-4 h-4 mr-1" /> Add Activity
                                 </Button>
-                            </div>
+                            </SectionHeader>
 
-                            <div id="list-container-activities" className="space-y-1.5 max-h-[calc(100vh-24rem)] overflow-y-auto custom-scrollbar p-1 -m-1">
+                            <div id="list-container-activities" className="space-y-1.5">
                                 {data.activities.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
                                         <p className="text-sm font-medium text-slate-700 mb-2">No extra-curriculars added</p>
@@ -1777,9 +1826,8 @@
                                 )}
                             </div>
                         </div>
-                    </div>
-                );
-            };
+                </div>
+            );
 
             const renderStep4 = () => {
                 const classesToGenerate = getClassesToGenerate(data);
@@ -1860,7 +1908,7 @@
                                     </div>
                                 </dl>
                             )}
-                            {renderCard(`Specialists (${specialists.length})`, [renderEditLink(3, 'specialists')],
+                            {renderCard(`Specialists (${specialists.length})`, [renderEditLink(4, 'specialists')],
                                 specialists.length ? (
                                     <ul className="space-y-1 text-sm">
                                         {specialists.map(s => (
@@ -1901,7 +1949,7 @@
                             </table>
                         )}
 
-                        {renderCard(`Extra-curricular activities (${activities.length})`, [renderEditLink(3, 'extra-curricular activities')],
+                        {renderCard(`Extra-curricular activities (${activities.length})`, [renderEditLink(5, 'extra-curricular activities')],
                             activities.length ? (
                                 <ul className="flex flex-wrap gap-1.5 text-sm">
                                     {activities.map(a => (
@@ -2005,7 +2053,7 @@
                                     </a>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-3 w-full justify-center mt-6">
-                                    <Button variant="outline" onClick={() => { setIsSuccess(false); setStep(4); }}>Back to the wizard</Button>
+                                    <Button variant="outline" onClick={() => { setIsSuccess(false); setStep(LAST_STEP); }}>Back to the wizard</Button>
                                     <Button variant="outline" onClick={startNew}>Start a new timetable</Button>
                                 </div>
                                 <p className="text-xs text-slate-600 mt-4 max-w-md">"Back to the wizard" keeps this setup, for example to change something and generate again.</p>
@@ -2035,9 +2083,8 @@
                             <CardHeader className="border-b border-slate-200 bg-slate-50 rounded-t-xl px-6 py-6 sm:px-10 z-10 relative">
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="min-w-0">
-                                        <p className="text-xs font-semibold uppercase tracking-wider text-brand-dark" aria-hidden="true">Step {step} of 4</p>
-                                        <h2 ref={stepHeadingRef} tabIndex={-1} className="text-2xl font-bold text-slate-900 mt-1 focus:outline-none">
-                                            <span className="sr-only">Step {step} of 4: </span>{STEP_NAMES[step - 1]}
+                                        <h2 ref={stepHeadingRef} tabIndex={-1} className="text-2xl font-bold text-slate-900 focus:outline-none">
+                                            <span className="sr-only">Step {step} of {LAST_STEP}: </span>{STEP_NAMES[step - 1]}
                                         </h2>
                                         <p className="text-sm text-slate-600 mt-1">{STEP_INFO[step - 1]}</p>
                                     </div>
@@ -2045,15 +2092,15 @@
 
                                 {/* Progress: one segment per step */}
                                 <div className="mt-5 flex gap-1.5" role="progressbar" aria-label="Wizard progress"
-                                    aria-valuemin={1} aria-valuemax={4} aria-valuenow={step} aria-valuetext={`Step ${step} of 4: ${STEP_NAMES[step - 1]}`}>
-                                    {[1, 2, 3, 4].map(s => (
+                                    aria-valuemin={1} aria-valuemax={LAST_STEP} aria-valuenow={step} aria-valuetext={`Step ${step} of ${LAST_STEP}: ${STEP_NAMES[step - 1]}`}>
+                                    {STEP_NAMES.map((name, i) => i + 1).map(s => (
                                         <div key={s} className="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden">
                                             <div className={`h-full rounded-full transition-all duration-500 ease-out ${s < step ? 'w-full bg-brand-dark' : s === step ? 'w-1/2 bg-brand-green' : 'w-0'}`}></div>
                                         </div>
                                     ))}
                                 </div>
-                                <ol aria-label="Steps" className="mt-2 grid grid-cols-4 gap-1.5">
-                                    {[1, 2, 3, 4].map(s => (
+                                <ol aria-label="Steps" className="mt-2 grid grid-cols-6 gap-1.5">
+                                    {STEP_NAMES.map((name, i) => i + 1).map(s => (
                                         <li key={s} aria-current={step === s ? "step" : undefined} className="min-w-0">
                                             {s < step ? (
                                                 <button type="button" onClick={() => goToStep(s)}
@@ -2103,7 +2150,9 @@
                                 {step === 1 && renderStep1()}
                                 {step === 2 && renderStep2()}
                                 {step === 3 && renderStep3()}
-                                {step === 4 && generationError && (
+                                {step === 4 && renderSpecialistsStep()}
+                                {step === 5 && renderActivitiesStep()}
+                                {step === LAST_STEP && generationError && (
                                     <div role="alert" className="mb-6 bg-red-50 border border-red-200 p-4 rounded-lg flex items-start gap-3 text-sm text-red-900 animate-pop">
                                         <AlertTriangleIcon className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                                         <div className="flex-1">
@@ -2113,7 +2162,7 @@
                                         <Button variant="outline" onClick={handleSubmit} className="shrink-0">Try again</Button>
                                     </div>
                                 )}
-                                {step === 4 && renderStep4()}
+                                {step === LAST_STEP && renderStep4()}
                             </CardContent>
 
                             <CardFooter className="flex items-start justify-between bg-slate-50 rounded-b-xl border-t border-slate-200 p-6 sm:px-10 h-28 pt-8 shrink-0">
@@ -2121,8 +2170,8 @@
                                     Back
                                 </Button>
 
-                                {step < 4 ? (
-                                    <Button variant="default" onClick={handleNext}>Continue to Step {step + 1}</Button>
+                                {step < LAST_STEP ? (
+                                    <Button variant="default" onClick={handleNext}>Next: {STEP_NAMES[step]}</Button>
                                 ) : (
                                     <Button variant="footerSolid" onClick={handleSubmit} disabled={isGenerating} className="gap-2 px-6">
                                         Generate Timetable Template
