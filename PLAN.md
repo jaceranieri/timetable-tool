@@ -48,7 +48,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
   - "Lock Synced Cells" rebuilds its own locks each run, so moved or deleted lessons are unlocked.
 - [x] **7. OVERVIEW (S).** `G5` reads the class list from `DATA!F2:F`; `G4`, `E6:E13` and `G17` cover the same number of classes; unhide the tab.
 - [x] **8. Remove Non-Curricular from the specialist KLA dropdown (S).**
-- [ ] **8a. OVERVIEW uses each class's own minimums (S).** OVERVIEW coloured every class against fixed Min/Max (English 30%), but the class tabs check English and Mathematics together (at least 50%, Mathematics at least 20%) and Religion by grade. The colour rules now read each class tab's F and G columns; the School Average keeps B and C, with English and Mathematics worked out the same way. Template change, steps in `template/SHEET_CHANGES.md`.
+- [ ] **8a. OVERVIEW uses each class's own minimums (S).** OVERVIEW coloured every class against fixed Min/Max (English 30%), but the class tabs check English and Mathematics together (at least 50%, Mathematics at least 20%) and Religion by grade. The colour rules now read each class tab's F and G columns, so OVERVIEW's own Min/Max columns (B and C) are cleared and the School Average is no longer coloured. Template change, steps in `template/SHEET_CHANGES.md`.
 
 ## Phase 2: Template cleanup
 
