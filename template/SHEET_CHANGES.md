@@ -183,3 +183,16 @@ No sheet changes, but the template's script project gets a **new file**.
   - **Make a Google Doc of this timetable** on a class tab (`1A`): the Doc opens from the link, is landscape, each lesson is one merged block with its times, and subjects have the same colours as the class tab. Try it on a specialist tab too (class colours).
   - **Make a Google Doc of the compliance summary**: one row per class, out-of-range percentages in red.
   - Both Docs are saved in the same folder as the timetable.
+
+### Phase 6 changes: Google Docs details, All terms, Start here list
+
+No sheet changes. Paste the updated `template/TemplateSync.gs` and `template/TimetableTools.gs` into the template's script project, and the updated `wizard/Code.gs` into the wizard project. Remove `LoadTest.gs` from the wizard project if it's there (it's for development only).
+
+- [ ] Generate a new timetable. It's named `<school name> - Timetable - <date>`.
+- [ ] **Start here** has a **Google Docs** section below the class list, reading "None yet…".
+- [ ] **Make a Google Doc of this timetable** on a class tab: the window has a drop-down of weeks (terms, for a 1-week class) plus **All terms**.
+  - One week: the Doc starts with a details table (class, teacher, grade, cycle, school, school day, breaks, generated date and by whom), then the week.
+  - **All terms**: details once at the top, then one page per week (per term for a 1-week class), each with its heading.
+- [ ] On a specialist tab the details show the specialist, KLA and cycle.
+- [ ] **Make a Google Doc of the compliance summary**: details show how many classes are compliant and when it was made.
+- [ ] Each Doc is added to the **Google Docs** list on Start here (a link, what it was made from, when and by whom), newest at the bottom.

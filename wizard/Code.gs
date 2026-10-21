@@ -68,7 +68,6 @@ function updateJobProgress(jobId, percent, statusText) {
 // cell that two sources want; the Start here tab counts these.
 const CONFLICT_TEXT_PREFIX = 'CONFLICT:';
 
-const GENERATED_FILE_PREFIX = 'Generated Timetable - Resource First - ';
 // Generated timetables are saved in this folder in the user's My Drive,
 // which is created if it doesn't exist. Set to '' to save them in My Drive
 // itself.
@@ -98,8 +97,7 @@ function generateTimetable(payload, options) {
 
 
     const templateFile = DriveApp.getFileById(getTemplateId());
-    const fileName = GENERATED_FILE_PREFIX + config.schoolName + ' - ' +
-      new Date().toLocaleDateString('en-AU');
+    const fileName = config.schoolName + ' - Timetable - ' + new Date().toLocaleDateString('en-AU');
     const outputFolder = getOutputFolder();
     const newFile = outputFolder
       ? templateFile.makeCopy(INCOMPLETE_FILE_PREFIX + fileName, outputFolder)
@@ -904,6 +902,9 @@ function writeDetails(sheet, details) {
  * StartHereLockStatus.
  */
 const START_HERE_SHEET_NAME = 'Start here';
+// Shown under "Google Docs" until the first one is made; TimetableTools.gs
+// replaces it with the first document's row.
+const START_HERE_NO_DOCS_TEXT = 'None yet. Timetable Admin > Make a Google Doc adds them here.';
 
 function buildStartHereSheet(ss, config, tabs) {
   if (ss.getSheetByName(START_HERE_SHEET_NAME)) return;
@@ -925,6 +926,7 @@ function buildStartHereSheet(ss, config, tabs) {
   const classHeadingRow = specialistLastRow + 2;
   const classFirstRow = classHeadingRow + 2;
   const classLastRow = classFirstRow + classCount - 1;
+  const docsHeadingRow = classLastRow + 2;
   const lessons = 'D' + specialistFirstRow + ':D' + specialistLastRow;
   const emptySlots = 'D' + classFirstRow + ':D' + classLastRow;
   const conflicts = 'E' + classFirstRow + ':E' + classLastRow;
@@ -1003,6 +1005,12 @@ function buildStartHereSheet(ss, config, tabs) {
     ]);
   });
 
+  // Google Docs made from the timetable are listed here by TimetableTools.gs
+  // (named range StartHereDocs: the column headings row).
+  put(docsHeadingRow, ['Google Docs']);
+  put(docsHeadingRow + 1, ['Document', 'Made from', 'Made on', 'Made by']);
+  put(docsHeadingRow + 2, [START_HERE_NO_DOCS_TEXT]);
+
   // Names typed in the wizard stay exactly as typed (no dates from "3-4");
   // the formula cells keep the normal format so they calculate.
   const textCells = ['A1', 'B' + specialistFirstRow + ':B' + specialistLastRow];
@@ -1012,8 +1020,10 @@ function buildStartHereSheet(ss, config, tabs) {
 
   sheet.getRange('A1').setFontSize(18).setFontWeight('bold');
   sheet.getRange('A2').setFontColor('#555555');
-  sheet.getRangeList(['A11', 'A' + classHeadingRow]).setFontSize(13).setFontWeight('bold');
-  sheet.getRangeList(['A4:E4', 'A12:D12', 'A' + (classHeadingRow + 1) + ':F' + (classHeadingRow + 1)])
+  sheet.getRangeList(['A11', 'A' + classHeadingRow, 'A' + docsHeadingRow]).setFontSize(13).setFontWeight('bold');
+  sheet.getRange('A' + (docsHeadingRow + 2)).setFontColor('#777777');
+  sheet.getRangeList(['A4:E4', 'A12:D12', 'A' + (classHeadingRow + 1) + ':F' + (classHeadingRow + 1),
+    'A' + (docsHeadingRow + 1) + ':D' + (docsHeadingRow + 1)])
     .setFontWeight('bold')
     .setBackground('#E8EEF2');
   sheet.getRange('A5:A9').setFontWeight('bold');
@@ -1027,6 +1037,7 @@ function buildStartHereSheet(ss, config, tabs) {
 
   ss.setNamedRange('StartHereSyncStatus', sheet.getRange('E6'));
   ss.setNamedRange('StartHereLockStatus', sheet.getRange('E7'));
+  ss.setNamedRange('StartHereDocs', sheet.getRange('A' + (docsHeadingRow + 1) + ':D' + (docsHeadingRow + 1)));
 }
 
 

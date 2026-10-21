@@ -562,9 +562,35 @@ function createWorld() {
       }
     },
     DocumentApp: {
+      ElementType: { PARAGRAPH: 'PARAGRAPH', TABLE: 'TABLE', PAGE_BREAK: 'PAGE_BREAK' },
+      ParagraphHeading: { NORMAL: 'NORMAL', HEADING1: 'HEADING1', HEADING2: 'HEADING2' },
       openById: id => {
         const doc = world.docs.find(item => item.id === id);
-        const body = {};
+        // The converted Doc's top-level elements, in order: headings and
+        // paragraphs, and tables (each counted once, nested or not).
+        if (!doc.children) {
+          doc.children = [];
+          const tokens = doc.html.match(/<(h1|h2|p|table)[\s>]|<\/table>/g) || [];
+          let depth = 0;
+          tokens.forEach(token => {
+            if (token === '</table>') { depth--; return; }
+            const tag = token.slice(1, -1).trim();
+            if (tag === 'table') {
+              if (depth++ === 0) doc.children.push({ type: 'TABLE' });
+            } else if (depth === 0) {
+              doc.children.push({ type: 'PARAGRAPH', heading: tag === 'h1' ? 'HEADING1' : tag === 'h2' ? 'HEADING2' : 'NORMAL' });
+            }
+          });
+        }
+        const element = item => ({
+          getType: () => item.type,
+          asParagraph: () => ({ getHeading: () => item.heading })
+        });
+        const body = {
+          getNumChildren: () => doc.children.length,
+          getChild: index => element(doc.children[index]),
+          insertPageBreak: index => { doc.children.splice(index, 0, { type: 'PAGE_BREAK' }); }
+        };
         ['PageWidth', 'PageHeight', 'MarginTop', 'MarginBottom', 'MarginLeft', 'MarginRight'].forEach(name => {
           body['set' + name] = value => { doc.page[name] = value; return body; };
         });
@@ -573,7 +599,10 @@ function createWorld() {
     },
     Utilities: {
       newBlob: (data, contentType, name) => ({ getDataAsString: () => data, getContentType: () => contentType, getName: () => name }),
-      formatDate: (date) => String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0')
+      // Times of day are real; full dates are fixed, so tests can check text that includes them.
+      formatDate: (date, timeZone, pattern) => (pattern && pattern.indexOf('yyyy') !== -1
+        ? '21 October 2026, 2:05 PM'
+        : String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0'))
     }
   };
 

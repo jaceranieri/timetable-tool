@@ -84,7 +84,7 @@ test('toA1 and columnToLetters', () => {
 test('generateTimetable builds the file, names it, and lists tabs in order', () => {
   const { url, file, ss } = generate();
   assert.match(url, /^https:\/\/docs\.google\.com\/spreadsheets\/d\//);
-  assert.match(file.handle.getName(), /^Generated Timetable - Resource First - /);
+  assert.match(file.handle.getName(), /^St Example Primary - Timetable - \d{1,2}\/\d{1,2}\/\d{4}$/);
   assert.deepEqual(ss.getSheets().map(s => s.getName()), [
     'Start here', 'DATA', 'OVERVIEW', 'TEMPLATE', 'SPEC_Template',
     'SPEC_Mr Smith', 'SPEC_Ms Jones', 'K Blue', 'K Red', 'Year 3 Gold'
@@ -194,7 +194,7 @@ test('a run that fails part-way leaves the copy marked INCOMPLETE', () => {
   template._sheets.splice(template._sheets.findIndex(s => s._name === 'SPEC_Template'), 1);
   const wizard = loadScript('wizard/Code.gs', world.globals);
   assert.throws(() => wizard.generateTimetable(makePayload()), /Something went wrong[\s\S]*SPEC_Template[\s\S]*INCOMPLETE - /);
-  assert.match(world.files[world.lastCopyId].handle.getName(), /^INCOMPLETE - Generated Timetable/);
+  assert.match(world.files[world.lastCopyId].handle.getName(), /^INCOMPLETE - St Example Primary - Timetable - /);
 });
 
 test('large school: far fewer spreadsheet calls than the previous generator', () => {
@@ -344,7 +344,7 @@ test('the file is named after the school and saved in the Timetables folder, reu
   const { world, wizard } = setUp();
   wizard.generateTimetable(makePayload({ schoolName: "St Mary's Primary" }));
   const first = world.files[world.lastCopyId];
-  assert.match(first.handle.getName(), /^Generated Timetable - Resource First - St Mary's Primary - \d{1,2}\/\d{1,2}\/\d{4}$/);
+  assert.match(first.handle.getName(), /^St Mary's Primary - Timetable - \d{1,2}\/\d{1,2}\/\d{4}$/);
   assert.equal(first.folder, 'Timetables');
   wizard.generateTimetable(makePayload());
   assert.equal(world.files[world.lastCopyId].folder, 'Timetables');

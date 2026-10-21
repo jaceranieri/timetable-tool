@@ -198,48 +198,94 @@ function tableShape(html) {
   return covered.map(row => row.filter(Boolean).length);
 }
 
-test('Google Doc of a week: merged lessons with their times, coloured like the tab, in the timetable folder', () => {
-  const { world, tools, open, lastDialog } = setUp();
+test('Google Doc window: a drop-down of every week, then All terms', () => {
+  const { tools, open, lastDialog } = setUp();
+  open('Year 3 Gold');
+  tools.makeTimetableDoc();
+  const html = lastDialog().html;
+  const options = [...html.matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g)].map(m => [m[1], m[2]]);
+  assert.deepEqual(options.slice(0, 3), [['1|0', 'Term 1 - Week A'], ['1|1', 'Term 1 - Week B'], ['2|0', 'Term 2 - Week A']]);
+  assert.deepEqual(options[options.length - 1], ['all', 'All terms (one page per week)']);
+  assert.equal(options.length, 9);
+  assert.match(html, />Make the Google Doc<\/button>/);
+  assert.match(html, /var SHEET="Year 3 Gold";/);
+
+  open('K Blue');
+  tools.makeTimetableDoc();
+  const termOptions = [...lastDialog().html.matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g)].map(m => m[2]);
+  assert.deepEqual(termOptions, ['Term 1', 'Term 2', 'Term 3', 'Term 4', 'All terms (one page per term)']);
+});
+
+test('Google Doc of a week: details, merged lessons with their times, coloured like the tab, listed on Start here', () => {
+  const { world, ss, tools, open } = setUp();
   const sheet = open('Year 3 Gold');
   sheet.getRange('J11:J22').setValue('English');     // Monday 9:00-10:00
   sheet.getRange('K11:K16').setValue('Mathematics'); // Tuesday 9:00-9:30
   sheet.getRange('K17:K22').setValue('Assembly');    // Tuesday 9:30-10:00 (no colour rule but "not empty")
-  world.promptAnswers = ['1a'];
-  tools.makeTimetableDoc();
+  const result = tools.makeTimetableDocFromDialog('Year 3 Gold', '1|0');
 
   const doc = world.docs[0];
   assert.equal(doc.name, 'Year 3 Gold - Term 1 - Week A');
   assert.equal(doc.mimeType, 'application/vnd.google-apps.document');
   assert.deepEqual(doc.parents, ['Timetables']);
   assert.deepEqual(doc.page, { PageWidth: 842, PageHeight: 595, MarginTop: 28, MarginBottom: 28, MarginLeft: 28, MarginRight: 28 });
-  assert.match(doc.html, /<h1>Year 3 Gold - Ms Chen<\/h1><p class="sub">Term 1 - Week A - St Example Primary<\/p>/);
+  assert.match(doc.html, /<h1>Year 3 Gold - Term 1 - Week A<\/h1>/);
+  const details = doc.html.match(/<table class="details">([\s\S]*?)<\/table>/)[1];
+  const pairs = [...details.matchAll(/<td class="label">([^<]*)<\/td><td>([^<]*)<\/td>/g)].map(m => [m[1], m[2]]);
+  assert.deepEqual(pairs, [
+    ['Class', 'Year 3 Gold'], ['Teacher', 'Ms Chen'], ['Grade', 'Year 3'], ['Timetable', '2-week cycle'],
+    ['School', 'St Example Primary'], ['School day', '08:30 - 15:15'],
+    ['Breaks', 'Recess 10:30 - 11:00, Lunch 13:00 - 13:45'],
+    ['Generated', '21 October 2026, 2:05 PM by coordinator@school.example']
+  ]);
   assert.match(doc.html, /<td rowspan="2" style="background-color:#D9EAD3;color:#6AA84F"><b>English<\/b><br><span class="small">09:00 - 10:00<\/span><\/td>/);
   assert.match(doc.html, /<td style="background-color:#FCE5CD;color:#E69138"><b>Mathematics<\/b><br><span class="small">09:00 - 09:30<\/span><\/td>/);
   assert.match(doc.html, /<td style="background-color:#F3F3F3;color:#B7B7B7"><b>Assembly<\/b>/);
   assert.match(doc.html, /style="background-color:#EEEEEE;color:#555555"><b>Recess<\/b><br><span class="small">10:30 - 11:00<\/span>/);
-  assert.match(doc.html, /<td class="time">09:00<br>09:30<\/td>/);
-  tableShape(doc.html).forEach((cells, r) => assert.equal(cells, 6, 'row ' + r));
-  assert.match(lastDialog().html, /href="https:\/\/docs\.google\.com\/document\/d\/doc1\/edit" target="_blank">Open the document</);
+  const weekTable = doc.html.slice(doc.html.indexOf('<table><tr><th class="time">'));
+  tableShape(weekTable).forEach((cells, r) => assert.equal(cells, 6, 'row ' + r));
+  assert.ok(!doc.children.some(child => child.type === 'PAGE_BREAK'), 'one week, no page breaks');
+  assert.match(result, /href="https:\/\/docs\.google\.com\/document\/d\/doc1\/edit" target="_blank">Open the document</);
+
+  // Listed on Start here, replacing the "None yet" line; the next one goes below it.
+  const docsHeadings = ss.getRangeByName('StartHereDocs');
+  const startHere = docsHeadings.getSheet();
+  const row = docsHeadings.getRow() + 1;
+  assert.deepEqual(startHere.getRange(row, 1, 1, 4).getValues()[0], [
+    '=HYPERLINK("https://docs.google.com/document/d/doc1/edit","Year 3 Gold - Term 1 - Week A")',
+    'Year 3 Gold, Term 1 - Week A', '21 October 2026, 2:05 PM', 'coordinator@school.example'
+  ]);
+  tools.makeTimetableDocFromDialog('K Blue', '2|0');
+  assert.deepEqual(startHere.getRange(row + 1, 1, 1, 2).getValues()[0], [
+    '=HYPERLINK("https://docs.google.com/document/d/doc2/edit","K Blue - Term 2")', 'K Blue, Term 2'
+  ]);
 });
 
-test('Google Doc on a 1-week class asks for a term; on a specialist tab classes keep their colours', () => {
-  const { world, tools, open } = setUp();
-  open('K Blue');
-  world.promptAnswers = ['2'];
-  tools.makeTimetableDoc();
-  assert.match(world.prompts.pop(), /Which term\?/);
-  assert.equal(world.docs[0].name, 'K Blue - Term 2');
+test('Google Doc of all terms: one page per week, details once at the top', () => {
+  const { world, tools } = setUp();
+  tools.makeTimetableDocFromDialog('Year 3 Gold', 'all');
+  const doc = world.docs[0];
+  assert.equal(doc.name, 'Year 3 Gold - All terms');
+  assert.match(doc.html, /<h1>Year 3 Gold<\/h1><table class="details">/);
+  const weekHeadings = [...doc.html.matchAll(/<h2>([^<]*)<\/h2>/g)].map(m => m[1]);
+  assert.deepEqual(weekHeadings, ['Term 1 - Week A', 'Term 1 - Week B', 'Term 2 - Week A', 'Term 2 - Week B',
+    'Term 3 - Week A', 'Term 3 - Week B', 'Term 4 - Week A', 'Term 4 - Week B']);
+  // A page break before every week heading but the first.
+  const order = doc.children.map(child => child.type === 'PARAGRAPH' ? child.heading : child.type);
+  assert.deepEqual(order.slice(0, 7), ['HEADING1', 'TABLE', 'HEADING2', 'TABLE', 'PAGE_BREAK', 'HEADING2', 'TABLE']);
+  assert.equal(doc.children.filter(child => child.type === 'PAGE_BREAK').length, 7);
+});
 
+test('Google Doc of a specialist tab: specialist details, classes keep their colours', () => {
+  const { world, tools, open } = setUp();
   const spec = open('SPEC_Mr Smith');
   spec.getRange('J11:J16').setValue('K Blue');
-  world.promptAnswers = [''];
-  tools.makeTimetableDoc();
-  assert.equal(world.docs[1].name, 'Mr Smith - Term 1');
-  assert.match(world.docs[1].html, /<td rowspan="\d+" style="background-color:#FFADAD"><b>K Blue<\/b>|<td style="background-color:#FFADAD"><b>K Blue<\/b>/);
-
-  world.promptAnswers = ['5'];
-  tools.makeTimetableDoc();
-  assert.match(world.alerts.pop(), /Type a term number from 1 to 4/);
+  tools.makeTimetableDocFromDialog('SPEC_Mr Smith', '1|0');
+  const doc = world.docs[0];
+  assert.equal(doc.name, 'Mr Smith - Term 1');
+  assert.match(doc.html, /<td class="label">Specialist<\/td><td>Mr Smith<\/td><td class="label">KLA<\/td><td>PDHPE<\/td>/);
+  assert.match(doc.html, /<td class="label">Timetable<\/td><td>1-week cycle<\/td>/);
+  assert.match(doc.html, /style="background-color:#FFADAD"><b>K Blue<\/b>/);
 });
 
 test('Google Doc of the compliance summary: a row per class, out-of-range values in red', () => {
@@ -248,6 +294,7 @@ test('Google Doc of the compliance summary: a row per class, out-of-range values
   tools.makeComplianceDoc();
   const doc = world.docs[0];
   assert.equal(doc.name, 'St Example Primary - Compliance summary');
+  assert.match(doc.html, /<td class="label">Classes compliant<\/td><td>1 of 3<\/td><td class="label">Generated<\/td><td>21 October 2026, 2:05 PM by coordinator@school\.example<\/td>/);
   assert.match(doc.html, /<th>Class<\/th><th>Teacher<\/th><th>English<\/th>/);
   assert.match(doc.html, /<td><b>K Red<\/b><\/td><td>Mr Brown<\/td><td>33\.0%<\/td>/);
   assert.match(doc.html, /<td style="background-color:#F4CCCC;color:#990000"><b>3\.0%<\/b><\/td>/); // Creative Arts under

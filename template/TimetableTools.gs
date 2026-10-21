@@ -379,74 +379,181 @@ function writeGridChanges(sheet, grid, changed) {
 
 
 // ---------------------------------------------------------------------------
-// Google Docs: a week of a timetable, and the school's compliance summary
+// Google Docs: a timetable (one week, or all terms), and the compliance summary
 // ---------------------------------------------------------------------------
 
 /**
- * Makes a Google Doc of one week of the active class or specialist tab: a
- * table with each lesson as one merged block showing its times, coloured
- * like the tab (from the tab's own conditional-formatting rules).
- *
- * The Doc is made by converting an HTML table (Google keeps merged cells
- * and cell colours when it converts), which needs the Drive API service in
- * this script project. It is saved in the same folder as the timetable.
+ * Offers a choice of week (or term, for a 1-week timetable), or all terms,
+ * for a Google Doc of the active class or specialist tab. The button calls
+ * makeTimetableDocFromDialog and the link to the Doc appears in the same
+ * window.
  */
 function makeTimetableDoc() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
   const sheet = ss.getActiveSheet();
   const title = 'Make a Google Doc of this timetable';
-  const isSpecialist = isSpecialistSheet(sheet);
 
-  if (!isSpecialist && !isClassSheet(ss, sheet)) {
+  if (!isSpecialistSheet(sheet) && !isClassSheet(ss, sheet)) {
     ui.alert(title, 'Open a class or specialist tab first, then choose this again.', ui.ButtonSet.OK);
     return;
   }
   if (!hasDriveService(ui, title)) return;
 
+  const choices = getDocWeekChoices(readTimetableGrid(sheet));
+  const options = choices.map(choice =>
+    '<option value="' + escapeHtml(choice.value) + '">' + escapeHtml(choice.label) + '</option>').join('');
+  showDialog(ui, title,
+    '<p>Makes a Google Doc of the <b>' + escapeHtml(sheet.getName()) + '</b> timetable, coloured like the ' +
+    'tab, with each lesson as one block. It is saved in the same folder as this timetable and listed on ' +
+    'the Start here tab.</p>' +
+    '<div id="choices">' +
+    '<p><label for="week"><b>Which part of the year?</b></label><br>' +
+    '<select id="week" style="font-size:13px;padding:5px;margin-top:4px;min-width:280px">' + options + '</select></p>' +
+    '<p><button class="primary" onclick="make()">Make the Google Doc</button> ' +
+    '<button onclick="google.script.host.close()">Cancel</button></p>' +
+    '</div><div id="result"></div>' +
+    '<script>' +
+    'var SHEET=' + JSON.stringify(sheet.getName()).replace(/</g, '\\u003c') + ';' +
+    'function make(){var week=document.getElementById("week").value;' +
+    'document.getElementById("choices").style.display="none";' +
+    'document.getElementById("result").innerHTML="<p>Making the Google Doc...</p>";' +
+    'google.script.run.withSuccessHandler(done).withFailureHandler(failed).makeTimetableDocFromDialog(SHEET,week);}' +
+    'function done(html){document.getElementById("result").innerHTML=html+' +
+    '"<p><button onclick=\\"google.script.host.close()\\">Close</button></p>";}' +
+    'function failed(e){done("<p class=\\"bad\\">"+(e&&e.message?e.message:e)+"</p>");}' +
+    '</script>');
+}
+
+
+/** The weeks of a timetable (or terms, for a 1-week cycle), then "All terms". */
+function getDocWeekChoices(grid) {
+  const oneWeekCycle = !grid.columns.some(column => column.week > 0);
+  const choices = [];
+  grid.columns.forEach(column => {
+    const value = column.term + '|' + column.week;
+    if (choices.some(choice => choice.value === value)) return;
+    choices.push({ value: value, label: oneWeekCycle ? 'Term ' + column.term : column.blockLabel });
+  });
+  choices.push({ value: 'all', label: 'All terms (one page per ' + (oneWeekCycle ? 'term' : 'week') + ')' });
+  return choices;
+}
+
+
+/**
+ * Called from the window: makes the Doc for the chosen week ("term|week")
+ * or "all", lists it on Start here and returns the result as HTML.
+ */
+function makeTimetableDocFromDialog(sheetName, choice) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('The tab "' + sheetName + '" no longer exists.');
+
   const grid = readTimetableGrid(sheet);
   const oneWeekCycle = !grid.columns.some(column => column.week > 0);
-  const response = ui.prompt(
-    title,
-    oneWeekCycle
-      ? 'Which term? Type a term number from 1 to 4. Leave it blank for Term 1.'
-      : 'Which week? Type the term number and the week letter, for example 1A for Term 1 Week A ' +
-        'or 3B for Term 3 Week B. Leave it blank for Term 1 Week A.',
-    ui.ButtonSet.OK_CANCEL
+  const blocks = getDocWeekChoices(grid)
+    .filter(item => item.value !== 'all' && (choice === 'all' || item.value === choice))
+    .map(item => {
+      const parts = item.value.split('|').map(Number);
+      return {
+        label: item.label,
+        days: grid.columns.filter(column => column.term === parts[0] && column.week === parts[1])
+      };
+    });
+  if (!blocks.length) throw new Error('That part of the year isn\'t on this timetable.');
+
+  const details = getTimetableDetails(ss, sheet, grid);
+  const colours = getEntryColours(sheet);
+  const breakNames = getBreakNames(ss);
+  const madeFrom = choice === 'all' ? 'All terms' : blocks[0].label;
+  const docTitle = details.name + ' - ' + madeFrom;
+
+  const sections = blocks.map((block, i) =>
+    (blocks.length > 1 || i > 0 ? '<h2>' + escapeHtml(block.label) + '</h2>' : '') +
+    buildWeekTableHtml(grid, block.days, colours, breakNames));
+  const html = docHtmlPage(
+    '<h1>' + escapeHtml(details.name) + (blocks.length === 1 ? ' - ' + escapeHtml(blocks[0].label) : '') + '</h1>' +
+    buildDetailsHtml(details) + sections.join('')
   );
-  if (response.getSelectedButton() !== ui.Button.OK) return;
-  const match = (response.getResponseText().trim() || '1A').match(/^([1-4])\s*([A-Za-z])?$/);
-  const term = match ? parseInt(match[1], 10) : NaN;
-  const week = match ? weekLetterToIndex(match[2] || 'A') : NaN;
-  const days = grid.columns.filter(column => column.term === term && column.week === week);
-  if (days.length !== 5) {
-    ui.alert(title, oneWeekCycle
-      ? 'Type a term number from 1 to 4.'
-      : 'That week isn\'t on this timetable. Type something like 1A or 2B.', ui.ButtonSet.OK);
-    return;
+
+  // One page per week (or term): a page break before every heading but the first.
+  const doc = createDocFromHtml(ss, docTitle, html, blocks.length > 1);
+  recordDocOnStartHere(ss, doc.url, docTitle, sheet.getName() + ', ' + madeFrom);
+
+  return '<p class="ok"><b>Your Google Doc is ready:</b> ' + escapeHtml(docTitle) + '.</p>' +
+    (blocks.length > 1 ? '<p>' + blocks.length + ' pages, one per ' + (oneWeekCycle ? 'term' : 'week') + '.</p>' : '') +
+    '<p><a class="button" href="' + doc.url + '" target="_blank">Open the document</a></p>';
+}
+
+
+/**
+ * The details printed at the top of a timetable Doc: who and what it is
+ * for, the cycle, the school day, and when and by whom it was made.
+ */
+function getTimetableDetails(ss, sheet, grid) {
+  const schoolName = getSchoolName(ss);
+  const times = grid.times.map(String).filter(Boolean);
+  const schoolDay = times.length
+    ? times[0].split(' - ')[0] + ' - ' + times[times.length - 1].split(' - ')[1]
+    : '';
+  const breaks = describeBreaks(grid, getBreakNames(ss));
+  const generated = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'd MMMM yyyy, h:mm a');
+  const who = Session.getActiveUser().getEmail();
+  const rows = [];
+
+  if (isSpecialistSheet(sheet)) {
+    const name = String(sheet.getRange('B1').getDisplayValue() || sheet.getName().replace(/^SPEC_/, ''));
+    const cycle = Number(sheet.getRange('D3').getValue()) || 1;
+    rows.push(['Specialist', name], ['KLA', String(sheet.getRange('B3').getDisplayValue())]);
+    rows.push(['Timetable', cycle + '-week cycle']);
+    if (schoolName) rows.push(['School', schoolName]);
+    if (schoolDay) rows.push(['School day', schoolDay]);
+    if (breaks) rows.push(['Breaks', breaks]);
+    rows.push(['Generated', generated + (who ? ' by ' + who : '')]);
+    return { name: name, rows: rows };
   }
 
-  ss.toast('Making the Google Doc...', title, 10);
-  const name = isSpecialist
-    ? String(sheet.getRange('B1').getDisplayValue() || sheet.getName())
-    : sheet.getName();
-  const detail = isSpecialist ? '' : String(sheet.getRange('C27').getDisplayValue() || '');
-  const weekLabel = oneWeekCycle ? 'Term ' + term : days[0].blockLabel;
-  const docTitle = name + ' - ' + weekLabel;
-  const html = buildWeekDocHtml({
-    heading: name + (detail ? ' - ' + detail : ''),
-    subheading: weekLabel + (getSchoolName(ss) ? ' - ' + getSchoolName(ss) : ''),
-    grid: grid,
-    days: days,
-    colours: getEntryColours(sheet),
-    breakNames: getBreakNames(ss)
-  });
+  const values = sheet.getRange('C27:C30').getDisplayValues().map(row => String(row[0]));
+  rows.push(['Class', values[1] || sheet.getName()], ['Teacher', values[0]], ['Grade', values[2]]);
+  rows.push(['Timetable', parseCycleFromClassSheet(sheet) + '-week cycle']);
+  if (schoolName) rows.push(['School', schoolName]);
+  if (schoolDay) rows.push(['School day', schoolDay]);
+  if (breaks) rows.push(['Breaks', breaks]);
+  rows.push(['Generated', generated + (who ? ' by ' + who : '')]);
+  return { name: sheet.getName(), rows: rows.filter(row => row[1]) };
+}
 
-  const url = createDocFromHtml(ss, docTitle, html);
-  showDialog(ui, title,
-    '<p class="ok"><b>Your Google Doc is ready:</b> ' + escapeHtml(docTitle) + '.</p>' +
-    '<p>It is saved in the same folder as this timetable.</p>' +
-    '<p><a class="button" href="' + url + '" target="_blank">Open the document</a></p>');
+
+/** "Recess 10:30 - 11:00, Lunch 13:00 - 13:45", from the first day's break rows. */
+function describeBreaks(grid, breakNames) {
+  const firstDay = grid.columns[0];
+  if (!firstDay) return '';
+  const breaks = [];
+  grid.values.forEach((row, r) => {
+    const value = String(row[firstDay.index] || '').trim();
+    const time = String(grid.times[r] || '');
+    if (!breakNames[value] || !time) return;
+    const last = breaks[breaks.length - 1];
+    if (last && last.name === value && last.lastRow === r - 1) {
+      last.end = time.split(' - ')[1];
+      last.lastRow = r;
+    } else {
+      breaks.push({ name: value, start: time.split(' - ')[0], end: time.split(' - ')[1], lastRow: r });
+    }
+  });
+  return breaks.map(item => item.name + ' ' + item.start + ' - ' + item.end).join(', ');
+}
+
+
+/** The details as a two-column table, two details per row. */
+function buildDetailsHtml(details) {
+  let html = '<table class="details">';
+  for (let i = 0; i < details.rows.length; i += 2) {
+    html += '<tr>' + [details.rows[i], details.rows[i + 1]].map(row => row
+      ? '<td class="label">' + escapeHtml(row[0]) + '</td><td>' + escapeHtml(row[1]) + '</td>'
+      : '<td class="label"></td><td></td>').join('') + '</tr>';
+  }
+  return html + '</table>';
 }
 
 
@@ -471,8 +578,10 @@ function makeComplianceDoc() {
   const header = '<tr><th>Class</th><th>Teacher</th>' +
     klaNames.map(kla => '<th>' + escapeHtml(kla) + '</th>').join('') +
     '<th>Empty slots</th><th>Compliant</th></tr>';
+  let compliantCount = 0;
   const rows = classSheets.map(sheet => {
     const result = checkClassTimetable(ss, sheet);
+    if (result.compliant) compliantCount++;
     const table = sheet.getRange('B5:G12').getValues();
     const outOfRange = {};
     result.klaIssues.forEach(issue => { outOfRange[issue.kla] = true; });
@@ -491,26 +600,33 @@ function makeComplianceDoc() {
   }).join('');
 
   const schoolName = getSchoolName(ss);
+  const who = Session.getActiveUser().getEmail();
+  const generated = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'd MMMM yyyy, h:mm a');
+  const docTitle = (schoolName ? schoolName + ' - ' : '') + 'Compliance summary';
   const html = docHtmlPage(
-    '<h1>' + escapeHtml((schoolName ? schoolName + ' - ' : '') + 'Compliance summary') + '</h1>' +
+    '<h1>' + escapeHtml(docTitle) + '</h1>' +
+    buildDetailsHtml({ rows: [
+      ['Classes compliant', compliantCount + ' of ' + classSheets.length],
+      ['Generated', generated + (who ? ' by ' + who : '')]
+    ] }) +
     '<p>Percentage of teaching time per KLA, averaged over the year. Values outside their range are in red.</p>' +
     '<table>' + header + rows + '</table>'
   );
-  const url = createDocFromHtml(ss, (schoolName ? schoolName + ' - ' : '') + 'Compliance summary', html);
+  const doc = createDocFromHtml(ss, docTitle, html, false);
+  recordDocOnStartHere(ss, doc.url, docTitle, 'Compliance summary, all classes');
   showDialog(ui, title,
-    '<p class="ok"><b>Your Google Doc is ready.</b> It is saved in the same folder as this timetable.</p>' +
-    '<p><a class="button" href="' + url + '" target="_blank">Open the document</a></p>');
+    '<p class="ok"><b>Your Google Doc is ready.</b> It is saved in the same folder as this timetable and ' +
+    'listed on the Start here tab.</p>' +
+    '<p><a class="button" href="' + doc.url + '" target="_blank">Open the document</a></p>');
 }
 
 
 /**
- * The HTML for one week: a table with one row per stretch of time between
- * changes on any day, and each lesson as one cell spanning its rows
- * (rowspan), so Google Docs shows it as a merged block.
+ * The HTML table for one week: one row per stretch of time between changes
+ * on any day, and each lesson as one cell spanning its rows (rowspan), so
+ * Google Docs shows it as a merged block.
  */
-function buildWeekDocHtml(options) {
-  const grid = options.grid;
-  const days = options.days;
+function buildWeekTableHtml(grid, days, colours, breakNames) {
   const slots = grid.times
     .map((time, r) => ({ r: r, start: String(time || '').split(' - ')[0], end: String(time || '').split(' - ')[1] }))
     .filter(slot => slot.start && slot.end);
@@ -541,15 +657,15 @@ function buildWeekDocHtml(options) {
     const startSlot = rowStarts[i];
     const endSlot = rowStarts[i + 1] - 1;
     const minutes = (endSlot - startSlot + 1) * 5;
-    let html = '<tr style="height:' + Math.max(16, Math.round(minutes * 1.1)) + 'pt">' +
+    let html = '<tr style="height:' + Math.max(14, Math.round(minutes * 0.95)) + 'pt">' +
       '<td class="time">' + slots[startSlot].start + '<br>' + slots[endSlot].end + '</td>';
     runsByDay.forEach(runs => {
       const run = runs.find(item => item.start === startSlot);
       if (!run) return; // covered by a cell above (rowspan)
       const span = rowIndexOf[run.end + 1] - rowIndexOf[run.start];
-      const colour = options.breakNames[run.value]
+      const colour = breakNames[run.value]
         ? { background: '#EEEEEE', font: '#555555' }
-        : (run.value ? options.colours(run.value) : null);
+        : (run.value ? colours(run.value) : null);
       const style = colour
         ? ' style="background-color:' + colour.background + (colour.font ? ';color:' + colour.font : '') + '"'
         : '';
@@ -563,22 +679,20 @@ function buildWeekDocHtml(options) {
     rows.push(html + '</tr>');
   }
 
-  return docHtmlPage(
-    '<h1>' + escapeHtml(options.heading) + '</h1>' +
-    '<p class="sub">' + escapeHtml(options.subheading) + '</p>' +
-    '<table><tr><th class="time">Time</th>' + days.map(day => '<th>' + escapeHtml(day.day) + '</th>').join('') + '</tr>' +
-    rows.join('') + '</table>'
-  );
+  return '<table><tr><th class="time">Time</th>' + days.map(day => '<th>' + escapeHtml(day.day) + '</th>').join('') +
+    '</tr>' + rows.join('') + '</table>';
 }
 
 
 function docHtmlPage(body) {
   return '<html><head><meta charset="utf-8"><style>' +
     'body{font-family:Arial,sans-serif;font-size:9pt}' +
-    'h1{font-size:16pt;margin:0 0 2pt 0}p.sub{font-size:11pt;color:#555555;margin:0 0 8pt 0}' +
+    'h1{font-size:16pt;margin:0 0 4pt 0}h2{font-size:13pt;margin:0 0 4pt 0}' +
     'table{border-collapse:collapse;width:100%}' +
     'th,td{border:1px solid #999999;padding:2pt 4pt;text-align:center;vertical-align:middle;font-size:9pt}' +
     'th{background-color:#E8EEF2}td.time,th.time{width:12%;color:#555555;font-size:8pt}' +
+    'table.details{margin:0 0 8pt 0}table.details td{border:none;text-align:left;padding:1pt 8pt 1pt 0}' +
+    'table.details td.label{color:#555555;font-weight:bold;width:12%}' +
     '.small{font-size:7pt}' +
     '</style></head><body>' + body + '</body></html>';
 }
@@ -586,9 +700,10 @@ function docHtmlPage(body) {
 
 /**
  * Converts HTML into a Google Doc in the timetable's folder, sets it to
- * landscape A4 and returns its link.
+ * landscape A4 and, with pageBreaks, starts a new page before every
+ * second-level heading after the first. Returns { id, url }.
  */
-function createDocFromHtml(ss, name, html) {
+function createDocFromHtml(ss, name, html, pageBreaks) {
   const parents = Drive.Files.get(ss.getId(), { fields: 'parents' }).parents || [];
   const file = Drive.Files.create(
     { name: name, mimeType: 'application/vnd.google-apps.document', parents: parents },
@@ -598,8 +713,49 @@ function createDocFromHtml(ss, name, html) {
   const body = doc.getBody();
   body.setPageWidth(842).setPageHeight(595); // A4 landscape, in points
   body.setMarginTop(28).setMarginBottom(28).setMarginLeft(28).setMarginRight(28);
+  if (pageBreaks) {
+    let headingsSeen = 0;
+    const headingIndexes = [];
+    for (let i = 0; i < body.getNumChildren(); i++) {
+      const child = body.getChild(i);
+      if (child.getType() === DocumentApp.ElementType.PARAGRAPH &&
+          child.asParagraph().getHeading() === DocumentApp.ParagraphHeading.HEADING2) {
+        headingsSeen++;
+        if (headingsSeen > 1) headingIndexes.push(i);
+      }
+    }
+    // From the last heading back, so each insert doesn't shift the ones still to do.
+    headingIndexes.reverse().forEach(index => body.insertPageBreak(index));
+  }
   doc.saveAndClose();
-  return 'https://docs.google.com/document/d/' + file.id + '/edit';
+  return { id: file.id, url: 'https://docs.google.com/document/d/' + file.id + '/edit' };
+}
+
+
+/**
+ * Adds a made Doc to the "Google Docs" list on the Start here tab (below the
+ * named range StartHereDocs, the list's column headings). Timetables made
+ * before the list existed are skipped.
+ */
+function recordDocOnStartHere(ss, url, name, madeFrom) {
+  const headings = ss.getRangeByName('StartHereDocs');
+  if (!headings) return;
+  const sheet = headings.getSheet();
+  const firstRow = headings.getRow() + 1;
+  const existing = sheet.getRange(firstRow, 1, 200, 1).getDisplayValues();
+  let row = firstRow;
+  while (row - firstRow < existing.length) {
+    const text = String(existing[row - firstRow][0]);
+    if (!text || text.indexOf('None yet') === 0) break;
+    row++;
+  }
+  const who = Session.getActiveUser().getEmail();
+  sheet.getRange(row, 1, 1, 4).setValues([[
+    '=HYPERLINK("' + url + '","' + name.replace(/"/g, '""') + '")',
+    madeFrom,
+    Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'd MMM yyyy, h:mm a'),
+    who || ''
+  ]]).setFontColor(null);
 }
 
 

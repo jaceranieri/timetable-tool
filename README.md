@@ -55,7 +55,7 @@ your timetable in your own Drive."*
 
 Generated timetables are saved in a **Timetables** folder in the user's My
 Drive (created the first time), named
-`Generated Timetable - Resource First - <school name> - <date>`.
+`<school name> - Timetable - <date>`.
 
 The `appsscript.json` manifests in this repo reflect those settings. Check
 them against the ones in the Apps Script editor (Project Settings → "Show
