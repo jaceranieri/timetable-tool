@@ -228,3 +228,22 @@ No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html` int
 - [ ] **After generating:** the whole box turns green with a picture of a timetable and an **Open Sheet** button on it (opens the new spreadsheet). **Keep Editing** returns to the summary with the setup kept (hover its **i** for what it does); **New Timetable** gives an empty wizard.
 - [ ] **Fields:** every box on every step has its label inside it (school name, times, breaks, classes, specialists, KLA, activities); bins are light grey (red on hover); the cycle button's arrow is light with a dark number; the grade header's buttons line up.
 - [ ] **Keyboard:** on Classes, open a class colour and close it with Escape; open a **...** or ☰ menu and use the up/down arrows and Enter.
+
+## Phase 8
+
+No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project and redeploy (new version). Use a timetable generated with the current version, with a few lessons entered and a sync run.
+
+- [ ] **Open:** ☰ > **Edit an existing timetable**, paste the timetable's link. A wrong link or a spreadsheet the wizard didn't make is explained in the window. With the right link, the wizard fills in and shows "Editing <file name>".
+- [ ] **Locked:** bell times and breaks can't be changed (with a note why), and the cycle button of an existing grade or specialist can't be opened. A grade with no classes yet, or a new specialist, can choose its cycle.
+- [ ] **Change** a class's teacher, rename a class, add a class, remove a class, rename a specialist, add an activity. The Summary lists exactly these changes; **Update timetable** applies them.
+- [ ] **In the timetable afterwards:**
+  - [ ] The renamed class's tab has its new name and still has its lessons; the specialist tabs show the new class name where the old one was.
+  - [ ] The removed class's tab is "Archived - <name>", hidden (right-click any tab > Show sheet), with its lessons.
+  - [ ] The new class has a tab; the teacher change is on its tab and on Start here.
+  - [ ] The renamed specialist's tab has the new name; on the class tabs, its synced lessons still show and **Sync Specialist Schedules** runs with no conflicts.
+  - [ ] The new activity is in the class tabs' dropdowns; a new class is in the specialist tabs' dropdowns.
+  - [ ] Start here lists the classes as they are now, keeps its "Last run" lines and its Google Docs list.
+- [ ] **Keep Editing** returns to the wizard still editing, with "No changes yet"; **Stop editing** (banner) switches to making a new timetable.
+- [ ] **Draft:** start an edit, reload: "unfinished changes to <file>" resumes the edit.
+- [ ] **View-only:** with a timetable shared with you as a viewer, Update explains you need edit access.
+- [ ] **Start next year:** ☰ > **Start from an existing timetable** with last year's link: the wizard fills in (nothing locked, no banner); generating makes a new timetable and the old one is unchanged.

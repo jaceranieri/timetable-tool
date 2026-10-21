@@ -63,6 +63,13 @@ to a file and loaded later, for example to start next year's timetable; the
 file holds the same name/value list the timetable keeps in its DATA tab
 (`RawData_JSON`).
 
+A generated timetable can be changed later from the wizard (☰ > **Edit an
+existing timetable**): new classes and specialists get tabs, renamed ones keep
+their tabs and lessons, and removed ones are archived (renamed "Archived - ..."
+and hidden). Bell times, breaks and existing cycle lengths can't be changed
+that way; **Start from an existing timetable** makes a new timetable from an
+old one's setup instead. Editing needs edit access to the timetable.
+
 The `appsscript.json` manifests in this repo reflect those settings. Check
 them against the ones in the Apps Script editor (Project Settings → "Show
 appsscript.json manifest file") before pushing them.

@@ -298,9 +298,56 @@
             );
         };
 
+        // Asks for a timetable's link, then reads its setup (readTimetableSetup in Code.gs).
+        const LinkDialog = ({ mode, onLoaded, onClose }) => {
+            const [link, setLink] = useState("");
+            const [busy, setBusy] = useState(false);
+            const [error, setError] = useState("");
+            const editing = mode === 'edit';
+            useEffect(() => {
+                const closeOnEscape = (e) => { if (e.key === 'Escape' && !busy) onClose(); };
+                document.addEventListener('keydown', closeOnEscape);
+                return () => document.removeEventListener('keydown', closeOnEscape);
+            }, [busy]);
+            const open = () => {
+                if (!link.trim()) { setError("Paste the timetable's link first."); return; }
+                if (typeof google === 'undefined' || !google.script) { setError("This only works in the deployed wizard."); return; }
+                setBusy(true);
+                setError("");
+                google.script.run
+                    .withSuccessHandler(setup => { setBusy(false); onLoaded(setup); })
+                    .withFailureHandler(err => {
+                        setBusy(false);
+                        setError(String((err && err.message) || err || "The timetable couldn't be opened.").replace(/^((Error|Exception):\s*)+/i, ""));
+                    })
+                    .readTimetableSetup(link.trim());
+            };
+            return ReactDOM.createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+                    <div role="dialog" aria-modal="true" aria-labelledby="link-dialog-title" className="w-full max-w-lg rounded-2xl bg-white shadow-2xl p-6 animate-pop">
+                        <h2 id="link-dialog-title" className="text-xl font-bold text-slate-900">{editing ? 'Edit an existing timetable' : 'Start from an existing timetable'}</h2>
+                        <p className="text-sm text-slate-600 mt-1 mb-4">
+                            {editing
+                                ? "Paste the timetable's link. Its setup opens in the wizard; change what you need, and the timetable is updated in place, keeping every lesson already entered."
+                                : "Paste a timetable's link, for example last year's. Its setup opens in the wizard, and a new timetable is made from it; the old one isn't changed."}
+                        </p>
+                        <Input id="timetable-link" boxLabel="Timetable link" placeholder="https://docs.google.com/spreadsheets/d/..." value={link}
+                            onChange={(e) => { setLink(e.target.value); setError(""); }} onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+                            autoFocus disabled={busy} />
+                        {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
+                        <div className="flex justify-end gap-2 mt-5">
+                            <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+                            <Button variant="brand" onClick={open} disabled={busy}>{busy ? 'Opening...' : 'Open timetable'}</Button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            );
+        };
+
         // A cycle length shown as its number inside a circular arrow, on a
         // square button. Click to choose 1-10 weeks; arrow keys step it.
-        const CycleButton = ({ id, value, onChange, owner, className = "", size = "md" }) => {
+        const CycleButton = ({ id, value, onChange, owner, className = "", size = "md", lockedReason }) => {
             const [open, setOpen] = useState(false);
             const ref = useRef(null);
             const weeks = Number(value) || 1;
@@ -320,16 +367,18 @@
             const step = (by) => onChange(Math.min(MAX_CYCLE_WEEKS, Math.max(1, weeks + by)));
             return (
                 <div ref={ref} className={`relative inline-flex ${className}`}>
-                    <button id={id} type="button" aria-haspopup="true" aria-expanded={open}
-                        aria-label={`${owner} cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}. Change`}
-                        title={`Cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}`}
-                        onClick={() => setOpen(prev => !prev)}
+                    <button id={id} type="button" aria-haspopup={lockedReason ? undefined : 'true'} aria-expanded={lockedReason ? undefined : open}
+                        aria-disabled={lockedReason ? true : undefined}
+                        aria-label={`${owner} cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}. ${lockedReason ? lockedReason : 'Change'}`}
+                        title={lockedReason || `Cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}`}
+                        onClick={() => { if (!lockedReason) setOpen(prev => !prev); }}
                         onKeyDown={(e) => {
+                            if (lockedReason) return;
                             if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); step(1); }
                             if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
                         }}
                         className={`group ${size === 'lg' ? 'w-12 h-12' : 'w-10 h-10'} inline-flex items-center justify-center rounded-md border shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
-                            open ? 'border-brand-dark bg-brand-green/10' : 'border-slate-300 bg-white hover:border-brand-dark'}`}>
+                            lockedReason ? 'border-slate-200 bg-slate-50 cursor-not-allowed' : open ? 'border-brand-dark bg-brand-green/10' : 'border-slate-300 bg-white hover:border-brand-dark'}`}>
                         <svg viewBox="0 0 24 24" className={size === 'lg' ? 'w-9 h-9' : 'w-8 h-8'} aria-hidden="true">
                             {/* Light arrow, dark number */}
                             <g className={open ? 'text-brand-green' : 'text-slate-300 group-hover:text-brand-green'} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -474,6 +523,7 @@
                 <rect x="36" y="34" width="9" height="11" rx="3" fill="#FFFFFF" />
             </svg>
         );
+        const PencilLineIcon = () => <svg className="w-5 h-5 shrink-0 text-amber-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>;
         const MenuIcon = () => <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>;
         const PlusIcon = ({className}) => <svg className={className || "w-4 h-4"} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
         const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
@@ -736,8 +786,10 @@
                     id: newId(),
                     gradeId: grade.id,
                     className: c.name,
+                    originalName: c.name, // the class this row continues, when editing a timetable
                     teacher: c.teacher,
-                    color: c.color || colourForName(c.name) || CLASS_COLOR_PALETTE[staffing.length % CLASS_COLOR_PALETTE.length]
+                    color: c.color || colourForName(c.name) || CLASS_COLOR_PALETTE[staffing.length % CLASS_COLOR_PALETTE.length],
+                    colorChosen: Boolean(c.color) // a saved colour stays when the class is renamed
                 });
             });
 
@@ -765,11 +817,79 @@
                 specialists: list('Specialist', i => ({
                     id: newId(),
                     name: text(`Specialist_${i}_Name`).trim(),
+                    originalName: text(`Specialist_${i}_Name`).trim(),
                     kla: text(`Specialist_${i}_KLA`).trim(),
                     cycle: clampCycle(values[`Specialist_${i}_Cycle`])
                 })).filter(s => s.name),
                 activities: activities
             };
+        };
+
+        // A setup to start a new timetable from: no rows continue anything.
+        const withoutOriginals = (data) => ({
+            ...data,
+            staffing: data.staffing.map(({ originalName, ...row }) => row),
+            specialists: data.specialists.map(({ originalName, ...row }) => row)
+        });
+
+        // After an update the timetable matches the setup, so every row now
+        // continues what it's called.
+        const asOriginals = (data) => ({
+            ...data,
+            staffing: data.staffing.filter(s => !isBlankClass(s)).map(s => ({ ...s, originalName: s.className.trim() })),
+            specialists: data.specialists.filter(s => !isBlankSpecialist(s)).map(s => ({ ...s, originalName: s.name.trim() }))
+        });
+
+        // Renamed classes and specialists, for updateTimetable.
+        const findRenames = (data) => ({
+            classes: getClassesToGenerate(data)
+                .filter(s => s.originalName && s.originalName !== s.className.trim())
+                .map(s => ({ from: s.originalName, to: s.className.trim() })),
+            specialists: getSpecialistsToGenerate(data)
+                .filter(s => s.originalName && s.originalName !== s.name.trim())
+                .map(s => ({ from: s.originalName, to: s.name.trim() }))
+        });
+
+        // What updating the timetable will change, in words (the server works
+        // it out the same way, matching rows by originalName, then by name).
+        const describeUpdate = (original, data) => {
+            const changes = [];
+            const pair = (oldItems, newItems, nameOf) => {
+                const claimed = new Set();
+                const pairs = newItems.map(item => {
+                    let old = item.originalName && oldItems.find(o => nameOf(o) === item.originalName && !claimed.has(o));
+                    if (!old) old = oldItems.find(o => nameOf(o).toLowerCase() === nameOf(item).toLowerCase() && !claimed.has(o));
+                    if (old) claimed.add(old);
+                    return { old: old || null, item };
+                });
+                return { pairs, removed: oldItems.filter(o => !claimed.has(o)) };
+            };
+            const className = c => c.className.trim();
+            const classes = pair(getClassesToGenerate(original), getClassesToGenerate(data), className);
+            classes.pairs.forEach(({ old, item }) => {
+                if (!old) { changes.push(`Add class "${className(item)}" (${item.grade.name}, ${item.teacher.trim()})`); return; }
+                if (className(old) !== className(item)) changes.push(`Rename class "${className(old)}" to "${className(item)}"`);
+                if (old.teacher.trim() !== item.teacher.trim()) changes.push(`${className(item)}: teacher ${old.teacher.trim()} to ${item.teacher.trim()}`);
+                if ((old.color || '') !== (item.color || '')) changes.push(`${className(item)}: new colour`);
+            });
+            classes.removed.forEach(old => changes.push(`Archive class "${className(old)}"`));
+
+            const specialistName = s => s.name.trim();
+            const specialists = pair(getSpecialistsToGenerate(original), getSpecialistsToGenerate(data), specialistName);
+            specialists.pairs.forEach(({ old, item }) => {
+                if (!old) { changes.push(`Add specialist "${specialistName(item)}" (${item.kla})`); return; }
+                if (specialistName(old) !== specialistName(item)) changes.push(`Rename specialist "${specialistName(old)}" to "${specialistName(item)}"`);
+                if (old.kla !== item.kla) changes.push(`${specialistName(item)}: KLA ${old.kla} to ${item.kla}`);
+            });
+            specialists.removed.forEach(old => changes.push(`Archive specialist "${specialistName(old)}"`));
+
+            const activityNames = d => d.activities.map(a => a.name.trim()).filter(Boolean);
+            const before = activityNames(original);
+            const after = activityNames(data);
+            after.filter(name => !before.includes(name)).forEach(name => changes.push(`Add activity "${name}"`));
+            before.filter(name => !after.includes(name)).forEach(name => changes.push(`Remove activity "${name}"`));
+            if (original.schoolName.trim() !== data.schoolName.trim()) changes.push(`School name "${original.schoolName.trim()}" to "${data.schoolName.trim()}"`);
+            return changes;
         };
 
         // For each specialist, the grades whose cycle isn't a multiple of
@@ -906,6 +1026,13 @@
             // Drafts: the setup is saved for this user (saveDraft in Code.gs) a
             // moment after each change, and offered back when the wizard opens.
             const [draftOffer, setDraftOffer] = useState(null);
+            // Editing an existing timetable: the file, and its setup as loaded
+            // (what the changes are measured against).
+            const [editTarget, setEditTarget] = useState(null); // { fileId, fileName, url }
+            const [editOriginal, setEditOriginal] = useState(null);
+            const [linkDialog, setLinkDialog] = useState(null); // 'edit' | 'copy'
+            const [updateResult, setUpdateResult] = useState(null); // { changes, notes } after an update
+            const editing = Boolean(editTarget);
             const draftsEnabled = useRef(false); // not until any saved draft has been offered
             const hasServer = typeof google !== 'undefined' && google.script;
             const initialJson = JSON.stringify(makeInitialData());
@@ -931,17 +1058,20 @@
                 if (!hasServer || !draftsEnabled.current || isGenerating || isSuccess) return;
                 if (JSON.stringify(data) === initialJson) return; // nothing worth keeping yet
                 const timer = setTimeout(() => {
-                    const draft = { savedAt: new Date().toISOString(), step: step, data: data };
+                    const draft = { savedAt: new Date().toISOString(), step: step, data: data,
+                        edit: editTarget ? { target: editTarget, original: editOriginal } : null };
                     google.script.run
                         .withSuccessHandler((saved) => { if (saved) showToast("Draft saved", 'info', 2000); })
                         .saveDraft(JSON.stringify(draft));
                 }, 1500);
                 return () => clearTimeout(timer);
-            }, [data, step]);
+            }, [data, step, editTarget, isGenerating, isSuccess]); // a pending save is dropped once generating starts
 
             const resumeDraft = () => {
                 draftsEnabled.current = true;
                 setData(withGradeCounts(draftOffer.data));
+                setEditTarget(draftOffer.edit ? draftOffer.edit.target : null);
+                setEditOriginal(draftOffer.edit ? draftOffer.edit.original : null);
                 setStep(Math.min(LAST_STEP, Math.max(1, Number(draftOffer.step) || 1)));
                 setErrors({});
                 setDraftOffer(null);
@@ -957,7 +1087,41 @@
                 setGeneratedUrl("");
                 setGenerationError("");
                 setToast(null);
+                setEditTarget(null);
+                setEditOriginal(null);
+                setUpdateResult(null);
                 if (hasServer) google.script.run.clearDraft();
+            };
+
+            // A timetable's setup, read from its link: to edit it in place, or
+            // to start a new timetable from it.
+            const loadTimetable = (setup) => {
+                const mode = linkDialog;
+                const loaded = setupFromVariables(setup.exportVariables);
+                draftsEnabled.current = true;
+                setLinkDialog(null);
+                setErrors({});
+                setGenerationError("");
+                setUpdateResult(null);
+                setStep(STEP.SCHEDULE);
+                if (mode === 'edit') {
+                    setData(loaded);
+                    setEditTarget({ fileId: setup.fileId, fileName: setup.fileName, url: setup.url });
+                    setEditOriginal(loaded);
+                    showToast(`Editing "${setup.fileName}". Change what you need, then update it on the Summary step.`, 'ok', 7000);
+                } else {
+                    setData(withoutOriginals(loaded));
+                    setEditTarget(null);
+                    setEditOriginal(null);
+                    showToast(`Started from "${setup.fileName}". Generating makes a new timetable; the old one isn't changed.`, 'ok', 7000);
+                }
+            };
+
+            const stopEditing = () => {
+                setEditTarget(null);
+                setEditOriginal(null);
+                setData(prev => withoutOriginals(prev));
+                showToast("Not editing any more: generating will make a new timetable from this setup.", 'info', 5000);
             };
 
             // Each new step is announced: focus moves to its (visually hidden) heading.
@@ -1423,7 +1587,7 @@
                 setIsGenerating(true);
                 setLoadingProgress(5);
 
-                const initialMsg = "Initializing template duplication...";
+                const initialMsg = editing ? "Opening the timetable..." : "Initializing template duplication...";
                 setLoadingMessage(initialMsg);
                 setLogs([{
                     id: Date.now(),
@@ -1438,6 +1602,30 @@
                     jobId: jobId,
                     exportVariables: exportVariables
                 };
+
+                if (editing && hasServer) {
+                    google.script.run
+                        .withSuccessHandler((result) => {
+                            google.script.run.clearDraft();
+                            setLoadingProgress(100);
+                            setTimeout(() => {
+                                setGeneratedUrl(result.url);
+                                setUpdateResult({ changes: result.changes || [], notes: result.notes || [] });
+                                // The timetable now matches this setup; later changes are measured from it.
+                                const updated = asOriginals(data);
+                                setData(updated);
+                                setEditOriginal(updated);
+                                setIsGenerating(false);
+                                setIsSuccess(true);
+                            }, 600);
+                        })
+                        .withFailureHandler((error) => {
+                            setGenerationError(describeFailure(error));
+                            setIsGenerating(false);
+                        })
+                        .updateTimetable({ jobId: jobId, fileId: editTarget.fileId, exportVariables: exportVariables, renames: findRenames(data) });
+                    return;
+                }
 
                 // Check environment and invoke backend function
                 if (typeof google !== 'undefined' && google.script) {
@@ -1455,6 +1643,7 @@
                             }]);
                             setTimeout(() => {
                                 setGeneratedUrl(url);
+                                setUpdateResult(null);
                                 setIsGenerating(false);
                                 setIsSuccess(true);
                             }, 800);
@@ -1554,12 +1743,15 @@
                     {/* Bell Times */}
                     <div className="border-t border-slate-200 pt-6">
                         <SectionHeader id="bell-times" title="Bell Times" info="When the school day starts and ends. All grades and days use the same times, in 5-minute steps." />
+                        {editing && (
+                            <p className="mb-3 text-sm text-slate-600">Bell times and breaks can't be changed in an existing timetable, because every tab's grid is built from them. To change them, start a new timetable from this one (☰ menu).</p>
+                        )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <Input id="school-start" boxLabel="School starts" type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
+                                <Input id="school-start" disabled={editing} boxLabel="School starts" type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
                             </div>
                             <div>
-                                <Input id="school-end" boxLabel="School ends" type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
+                                <Input id="school-end" disabled={editing} boxLabel="School ends" type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
                             </div>
                         </div>
                     </div>
@@ -1567,9 +1759,11 @@
                     {/* Global Breaks */}
                     <div className="border-t border-slate-200 pt-6">
                         <SectionHeader id="breaks" title="Global Breaks" info="Recess, lunch and any other breaks. They apply to every class, every day, and don't count as teaching time.">
-                            <Button variant="brand" size="sm" onClick={() => addToList('breaks', { name: "", start: "", end: "" })} className="h-8 gap-1">
-                                <PlusIcon className="w-4 h-4 mr-1" /> Add Break
-                            </Button>
+                            {!editing && (
+                                <Button variant="brand" size="sm" onClick={() => addToList('breaks', { name: "", start: "", end: "" })} className="h-8 gap-1">
+                                    <PlusIcon className="w-4 h-4 mr-1" /> Add Break
+                                </Button>
+                            )}
                         </SectionHeader>
 
                         <div id="list-container-breaks" className="space-y-1">
@@ -1586,18 +1780,18 @@
                                     return (
                                     <div key={b.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 py-1 animate-pop">
                                         <div className="flex-1 min-w-[10rem]">
-                                            <Input id={`break-${b.id}-name`} boxLabel="Break" placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
+                                            <Input id={`break-${b.id}-name`} disabled={editing} boxLabel="Break" placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
                                         </div>
                                         <div className="w-36">
-                                            <Input id={`break-${b.id}-start`} boxLabel="Starts" type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
+                                            <Input id={`break-${b.id}-start`} disabled={editing} boxLabel="Starts" type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
                                         </div>
                                         <div className="w-36">
-                                            <Input id={`break-${b.id}-end`} boxLabel="Ends" type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
+                                            <Input id={`break-${b.id}-end`} disabled={editing} boxLabel="Ends" type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
                                         </div>
                                         <div className="h-12 px-3 flex items-center justify-center bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-md whitespace-nowrap min-w-[72px]">
                                             {bMins > 0 ? formatMinutes(bMins) : '0 min'}
                                         </div>
-                                        <RemoveButton label={`Remove ${b.name.trim() || 'this break'}`} onClick={() => removeFromList('breaks', b.id)} />
+                                        <RemoveButton label={`Remove ${b.name.trim() || 'this break'}`} onClick={() => removeFromList('breaks', b.id)} disabled={editing} />
                                     </div>
                                 )})
                             )}
@@ -1651,7 +1845,8 @@
                         {/* Classroom Teachers: one card per grade */}
                         <div>
                             <SectionHeader id="classes" title="Grades and Classes"
-                                info="For each grade: its cycle length (how many weeks its timetable runs before repeating), and each class's name and teacher's name (needed for compliance). A grade with no classes is left out. Rows left completely blank are skipped." />
+                                info={"For each grade: its cycle length (how many weeks its timetable runs before repeating), and each class's name and teacher's name (needed for compliance). A grade with no classes is left out. Rows left completely blank are skipped." +
+                                    (editing ? " Removing a class that's already in the timetable archives its tab (hidden, not deleted); renaming it keeps its tab and lessons." : "")} />
 
                                 <div className="space-y-4">
                                     {data.grades.map(g => {
@@ -1683,6 +1878,7 @@
                                                     <h5 id={`grade-${g.id}-heading`} className="text-base font-bold text-slate-900">{g.name}</h5>
                                                     <div className="ml-auto flex items-center gap-1.5">
                                                         <CycleButton id={`grade-${g.id}-cycle`} owner={g.name} value={g.cycle}
+                                                            lockedReason={editing && staffForGrade.some(s => s.originalName) ? "Can't be changed: this grade's tabs are built for this cycle" : undefined}
                                                             onChange={(weeks) => updateList('grades', data.grades.findIndex(item => item.id === g.id), 'cycle', clampCycle(weeks))} />
                                                         {renderAddClassButton(g)}
                                                         <MoreMenu
@@ -1854,6 +2050,7 @@
                                                 </Select>
                                             </div>
                                             <CycleButton id={`spec-${s.id}-cycle`} size="lg" owner={s.name.trim() || `Specialist ${i + 1}`} value={s.cycle}
+                                                lockedReason={editing && s.originalName ? "Can't be changed: this specialist's tab is built for this cycle" : undefined}
                                                 onChange={(weeks) => updateList('specialists', i, 'cycle', clampCycle(weeks))} />
                                             <RemoveButton label={`Remove ${s.name.trim() || 'this specialist'}`} onClick={() => removeFromList('specialists', s.id)} />
                                         </div>
@@ -2023,11 +2220,16 @@
                     }
                 };
                 const open = summaryDetail && details[summaryDetail];
+                const changes = editing && editOriginal ? describeUpdate(editOriginal, data) : [];
 
                 return (
                     <div className="animate-step space-y-6" key="step-summary">
                         <div>
-                            <h3 className="text-xl font-bold tracking-tight text-slate-900">Ready to generate{schoolName ? <> for <span className="text-brand-dark">{schoolName}</span></> : ''}</h3>
+                            {editing ? (
+                                <h3 className="text-xl font-bold tracking-tight text-slate-900">Ready to update <span className="text-brand-dark">{editTarget.fileName}</span></h3>
+                            ) : (
+                                <h3 className="text-xl font-bold tracking-tight text-slate-900">Ready to generate{schoolName ? <> for <span className="text-brand-dark">{schoolName}</span></> : ''}</h3>
+                            )}
                             <p className="text-sm text-slate-600 mt-1">Click a card to see its details.</p>
                         </div>
 
@@ -2071,12 +2273,35 @@
                             </div>
                         )}
 
+                        {editing && (
+                            <section aria-labelledby="changes-heading" className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+                                <h4 id="changes-heading" className="text-base font-bold text-slate-900 mb-2">
+                                    {changes.length ? `${changes.length} ${changes.length === 1 ? 'change' : 'changes'} to make` : 'No changes yet'}
+                                </h4>
+                                {changes.length ? (
+                                    <ul className="list-disc pl-5 space-y-1 text-sm text-slate-800">
+                                        {changes.map((change, i) => <li key={i}>{change}</li>)}
+                                    </ul>
+                                ) : (
+                                    <p className="text-sm text-slate-700">Change the setup in the earlier steps; the changes are listed here before anything is updated.</p>
+                                )}
+                                <p className="text-xs text-slate-600 mt-3">Only these changes are made. Lessons already entered are kept; archived tabs are hidden, never deleted.</p>
+                            </section>
+                        )}
+
                         <div className="flex flex-col items-center gap-3 pt-4 pb-2">
+                            {editing ? (
+                                <button type="button" onClick={handleSubmit} disabled={isGenerating || !changes.length}
+                                    className={`${changes.length ? 'animate-soft-pulse' : ''} inline-flex items-center justify-center gap-3 rounded-2xl bg-brand-dark px-12 py-5 text-xl font-bold text-white hover:bg-[#00663C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-green/40`}>
+                                    Update timetable
+                                </button>
+                            ) : (
                             <button type="button" onClick={handleSubmit} disabled={isGenerating}
                                 className="animate-soft-pulse inline-flex items-center justify-center gap-3 rounded-2xl bg-brand-dark px-12 py-5 text-xl font-bold text-white hover:bg-[#00663C] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-green/40">
                                 Generate timetable
                             </button>
-                            <p className="text-sm text-slate-600">
+                            )}
+                            <p className={`text-sm text-slate-600 ${editing ? 'hidden' : ''}`}>
                                 {plural(classesToGenerate.length, 'class tab', 'class tabs')} and {plural(specialists.length, 'specialist tab', 'specialist tabs')} · takes {estimate.text}
                             </p>
                         </div>
@@ -2103,18 +2328,32 @@
                                 icon={<MenuIcon />}
                                 label="Menu"
                                 items={[
-                                    { label: 'Save setup to a file', hint: 'Download this setup to load again later, e.g. next year', onSelect: saveSetupFile },
+                                    { label: 'Edit an existing timetable', hint: 'Add, rename or archive classes and specialists in a timetable you made', onSelect: () => setLinkDialog('edit') },
+                                    { label: 'Start from an existing timetable', hint: 'A new timetable from one you made, e.g. last year\'s', onSelect: () => setLinkDialog('copy') },
+                                    { label: 'Save setup to a file', hint: 'Download this setup to load again later', onSelect: saveSetupFile },
                                     { label: 'Load a saved setup', hint: 'Fill the wizard from a setup file', onSelect: () => fileInputRef.current && fileInputRef.current.click() }
                                 ]}
                             />
                         )}
                     </div>
 
+                    {linkDialog && <LinkDialog mode={linkDialog} onLoaded={loadTimetable} onClose={() => setLinkDialog(null)} />}
+
+                    {/* Editing an existing timetable */}
+                    {editing && !isGenerating && !isSuccess && !draftOffer && (
+                        <div role="status" className="w-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <PencilLineIcon />
+                            <span className="flex-1 min-w-[12rem]">Editing <strong>{editTarget.fileName}</strong>. Changes are made to this timetable when you update it; lessons already entered are kept.</span>
+                            <a href={editTarget.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline hover:text-amber-700">Open it<span className="sr-only"> (opens in a new tab)</span></a>
+                            <button type="button" onClick={stopEditing} className="font-semibold underline hover:text-amber-700">Stop editing</button>
+                        </div>
+                    )}
+
                     {/* GENERATION PROGRESS SCREEN */}
                     {isGenerating ? (
                         <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 animate-pop">
                             <CardContent className="p-8 sm:p-12 flex flex-col items-center text-center gap-5">
-                                <h2 className="text-xl font-bold text-slate-900">Generating your timetable</h2>
+                                <h2 className="text-xl font-bold text-slate-900">{editing ? 'Updating your timetable' : 'Generating your timetable'}</h2>
                                 <div className="w-full max-w-lg flex items-center gap-3">
                                     <div className="flex-1 bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200"
                                         role="progressbar" aria-label="Timetable generation" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadingProgress}>
@@ -2164,8 +2403,15 @@
                                 <div className="animate-success mb-4 w-16 h-16 rounded-full bg-white/20 ring-4 ring-white/20 flex items-center justify-center" aria-hidden="true">
                                     <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                                 </div>
-                                <h2 className="text-3xl font-extrabold tracking-tight">Your timetable is ready</h2>
-                                <p className="text-base text-white/85 mt-2 max-w-md">Saved in the <strong className="text-white">Timetables</strong> folder in your My Drive.</p>
+                                <h2 className="text-3xl font-extrabold tracking-tight">{updateResult ? 'Your timetable is updated' : 'Your timetable is ready'}</h2>
+                                {updateResult ? (
+                                    <div className="text-base text-white/90 mt-2 max-w-lg">
+                                        <p>{updateResult.changes.length} {updateResult.changes.length === 1 ? 'change' : 'changes'} made to <strong className="text-white">{editTarget ? editTarget.fileName : 'the timetable'}</strong>.</p>
+                                        {updateResult.notes.map((note, i) => <p key={i} className="text-sm text-white/80 mt-1">{note}</p>)}
+                                    </div>
+                                ) : (
+                                    <p className="text-base text-white/85 mt-2 max-w-md">Saved in the <strong className="text-white">Timetables</strong> folder in your My Drive.</p>
+                                )}
 
                                 {/* The picture, with the button on top of it */}
                                 <div className="relative w-full max-w-2xl mt-8">
@@ -2185,7 +2431,9 @@
                                             Keep Editing
                                         </button>
                                         <HoverInfo id="keep-editing-info" label="About Keep Editing"
-                                            text="Keep Editing goes back to the wizard with this setup, for example to change something and generate again." />
+                                            text={updateResult
+                                                ? "Keep Editing goes back to the wizard, still editing this timetable, to make more changes."
+                                                : "Keep Editing goes back to the wizard with this setup, for example to change something and generate again."} />
                                     </span>
                                     <button type="button" onClick={startNew}
                                         className="h-11 px-6 rounded-xl border border-white/50 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
@@ -2200,7 +2448,7 @@
                             <CardContent className="p-10 flex flex-col items-center justify-center text-center min-h-[360px]">
                                 <h2 className="text-2xl font-bold text-slate-800 mb-3">Continue where you left off?</h2>
                                 <p className="text-base text-slate-600 mb-8 max-w-md">
-                                    You have an unfinished timetable setup{draftOffer.data.schoolName ? <> for <strong>{draftOffer.data.schoolName}</strong></> : ''},
+                                    You have {draftOffer.edit ? <>unfinished changes to <strong>{draftOffer.edit.target.fileName}</strong></> : <>an unfinished timetable setup{draftOffer.data.schoolName ? <> for <strong>{draftOffer.data.schoolName}</strong></> : ''}</>},
                                     saved {new Date(draftOffer.savedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} at
                                     step {draftOffer.step || 1} ({STEP_NAMES[(draftOffer.step || 1) - 1]}).
                                 </p>
@@ -2221,7 +2469,7 @@
                                         <h2 ref={stepHeadingRef} tabIndex={-1} className="text-2xl font-bold text-slate-900 focus:outline-none">
                                             <span className="sr-only">Step {step} of {LAST_STEP}: </span>{STEP_NAMES[step - 1]}
                                         </h2>
-                                        <p className="text-sm text-slate-600 mt-1">{STEP_INFO[step - 1]}</p>
+                                        <p className="text-sm text-slate-600 mt-1">{editing && step === LAST_STEP ? 'Check the changes, then update the timetable.' : STEP_INFO[step - 1]}</p>
                                     </div>
                                 </div>
 

@@ -199,6 +199,469 @@ function generateTimetable(payload, options) {
 }
 
 
+/*
+ * Changing a timetable that has already been generated (PLAN step 32), and
+ * starting a new one from an existing timetable's setup (step 33).
+ *
+ * The wizard reads the setup kept in the timetable's DATA tab
+ * (RawData_JSON), the user changes it, and updateTimetable applies only the
+ * differences: new tabs are added, renamed classes and specialists keep their
+ * tabs and lessons, and removed ones are archived (renamed and hidden, never
+ * deleted). Bell times, breaks and the cycle of an existing class or
+ * specialist can't be changed, because every tab's grid is built from them.
+ */
+const ARCHIVED_TAB_PREFIX = 'Archived - ';
+
+/** Reads a timetable's setup for the wizard, from its link (or file ID). */
+function readTimetableSetup(link) {
+  const ss = openTimetable(link);
+  const payload = readStoredPayload(ss);
+  return {
+    fileId: ss.getId(),
+    fileName: ss.getName(),
+    url: ss.getUrl(),
+    exportVariables: payload.exportVariables
+  };
+}
+
+
+/** The file ID in a Google Sheets link, or the ID itself. */
+function getFileIdFromLink(link) {
+  const text = String(link || '').trim();
+  const fromLink = text.match(/\/d\/([A-Za-z0-9_-]+)/);
+  if (fromLink) return fromLink[1];
+  return /^[A-Za-z0-9_-]{20,}$/.test(text) ? text : '';
+}
+
+
+function openTimetable(link) {
+  const fileId = getFileIdFromLink(link);
+  if (!fileId) {
+    throw new Error("That doesn't look like a link to a Google Sheet. Open the timetable and copy the address from your browser's address bar.");
+  }
+  try {
+    return SpreadsheetApp.openById(fileId);
+  } catch (error) {
+    throw new Error("The timetable couldn't be opened. Check the link, and that the timetable is shared with you.");
+  }
+}
+
+
+/** The wizard's setup as it was when the timetable was generated or last updated. */
+function readStoredPayload(ss) {
+  const dataSheet = ss.getSheetByName('DATA');
+  const rows = dataSheet ? dataSheet.getRange(1, 1, Math.max(1, dataSheet.getLastRow()), 2).getValues() : [];
+  const row = rows.find(item => String(item[0]).trim() === 'RawData_JSON');
+  let payload = null;
+  try {
+    payload = row ? JSON.parse(String(row[1])) : null;
+  } catch (error) {
+    payload = null;
+  }
+  if (!payload || !Array.isArray(payload.exportVariables)) {
+    throw new Error("This spreadsheet wasn't made by the timetable wizard (its DATA tab has no saved setup), so it can't be opened here.");
+  }
+  return payload;
+}
+
+
+/**
+ * Applies the wizard's changed setup to an existing timetable.
+ * request: { jobId, fileId, exportVariables, renames: { classes: [{from, to}], specialists: [{from, to}] } }
+ * Returns { url, changes: [text], notes: [text] }.
+ */
+function updateTimetable(request) {
+  const jobId = request ? request.jobId : null;
+  try {
+    const payload = { jobId: jobId, exportVariables: request.exportVariables };
+    const config = parsePayloadConfig(payload);
+    validateConfig(config);
+
+    updateJobProgress(jobId, 5, 'Opening the timetable...');
+    const ss = openTimetable(request.fileId);
+    const oldConfig = parsePayloadConfig(readStoredPayload(ss));
+    const plan = planTimetableUpdate(oldConfig, config, request.renames || {});
+    if (plan.blocked.length) {
+      throw new Error("These changes can't be made to an existing timetable, because every tab's grid is built from them:\n- " +
+        plan.blocked.join('\n- ') + '\n\nUndo them, or start a new timetable from this one to make them.');
+    }
+
+    applyTimetableUpdate(ss, payload, oldConfig, config, plan, jobId);
+    updateJobProgress(jobId, 100, 'Timetable updated!');
+    return { url: ss.getUrl(), changes: plan.changes, notes: plan.notes };
+  } catch (error) {
+    console.error('Error updating timetable:', error);
+    const text = String((error && error.message) || error || '').replace(/^(Error|Exception):\s*/i, '');
+    const message = /can't be made to an existing timetable|Please fix the following|couldn't be opened|doesn't look like a link|wasn't made by the timetable wizard/.test(text)
+      ? text
+      : /do(n't| not) have permission|access denied|read-only/i.test(text)
+        ? "You can open this timetable but not change it. Ask its owner to share it with you as an editor, then try again."
+        : 'Something went wrong while updating the timetable: ' + text + '\n\nSome changes may already have been made; open the timetable to check, then try again.';
+    updateJobProgress(jobId, -1, message);
+    throw new Error(message);
+  }
+}
+
+
+/**
+ * Works out what an update changes, matching classes and specialists by
+ * name (or by the renames the wizard sends). blocked lists changes that
+ * would need a tab's grid rebuilt.
+ */
+function planTimetableUpdate(oldConfig, config, renames) {
+  const key = name => String(name || '').trim().toLowerCase();
+  const blocked = [];
+  const changes = [];
+  const notes = [];
+
+  if (oldConfig.startTime !== config.startTime || oldConfig.endTime !== config.endTime) {
+    blocked.push('School day: ' + oldConfig.startTime + ' - ' + oldConfig.endTime + ' to ' + config.startTime + ' - ' + config.endTime);
+  }
+  const describeBreaks = breaks => breaks.map(item => item.label + ' ' + item.start + '-' + item.end).join(', ');
+  if (describeBreaks(oldConfig.breaks) !== describeBreaks(config.breaks)) {
+    blocked.push('Breaks: ' + (describeBreaks(oldConfig.breaks) || 'none') + ' to ' + (describeBreaks(config.breaks) || 'none'));
+  }
+
+  // Pairs each new class or specialist with the old one it continues, if any.
+  const match = (oldItems, newItems, renameList) => {
+    const oldByKey = {};
+    oldItems.forEach(item => { oldByKey[key(item.name)] = item; });
+    const fromOf = {};
+    (renameList || []).forEach(rename => {
+      if (oldByKey[key(rename.from)]) fromOf[key(rename.to)] = key(rename.from);
+    });
+    const used = {};
+    const pairs = newItems.map(item => {
+      const fromKey = fromOf[key(item.name)] || key(item.name);
+      const old = !used[fromKey] && oldByKey[fromKey];
+      if (old) used[fromKey] = true;
+      return { old: old || null, item: item };
+    });
+    return {
+      kept: pairs.filter(pair => pair.old),
+      added: pairs.filter(pair => !pair.old).map(pair => pair.item),
+      removed: oldItems.filter(item => !used[key(item.name)])
+    };
+  };
+
+  const classes = match(oldConfig.classes, config.classes, renames.classes);
+  const specialists = match(oldConfig.specialists, config.specialists, renames.specialists);
+
+  classes.kept.forEach(pair => {
+    if (pair.old.cycle !== pair.item.cycle) {
+      blocked.push('Class "' + pair.item.name + '": cycle ' + pair.old.cycle + ' to ' + pair.item.cycle + ' weeks');
+    }
+    if (pair.old.name !== pair.item.name) changes.push('Rename class "' + pair.old.name + '" to "' + pair.item.name + '"');
+    if (pair.old.teacher !== pair.item.teacher) changes.push(pair.item.name + ': teacher ' + pair.old.teacher + ' to ' + pair.item.teacher);
+    if ((pair.old.color || '') !== (pair.item.color || '')) changes.push(pair.item.name + ': new colour');
+  });
+  classes.added.forEach(item => changes.push('Add class "' + item.name + '" (' + item.grade + ', ' + item.teacher + ')'));
+  classes.removed.forEach(item => changes.push('Archive class "' + item.name + '"'));
+
+  specialists.kept.forEach(pair => {
+    if (pair.old.cycle !== pair.item.cycle) {
+      blocked.push('Specialist "' + pair.item.name + '": cycle ' + pair.old.cycle + ' to ' + pair.item.cycle + ' weeks');
+    }
+    if (pair.old.name !== pair.item.name) changes.push('Rename specialist "' + pair.old.name + '" to "' + pair.item.name + '"');
+    if (pair.old.kla !== pair.item.kla) changes.push(pair.item.name + ': KLA ' + pair.old.kla + ' to ' + pair.item.kla);
+  });
+  specialists.added.forEach(item => changes.push('Add specialist "' + item.name + '" (' + item.kla + ')'));
+  specialists.removed.forEach(item => changes.push('Archive specialist "' + item.name + '"'));
+
+  const activityNames = list => list.map(item => item.name);
+  const oldActivities = activityNames(oldConfig.activities);
+  const newActivities = activityNames(config.activities);
+  newActivities.filter(name => oldActivities.indexOf(name) === -1).forEach(name => changes.push('Add activity "' + name + '"'));
+  oldActivities.filter(name => newActivities.indexOf(name) === -1).forEach(name => changes.push('Remove activity "' + name + '"'));
+  if (oldConfig.schoolName !== config.schoolName) {
+    changes.push('School name "' + oldConfig.schoolName + '" to "' + config.schoolName + '"');
+  }
+
+  if (classes.removed.length) {
+    notes.push('Archived class tabs are hidden, not deleted: right-click a tab name > Show sheet to see one. ' +
+      'Lessons with an archived class on the specialist tabs are kept; change or clear them, then sync again.');
+  }
+  if (specialists.removed.length) {
+    notes.push("Archived specialists' synced lessons were taken off the class tabs.");
+  }
+
+  const klaList = list => uniqueNonBlank(list.klas.map(item => item.name).concat(activityNames(list.activities)));
+  return {
+    blocked: blocked,
+    changes: changes,
+    notes: notes,
+    classes: classes,
+    specialists: specialists,
+    klaListGrew: klaList(config).length > klaList(oldConfig).length,
+    classListGrew: config.classes.length > oldConfig.classes.length
+  };
+}
+
+
+/** Makes the planned changes, then rebuilds DATA and the Start here tab. */
+function applyTimetableUpdate(ss, payload, oldConfig, config, plan, jobId) {
+  const timer = createStepTimer(false);
+  const slots = createTimeSlots(config.startTime, config.endTime);
+  const breakLabels = getBreakLabels(slots, config.breaks);
+
+  // 1. Archive removed tabs, then rename (through temporary names, so two
+  // classes can swap names).
+  updateJobProgress(jobId, 15, 'Archiving and renaming tabs...');
+  plan.classes.removed.forEach(item => archiveTab(ss, getClassTabName(item)));
+  plan.specialists.removed.forEach(item => archiveTab(ss, getSpecialistTabName(item)));
+  const renames = [];
+  plan.classes.kept.forEach(pair => renames.push([getClassTabName(pair.old), getClassTabName(pair.item)]));
+  plan.specialists.kept.forEach(pair => renames.push([getSpecialistTabName(pair.old), getSpecialistTabName(pair.item)]));
+  const moving = renames
+    .filter(rename => rename[0] !== rename[1])
+    .map((rename, index) => ({ sheet: ss.getSheetByName(rename[0]), to: rename[1], temporary: 'Renaming ' + index + ' ' + Date.now() }))
+    .filter(item => item.sheet);
+  moving.forEach(item => item.sheet.setName(item.temporary));
+  moving.forEach(item => item.sheet.setName(item.to));
+
+  // 2. DATA: lists, named ranges and the saved setup.
+  updateJobProgress(jobId, 30, 'Updating the DATA tab...');
+  populateDataSheet(ss.getSheetByName('DATA'), payload, config, ss);
+
+  // 3. Lessons that name a renamed or changed class or specialist.
+  updateJobProgress(jobId, 40, 'Updating lessons on the class and specialist tabs...');
+  updateSyncedLessons(ss, plan);
+  updateSpecialistTabClasses(ss, config, plan);
+
+  // 4. Dropdowns on existing tabs only list what DATA held when they were
+  // made, so they're pointed at the longer lists.
+  const validations = [];
+  if (plan.klaListGrew) {
+    const klaCount = uniqueNonBlank(config.klas.map(item => item.name).concat(config.activities.map(item => item.name))).length;
+    plan.classes.kept.forEach(pair => validations.push({
+      sheet: ss.getSheetByName(getClassTabName(pair.item)), cycle: pair.item.cycle, list: 'DATA!$D$2:$D$' + (klaCount + 1)
+    }));
+  }
+  if (plan.classListGrew) {
+    plan.specialists.kept.forEach(pair => validations.push({
+      sheet: ss.getSheetByName(getSpecialistTabName(pair.item)), cycle: pair.item.cycle, list: 'DATA!$F$2:$F$' + (config.classes.length + 1)
+    }));
+  }
+  refreshGridValidations(ss, validations.filter(item => item.sheet), slots.length, breakLabels);
+
+  // 5. New tabs, and details on the existing ones (class teacher, specialist
+  // KLA...). The specialists' clash formatting is redone for every tab.
+  updateJobProgress(jobId, 55, 'Adding new tabs...');
+  const startHere = captureStartHere(ss);
+  const tabs = createTabTracker(ss);
+  buildSpecialistSheets(ss, config, jobId, timer, tabs);
+  buildAllClassSheets(ss, config, jobId, timer, tabs);
+
+  // 6. Start here lists every tab, so it's rebuilt, keeping its "Last run"
+  // lines and its list of Google Docs.
+  updateJobProgress(jobId, 90, 'Updating the Start here tab...');
+  if (startHere) ss.deleteSheet(startHere.sheet);
+  buildStartHereSheet(ss, config, tabs);
+  if (startHere) restoreStartHere(ss, startHere);
+
+  if (oldConfig.schoolName !== config.schoolName && ss.getName().indexOf(oldConfig.schoolName) === 0) {
+    ss.rename(config.schoolName + ss.getName().substring(oldConfig.schoolName.length));
+  }
+}
+
+
+/** Renames a tab "Archived - <name>" (made unique) and hides it. */
+function archiveTab(ss, tabName) {
+  const sheet = ss.getSheetByName(tabName);
+  if (!sheet) return;
+  let name = (ARCHIVED_TAB_PREFIX + tabName).substring(0, 95);
+  for (let n = 2; ss.getSheetByName(name); n++) {
+    name = (ARCHIVED_TAB_PREFIX + tabName).substring(0, 90) + ' (' + n + ')';
+  }
+  sheet.setName(name).hideSheet();
+}
+
+
+/**
+ * Class tabs: synced specialist lessons are matched to their specialist by
+ * name (the "[SPEC_SYNC] <name>" note), so a renamed specialist's notes are
+ * renamed, a changed KLA is written into their lessons, and an archived
+ * specialist's lessons are taken off. Otherwise the next sync would treat
+ * them as the class teacher's own entries.
+ */
+function updateSyncedLessons(ss, plan) {
+  const key = name => String(name || '').trim().toLowerCase();
+  const bySpecialist = {};
+  plan.specialists.kept.forEach(pair => {
+    if (pair.old.name !== pair.item.name || pair.old.kla !== pair.item.kla) {
+      bySpecialist[key(pair.old.name)] = { name: pair.item.name, oldKla: pair.old.kla, kla: pair.item.kla };
+    }
+  });
+  plan.specialists.removed.forEach(item => { bySpecialist[key(item.name)] = { removed: true, oldKla: item.kla }; });
+  if (!Object.keys(bySpecialist).length) return;
+
+  const prefix = '[SPEC_SYNC]';
+  plan.classes.kept.forEach(pair => {
+    const sheet = ss.getSheetByName(getClassTabName(pair.item));
+    if (!sheet || sheet.getLastRow() < FIRST_DATA_ROW || sheet.getLastColumn() < FIRST_GRID_COLUMN) return;
+    const range = sheet.getRange(FIRST_DATA_ROW, FIRST_GRID_COLUMN,
+      sheet.getLastRow() - FIRST_DATA_ROW + 1, sheet.getLastColumn() - FIRST_GRID_COLUMN + 1);
+    const values = range.getValues();
+    const notes = range.getNotes();
+    let changed = false;
+    notes.forEach((row, r) => row.forEach((note, c) => {
+      if (String(note).indexOf(prefix) !== 0) return;
+      const change = bySpecialist[key(String(note).substring(prefix.length))];
+      if (!change) return;
+      const holdsLesson = String(values[r][c]).trim() === change.oldKla;
+      if (change.removed) {
+        if (holdsLesson) values[r][c] = '';
+        notes[r][c] = '';
+      } else {
+        notes[r][c] = prefix + ' ' + change.name;
+        if (holdsLesson) values[r][c] = change.kla;
+      }
+      changed = true;
+    }));
+    if (changed) {
+      range.setValues(values);
+      range.setNotes(notes);
+    }
+  });
+}
+
+
+/**
+ * Specialist tabs: lessons with a renamed class get its new name, and the
+ * class colour rules are made again from the current classes.
+ */
+function updateSpecialistTabClasses(ss, config, plan) {
+  const renamed = {};
+  plan.classes.kept.forEach(pair => {
+    if (pair.old.name !== pair.item.name) renamed[pair.old.name] = pair.item.name;
+  });
+  const coloursChanged = plan.classes.added.length || plan.classes.removed.length || Object.keys(renamed).length ||
+    plan.classes.kept.some(pair => (pair.old.color || '') !== (pair.item.color || ''));
+
+  plan.specialists.kept.forEach(pair => {
+    const sheet = ss.getSheetByName(getSpecialistTabName(pair.item));
+    if (!sheet || sheet.getLastRow() < FIRST_DATA_ROW || sheet.getLastColumn() < FIRST_GRID_COLUMN) return;
+    const lastRow = sheet.getLastRow();
+    const lastColumn = sheet.getLastColumn();
+
+    if (Object.keys(renamed).length) {
+      const range = sheet.getRange(FIRST_DATA_ROW, FIRST_GRID_COLUMN, lastRow - FIRST_DATA_ROW + 1, lastColumn - FIRST_GRID_COLUMN + 1);
+      const values = range.getValues();
+      let changed = false;
+      values.forEach(row => row.forEach((value, c) => {
+        const name = String(value).trim();
+        if (renamed.hasOwnProperty(name)) {
+          row[c] = renamed[name];
+          changed = true;
+        }
+      }));
+      if (changed) range.setValues(values);
+    }
+
+    if (coloursChanged) {
+      // Keep the break and clash rules (redone later); replace the class colours.
+      const managed = sheet.getConditionalFormatRules().filter(rule => {
+        const condition = rule.getBooleanCondition();
+        return condition && condition.getCriteriaValues().some(value =>
+          typeof value === 'string' && (value.indexOf('BreakList') !== -1 ||
+            (value.indexOf('INDIRECT') !== -1 && value.indexOf('COUNTIF') !== -1)));
+      });
+      sheet.setConditionalFormatRules(managed);
+      applyClassColorFormatting(sheet, config.classes, FIRST_DATA_ROW, lastRow, lastColumn);
+    }
+  });
+}
+
+
+/**
+ * Points the dropdowns of existing tabs at a DATA list (A1 notation), on
+ * every day column of the grid except break rows: in one request with the
+ * Google Sheets API service, otherwise block by block.
+ * items: [{ sheet, cycle, list }]
+ */
+function refreshGridValidations(ss, items, slotCount, breakLabels) {
+  if (!items.length) return;
+  const breakRuns = getBreakRuns(breakLabels);
+
+  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) {
+    const requests = [];
+    items.forEach(item => {
+      const sheetId = item.sheet.getSheetId();
+      getGridLayout(item.cycle).blocks.forEach(block => {
+        const range = (startRow, rowCount) => ({
+          sheetId: sheetId,
+          startRowIndex: startRow - 1, endRowIndex: startRow - 1 + rowCount,
+          startColumnIndex: block.startColumn - 1, endColumnIndex: block.startColumn - 1 + DAYS.length
+        });
+        requests.push({ setDataValidation: {
+          range: range(FIRST_DATA_ROW, slotCount),
+          rule: { condition: { type: 'ONE_OF_RANGE', values: [{ userEnteredValue: '=' + item.list }] }, strict: true, showCustomUi: true }
+        } });
+        breakRuns.forEach(run => requests.push({ setDataValidation: { range: range(FIRST_DATA_ROW + run.startIndex, run.length) } }));
+      });
+    });
+    SpreadsheetApp.flush();
+    Sheets.Spreadsheets.batchUpdate({ requests: requests }, ss.getId());
+    return;
+  }
+
+  items.forEach(item => {
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInRange(ss.getSheetByName('DATA').getRange(item.list.split('!')[1].replace(/\$/g, '')), true)
+      .setAllowInvalid(false)
+      .build();
+    const layout = getGridLayout(item.cycle);
+    layout.blocks.forEach(block => {
+      item.sheet.getRange(FIRST_DATA_ROW, block.startColumn, slotCount, DAYS.length).setDataValidation(rule);
+    });
+    const breakRanges = [];
+    breakRuns.forEach(run => layout.blocks.forEach(block => {
+      breakRanges.push(toA1(FIRST_DATA_ROW + run.startIndex, block.startColumn, run.length, DAYS.length));
+    }));
+    if (breakRanges.length) item.sheet.getRangeList(breakRanges).clearDataValidations();
+  });
+}
+
+
+/** What the Start here tab holds that isn't rebuilt from the setup. */
+function captureStartHere(ss) {
+  const sheet = ss.getSheetByName(START_HERE_SHEET_NAME);
+  if (!sheet) return null;
+  const valueOf = name => {
+    const range = ss.getRangeByName(name);
+    return range ? range.getValue() : '';
+  };
+  const docs = [];
+  const headings = ss.getRangeByName('StartHereDocs');
+  if (headings) {
+    const firstRow = headings.getRow() + 1;
+    const rowCount = sheet.getLastRow() - firstRow + 1;
+    if (rowCount > 0) {
+      const range = sheet.getRange(firstRow, 1, rowCount, 4);
+      const formulas = range.getFormulas();
+      range.getValues().forEach((row, i) => {
+        const first = formulas[i][0] || row[0];
+        if (!String(first).trim() || String(row[0]).indexOf('None yet') === 0) return;
+        docs.push([first, row[1], row[2], row[3]]);
+      });
+    }
+  }
+  return { sheet: sheet, sync: valueOf('StartHereSyncStatus'), lock: valueOf('StartHereLockStatus'), docs: docs };
+}
+
+
+function restoreStartHere(ss, saved) {
+  if (saved.sync) ss.getRangeByName('StartHereSyncStatus').setValue(saved.sync);
+  if (saved.lock) ss.getRangeByName('StartHereLockStatus').setValue(saved.lock);
+  if (saved.docs.length) {
+    const headings = ss.getRangeByName('StartHereDocs');
+    headings.getSheet().getRange(headings.getRow() + 1, 1, saved.docs.length, 4)
+      .setValues(saved.docs)
+      .setFontColor(START_HERE_STYLE.text);
+  }
+}
+
+
 /**
  * Times the steps of a generation for the load test. When disabled, mark()
  * and summary() do nothing, so normal runs aren't slowed by extra flushes.

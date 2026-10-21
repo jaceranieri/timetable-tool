@@ -125,11 +125,22 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 8: Edit setup after generating, and start next year
 
-- [ ] **32. Open an existing file in the wizard (L).**
+- [x] **32. Open an existing file in the wizard (L).**
   - Paste the file's link; the wizard prefills from `RawData_JSON`.
   - Apply only the changes: add tabs; rename a class or specialist (updating DATA and specialist entries that use the old name); archive removed classes by hiding and renaming, never deleting.
   - Changes that rebuild a grid (bell times, a class's cycle length) are blocked or need explicit confirmation.
-- [ ] **33. "Start next year from this year's setup" (S).** Fresh copy of the template, prefilled from the old file's setup.
+  - *Done: ☰ > "Edit an existing timetable" asks for the link (`readTimetableSetup`) and opens its setup with an "Editing ..." banner. Bell times, breaks and the cycle of existing grades and specialists are locked (and refused by the server). The summary lists the changes; "Update timetable" (`updateTimetable`) then:*
+    - *adds new class and specialist tabs, and writes changed details (teacher, KLA...);*
+    - *renames tabs, through temporary names so two classes can swap;*
+    - *updates specialist lessons that name a renamed class;*
+    - *moves synced lessons over to a renamed specialist (their "[SPEC_SYNC]" notes) or to a changed KLA, and takes an archived specialist's synced lessons off the class tabs;*
+    - *archives removed tabs ("Archived - <name>", hidden);*
+    - *rebuilds DATA, the class colour rules and the clash formatting;*
+    - *points existing dropdowns at longer lists (one Sheets API request, or block by block without it);*
+    - *rebuilds Start here, keeping its "Last run" lines and Google Docs list.*
+
+    *Drafts remember an edit. Someone with view-only access is told to ask for edit access.*
+- [x] **33. "Start next year from this year's setup" (S).** Fresh copy of the template, prefilled from the old file's setup. *Done: ☰ > "Start from an existing timetable" loads the setup without linking it to the old file; generating makes a new timetable.*
 
 ## Phase 9: Maintainability
 

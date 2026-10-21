@@ -14,7 +14,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'wizard', 'Index.html'),
 const helperSource = html.match(/(const CLASS_COLOR_PALETTE[\s\S]*?)\n\s*const App = /)[1];
 const wizard = vm.runInNewContext(helperSource + `;({ makeInitialData, buildExportVariables, setupFromVariables,
   getClassesToGenerate, findCycleMismatches, describeCycleMismatch, estimateGeneration, parsePastedClasses,
-  getTeacherError, colourForName })`, {});
+  getTeacherError, colourForName, describeUpdate, findRenames, withoutOriginals, asOriginals })`, {});
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const valuesOf = variables => Object.fromEntries(variables.map(item => [item.name, item.value]));
@@ -107,4 +107,37 @@ test('the default setup has two Kindergarten classes and empty grades ready for 
   assert.deepEqual(plain(data.grades.map(g => [g.name, data.staffing.filter(s => s.gradeId === g.id).length, g.classes])), [
     ['Kindergarten', 2, 2], ['Year 1', 0, 0], ['Year 2', 0, 0], ['Year 3', 0, 0], ['Year 4', 0, 0], ['Year 5', 0, 0], ['Year 6', 0, 0]
   ]);
+});
+
+test('editing: the changes are listed, renames are found, and a copy continues nothing', () => {
+  const original = wizard.setupFromVariables(makePayload().exportVariables);
+  assert.ok(original.staffing.every(s => s.originalName === s.className));
+  const data = JSON.parse(JSON.stringify(original));
+  data.staffing[0].teacher = 'Ms Adams-Lee';                 // K Blue
+  data.staffing[1].className = 'K Green';                    // K Red renamed
+  data.staffing = data.staffing.filter(s => s.className !== 'Year 3 Gold');
+  data.staffing.push({ id: 'n1', gradeId: data.grades[3].id, className: 'Year 3 Silver', teacher: 'Mr Diaz', color: '' });
+  data.specialists[0].kla = 'HSIE';                          // Mr Smith
+  data.specialists[1].name = 'Ms Jonas';                     // Ms Jones renamed
+  data.activities.push({ id: 'a9', name: 'Choir' });
+  assert.deepEqual(plain(wizard.describeUpdate(original, data)), [
+    'K Blue: teacher Ms Adams to Ms Adams-Lee',
+    'Rename class "K Red" to "K Green"',
+    'Add class "Year 3 Silver" (Year 3, Mr Diaz)',
+    'Archive class "Year 3 Gold"',
+    'Mr Smith: KLA PDHPE to HSIE',
+    'Rename specialist "Ms Jones" to "Ms Jonas"',
+    'Add activity "Choir"'
+  ]);
+  assert.deepEqual(plain(wizard.findRenames(data)), {
+    classes: [{ from: 'K Red', to: 'K Green' }],
+    specialists: [{ from: 'Ms Jones', to: 'Ms Jonas' }]
+  });
+  assert.deepEqual(plain(wizard.describeUpdate(original, original)), []);
+  // After an update, the setup is the new starting point.
+  assert.deepEqual(plain(wizard.describeUpdate(wizard.asOriginals(data), wizard.asOriginals(data))), []);
+  assert.deepEqual(plain(wizard.findRenames(wizard.asOriginals(data))), { classes: [], specialists: [] });
+  // Starting a new timetable from one: nothing is a rename.
+  const copy = wizard.withoutOriginals(data);
+  assert.ok(copy.staffing.every(s => !('originalName' in s)) && copy.specialists.every(s => !('originalName' in s)));
 });

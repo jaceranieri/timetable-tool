@@ -374,6 +374,8 @@ class FakeSpreadsheet {
   }
   getId() { return this._id; }
   getUrl() { return 'https://docs.google.com/spreadsheets/d/' + this._id + '/edit'; }
+  getName() { return this._world.files[this._id].handle.getName(); }
+  rename(name) { this._world.files[this._id].handle.setName(name); }
   // Tabs added through the Sheets API aren't visible to SpreadsheetApp until
   // the next execution (world.newExecution()). That's the cautious
   // assumption the scripts must cope with.
@@ -430,6 +432,18 @@ class FakeSpreadsheet {
           return v.stringValue;
         }));
         sheet.getRange(r.start.rowIndex + 1, r.start.columnIndex + 1, values.length, values[0].length).setValues(values);
+      } else if (request.setDataValidation) {
+        const r = request.setDataValidation;
+        const sheet = this._sheets.find(item => item._id === r.range.sheetId);
+        if (!sheet) throw new Error('No sheet with id ' + r.range.sheetId);
+        const range = sheet.getRange(r.range.startRowIndex + 1, r.range.startColumnIndex + 1,
+          r.range.endRowIndex - r.range.startRowIndex, r.range.endColumnIndex - r.range.startColumnIndex);
+        if (r.rule) {
+          if (r.rule.condition.type !== 'ONE_OF_RANGE') throw new Error('Fake only supports ONE_OF_RANGE validation');
+          range.setDataValidation({ kind: 'validation', list: r.rule.condition.values[0].userEnteredValue, allowInvalid: !r.rule.strict });
+        } else {
+          range.clearDataValidations();
+        }
       } else {
         throw new Error('Fake does not support request: ' + Object.keys(request)[0]);
       }
