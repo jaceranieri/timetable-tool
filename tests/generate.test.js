@@ -414,3 +414,28 @@ test('Start here links copied tabs too (their ids come from the Sheets API reque
     assert.equal(ss.getSheetByName(name).getSheetId(), Number(id), name);
   });
 });
+
+test('a class with no teacher yet is generated with "TBC" as its teacher', () => {
+  const { ss } = generate(makePayload({ classes: [['K Blue', '', 'Kindergarten', 1], ['K Red', 'Mr Brown', 'Kindergarten', 1]] }));
+  assert.equal(ss.getSheetByName('K Blue').getRange('C27').getValue(), 'TBC');
+  assert.equal(ss.getSheetByName('Start here').getRange('B18').getValue(), 'TBC');
+});
+
+test('wizard drafts are saved per user in parts, read back whole, and cleared', () => {
+  const { world, wizard } = setUp();
+  assert.equal(wizard.loadDraft(), null);
+
+  const long = JSON.stringify({ step: 3, data: { notes: 'x'.repeat(20000) } });
+  assert.equal(wizard.saveDraft(long), true);
+  assert.equal(world.userProperties.WIZARD_DRAFT, '3');
+  assert.equal(wizard.loadDraft(), long);
+
+  // A shorter draft replaces it and leaves no old parts behind.
+  wizard.saveDraft('{"step":1}');
+  assert.equal(wizard.loadDraft(), '{"step":1}');
+  assert.deepEqual(Object.keys(world.userProperties).sort(), ['WIZARD_DRAFT', 'WIZARD_DRAFT_0']);
+
+  wizard.clearDraft();
+  assert.equal(wizard.loadDraft(), null);
+  assert.deepEqual(world.userProperties, {});
+});

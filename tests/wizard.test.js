@@ -1,0 +1,84 @@
+'use strict';
+
+// The wizard's plain helper functions (Index.html, before the React app),
+// run outside the browser.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const { makePayload, makeLargeSchoolPayload } = require('./helpers/payload');
+
+const html = fs.readFileSync(path.join(__dirname, '..', 'wizard', 'Index.html'), 'utf8');
+const helperSource = html.match(/(const CLASS_COLOR_PALETTE[\s\S]*?)\n\s*const App = /)[1];
+const wizard = vm.runInNewContext(helperSource + `;({ makeInitialData, buildExportVariables, setupFromVariables,
+  getClassesToGenerate, findCycleMismatches, describeCycleMismatch, estimateGeneration, parsePastedClasses })`, {});
+
+const plain = value => JSON.parse(JSON.stringify(value));
+const valuesOf = variables => Object.fromEntries(variables.map(item => [item.name, item.value]));
+
+test('a setup loaded from a timetable payload (RawData_JSON) gives back the same payload', () => {
+  const payload = makePayload();
+  const data = wizard.setupFromVariables(payload.exportVariables);
+  assert.equal(data.schoolName, 'St Example Primary');
+  assert.deepEqual(plain(data.grades.filter(g => g.classes).map(g => [g.name, g.classes, g.cycle])),
+    [['Kindergarten', 2, 1], ['Year 3', 1, 2]]);
+  assert.ok(data.activities.find(a => a.name === 'Amadeus - Tutorials').locked);
+  assert.deepEqual(plain(wizard.buildExportVariables(data)), plain(payload.exportVariables));
+});
+
+test('grades the wizard does not list are added; a TBC teacher comes back blank', () => {
+  const payload = makePayload({ classes: [['Stage 1 Blue', 'TBC', 'Stage 1', 2], ['K Blue', 'Ms Adams', 'Kindergarten', 1]] });
+  const data = wizard.setupFromVariables(payload.exportVariables);
+  const stage = data.grades.find(g => g.name === 'Stage 1');
+  assert.deepEqual([stage.classes, stage.cycle, data.grades.indexOf(stage)], [1, 2, 7]);
+  assert.equal(data.staffing.find(s => s.className === 'Stage 1 Blue').teacher, '');
+});
+
+test('blank class and specialist rows are left out of what is generated; blank teachers are sent blank', () => {
+  const data = wizard.makeInitialData();
+  data.schoolName = 'St X';
+  data.staffing[1].className = '';             // K Red: fully blank (teacher already blank)
+  data.staffing[2].teacher = 'Ms Gold';
+  const values = valuesOf(wizard.buildExportVariables(data));
+  assert.equal(values.Class_1_Name, 'Kindergarten Blue');
+  assert.equal(values.Class_1_Teacher, '');
+  assert.equal(values.Class_2_Name, 'Year 1 Gold');
+  assert.equal(values.Class_2_Teacher, 'Ms Gold');
+  assert.equal(values.Specialist_1_Name, undefined); // the starting specialist row is blank
+});
+
+test('cycle warnings: a class cycle has to be a multiple of the specialist cycle', () => {
+  const data = wizard.setupFromVariables(makePayload({
+    classes: [['K Blue', 'A', 'Kindergarten', 1], ['Y3 Gold', 'B', 'Year 3', 2], ['Y5 Red', 'C', 'Year 5', 4]],
+    specialists: [['Mr Smith', 'PDHPE', 2], ['Ms Jones', 'HSIE', 1]]
+  }).exportVariables);
+  const mismatches = wizard.findCycleMismatches(data);
+  const smith = data.specialists.find(s => s.name === 'Mr Smith');
+  assert.deepEqual(Object.keys(mismatches), [String(smith.id)]);
+  assert.deepEqual(plain(mismatches[smith.id].map(g => g.name)), ['Kindergarten']);
+  assert.match(wizard.describeCycleMismatch(smith, mismatches[smith.id]), /^Mr Smith's 2-week cycle doesn't fit Kindergarten \(1-week cycle\)\./);
+});
+
+test('the time estimate matches the load test and small schools', () => {
+  const large = wizard.estimateGeneration(wizard.setupFromVariables(makeLargeSchoolPayload().exportVariables));
+  assert.deepEqual([large.classTabs, large.specialistTabs], [28, 6]);
+  assert.ok(large.seconds > 75 && large.seconds < 120, String(large.seconds));
+  assert.equal(large.text, 'about 1½ minutes');
+  // Each cycle length needs its own first tab, so it counts more than the number of classes.
+  assert.equal(wizard.estimateGeneration(wizard.setupFromVariables(makePayload().exportVariables)).text, 'about 1 minute');
+  const oneCycle = makePayload({
+    classes: [['K Blue', 'A', 'Kindergarten', 1], ['K Red', 'B', 'Kindergarten', 1]],
+    specialists: [['Mr Smith', 'PDHPE', 1]]
+  });
+  assert.equal(wizard.estimateGeneration(wizard.setupFromVariables(oneCycle.exportVariables)).text, 'under a minute');
+});
+
+test('pasted rows: tab-separated name and teacher, heading and blank lines dropped', () => {
+  assert.deepEqual(plain(wizard.parsePastedClasses('Class Name\tTeacher\r\n3 Blue\tMs Lee\n\n3 Gold\n 3 Red \t Mr Tran \n')), [
+    { className: '3 Blue', teacher: 'Ms Lee' },
+    { className: '3 Gold', teacher: '' },
+    { className: '3 Red', teacher: 'Mr Tran' }
+  ]);
+});

@@ -454,7 +454,7 @@ class FakeSpreadsheet {
  * template is created by the caller with makeTemplate().
  */
 function createWorld() {
-  const world = { calls: 0, callsByMethod: {}, files: {}, cache: {}, alerts: [], properties: {} };
+  const world = { calls: 0, callsByMethod: {}, files: {}, cache: {}, alerts: [], properties: {}, userProperties: {} };
   world.resetCalls = () => { world.calls = 0; world.callsByMethod = {}; };
   // A later script run (e.g. a menu item): every tab is visible again.
   world.newExecution = () => {
@@ -531,7 +531,18 @@ function createWorld() {
       })
     },
     PropertiesService: {
-      getScriptProperties: () => ({ getProperty: key => world.properties[key] || null })
+      getScriptProperties: () => ({ getProperty: key => world.properties[key] || null }),
+      // Per-user storage; each value holds at most 9 KB, as in Apps Script.
+      getUserProperties: () => ({
+        getProperty: key => (key in world.userProperties ? world.userProperties[key] : null),
+        setProperties: values => {
+          Object.keys(values).forEach(key => {
+            if (String(values[key]).length > 9000) throw new Error('Argument too large: value');
+            world.userProperties[key] = String(values[key]);
+          });
+        },
+        deleteProperty: key => { delete world.userProperties[key]; }
+      })
     },
     Session: {
       getEffectiveUser: () => ({ getEmail: () => 'owner@school.example' }),

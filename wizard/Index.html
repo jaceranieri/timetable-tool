@@ -81,6 +81,10 @@
             100% { transform: scale(1); opacity: 1; }
         }
         .animate-success { animation: successPop 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .animate-step, .animate-pop, .animate-success, .animate-spin, .animate-pulse { animation: none; }
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center pt-12 pb-8 px-4 sm:px-8">
@@ -97,25 +101,28 @@
         const CardContent = ({ children, className = "" }) => <div className={`p-6 pt-0 ${className}`}>{children}</div>;
         const CardFooter = ({ children, className = "" }) => <div className={`flex items-center p-6 pt-0 ${className}`}>{children}</div>;
 
-        const Label = ({ children, className = "" }) => (
-            <label className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${className}`}>{children}</label>
+        const Label = ({ children, className = "", htmlFor }) => (
+            <label htmlFor={htmlFor} className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${className}`}>{children}</label>
         );
 
-        const Input = ({ className = "", error, ...props }) => (
+        // A field's error is shown inside it and read out with it (aria-describedby).
+        const errorIdFor = (id, error) => (error && id ? `${id}-error` : undefined);
+
+        const Input = ({ className = "", error, id, ...props }) => (
             <div className="relative w-full flex items-center">
-                <input aria-invalid={error ? true : undefined} className={`flex h-10 w-full rounded-md border ${error ? 'border-red-500 pr-[80px] ring-1 ring-red-500/20' : 'border-slate-200'} bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props} />
+                <input id={id} aria-invalid={error ? true : undefined} aria-describedby={errorIdFor(id, error)} className={`flex h-10 w-full rounded-md border ${error ? 'border-red-500 pr-[80px] ring-1 ring-red-500/20' : 'border-slate-200'} bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props} />
                 {error && (
                     <div className="absolute right-2 flex items-center gap-1 text-[11px] font-medium text-red-600 bg-white px-1 pointer-events-none animate-pop">
-                        <AlertCircleIcon className="w-3.5 h-3.5" />
-                        <span>{error}</span>
+                        <AlertCircleIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span id={errorIdFor(id, error)}>{error}</span>
                     </div>
                 )}
             </div>
         );
 
-        const Select = ({ className = "", error, children, ...props }) => (
+        const Select = ({ className = "", error, id, children, ...props }) => (
             <div className="relative w-full flex items-center">
-                <select aria-invalid={error ? true : undefined} className={`flex h-10 w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
+                <select id={id} aria-invalid={error ? true : undefined} aria-describedby={errorIdFor(id, error)} className={`flex h-10 w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
                     {children}
                 </select>
                 {!error && (
@@ -123,8 +130,8 @@
                 )}
                 {error && (
                     <div className="absolute right-7 flex items-center gap-1 text-[11px] font-medium text-red-600 bg-white px-1 pointer-events-none animate-pop">
-                        <AlertCircleIcon className="w-3.5 h-3.5" />
-                        <span>{error}</span>
+                        <AlertCircleIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span id={errorIdFor(id, error)}>{error}</span>
                     </div>
                 )}
             </div>
@@ -142,7 +149,7 @@
                 footerSolid: "bg-brand-dark text-white hover:bg-[#00663C] shadow-md font-semibold",
             };
             return (
-                <button className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-all duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 ${variants[variant] || variants.default} ${className}`} {...props}>
+                <button type="button" className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-all duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 ${variants[variant] || variants.default} ${className}`} {...props}>
                     {children}
                 </button>
             );
@@ -220,6 +227,235 @@
             return (hours * 60 + minutes) % SLOT_MINUTES === 0;
         };
 
+        const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
+        const TEACHER_TBC = 'TBC'; // what the server writes for a teacher left blank
+        const SETUP_FILE_TYPE = 'timetable-tool-setup';
+        const STEP_NAMES = ['Core Schedule', 'Grades', 'Staff', 'Summary'];
+        const DEFAULT_GRADES = [
+            { id: "k", name: "Kindergarten" },
+            { id: "y1", name: "Year 1" },
+            { id: "y2", name: "Year 2" },
+            { id: "y3", name: "Year 3" },
+            { id: "y4", name: "Year 4" },
+            { id: "y5", name: "Year 5" },
+            { id: "y6", name: "Year 6" }
+        ];
+
+        let idCounter = 0;
+        const newId = () => `id-${Date.now().toString(36)}-${(idCounter++).toString(36)}`;
+
+        // The setup a new wizard starts with.
+        const makeInitialData = () => ({
+            schoolName: "",
+            schoolStart: "08:30",
+            schoolEnd: "15:15",
+            breaks: [
+                { id: 1, name: "Recess", start: "10:30", end: "11:00" },
+                { id: 2, name: "Lunch", start: "13:00", end: "13:45" }
+            ],
+            klas: [
+                { id: 10, name: "English" },
+                { id: 20, name: "Mathematics" },
+                { id: 30, name: "Religion" },
+                { id: 40, name: "Science & Tech" },
+                { id: 50, name: "HSIE" },
+                { id: 60, name: "PDHPE" },
+                { id: 70, name: "Creative Arts" },
+                { id: 80, name: "Non-Curricular" }
+            ],
+            grades: DEFAULT_GRADES.map(g => ({ ...g, classes: 2, cycle: 1 })),
+            staffing: [
+                { id: 101, gradeId: "k", className: "Kindergarten Blue", teacher: "", color: CLASS_COLOR_PALETTE[0] },
+                { id: 102, gradeId: "k", className: "Kindergarten Red", teacher: "", color: CLASS_COLOR_PALETTE[1] },
+                { id: 103, gradeId: "y1", className: "Year 1 Gold", teacher: "", color: CLASS_COLOR_PALETTE[2] },
+                { id: 104, gradeId: "y1", className: "Year 1 Green", teacher: "", color: CLASS_COLOR_PALETTE[3] },
+                { id: 105, gradeId: "y2", className: "Year 2 Amber", teacher: "", color: CLASS_COLOR_PALETTE[4] },
+                { id: 106, gradeId: "y2", className: "Year 2 Jade", teacher: "", color: CLASS_COLOR_PALETTE[5] }
+            ],
+            specialists: [
+                { id: 301, name: "", kla: "", cycle: 1 } // Initial empty template
+            ],
+            activities: [
+                { id: 201, name: "Assembly" },
+                { id: 202, name: "Library" },
+                // Amadeus runs in Years 3-6 in every school, so it can't be
+                // renamed or removed (the name must match TEMPLATE!B21).
+                { id: 203, name: AMADEUS_ACTIVITY_NAME, locked: true }
+            ]
+        });
+
+        // Rows left completely blank are skipped rather than reported.
+        const isBlankClass = (s) => !s.className.trim() && !s.teacher.trim();
+        const isBlankSpecialist = (s) => !s.name.trim() && !s.kla;
+
+        // The classes that will be generated, grade by grade.
+        const getClassesToGenerate = (data) => {
+            const classes = [];
+            data.grades.filter(g => g.classes > 0).forEach(g => {
+                data.staffing
+                    .filter(s => s.gradeId === g.id && !isBlankClass(s))
+                    .forEach(s => classes.push({ ...s, grade: g }));
+            });
+            return classes;
+        };
+        const getSpecialistsToGenerate = (data) => data.specialists.filter(s => !isBlankSpecialist(s));
+
+        // The flat name/value list sent to generateTimetable. The server keeps
+        // it in the timetable's DATA tab (RawData_JSON), and setup files hold
+        // the same list, so either can be loaded back with setupFromVariables.
+        const buildExportVariables = (data) => {
+            const variables = [];
+            const add = (name, value) => variables.push({ name, value });
+            add('SchoolName', data.schoolName.trim());
+            add('SchoolStart', data.schoolStart);
+            add('SchoolEnd', data.schoolEnd);
+            data.breaks.forEach((b, i) => {
+                add(`Break_${i+1}_Name`, b.name);
+                add(`Break_${i+1}_Start`, b.start);
+                add(`Break_${i+1}_End`, b.end);
+            });
+            data.klas.forEach((k, i) => add(`KLA_${i+1}_Name`, k.name));
+            getSpecialistsToGenerate(data).forEach((s, i) => {
+                add(`Specialist_${i+1}_Name`, s.name);
+                add(`Specialist_${i+1}_KLA`, s.kla);
+                add(`Specialist_${i+1}_Cycle`, s.cycle || 1);
+            });
+            getClassesToGenerate(data).forEach((s, i) => {
+                add(`Class_${i+1}_Name`, s.className);
+                add(`Class_${i+1}_Teacher`, s.teacher.trim()); // blank: the server writes TBC
+                add(`Class_${i+1}_Grade`, s.grade.name);
+                add(`Class_${i+1}_Cycle`, s.grade.cycle);
+                add(`Class_${i+1}_Color`, s.color || '');
+            });
+            data.activities.filter(a => a.name.trim()).forEach((a, i) => add(`Activity_${i+1}_Name`, a.name));
+            return variables;
+        };
+
+        const clampCycle = (value) => Math.min(MAX_CYCLE_WEEKS, Math.max(1, parseInt(value, 10) || 1));
+
+        // The wizard's setup from a name/value list (a setup file, or a
+        // timetable's RawData_JSON). Grades the wizard doesn't list are added
+        // after Year 6.
+        const setupFromVariables = (exportVariables) => {
+            const values = {};
+            exportVariables.forEach(item => { if (item && item.name) values[item.name] = item.value; });
+            const text = (name) => (values[name] === undefined || values[name] === null ? '' : String(values[name]));
+            const list = (prefix, read) => {
+                const items = [];
+                for (let i = 1; values[`${prefix}_${i}_Name`] !== undefined; i++) items.push(read(i));
+                return items;
+            };
+            const defaults = makeInitialData();
+
+            const grades = DEFAULT_GRADES.map(g => ({ ...g, classes: 0, cycle: 1 }));
+            const staffing = [];
+            list('Class', i => ({
+                name: text(`Class_${i}_Name`).trim(),
+                teacher: text(`Class_${i}_Teacher`).trim(),
+                grade: text(`Class_${i}_Grade`).trim() || 'Other',
+                cycle: clampCycle(values[`Class_${i}_Cycle`]),
+                color: text(`Class_${i}_Color`).trim()
+            })).filter(c => c.name).forEach(c => {
+                let grade = grades.find(g => g.name.toLowerCase() === c.grade.toLowerCase());
+                if (!grade) {
+                    grade = { id: newId(), name: c.grade, classes: 0, cycle: 1 };
+                    grades.push(grade);
+                }
+                grade.classes++;
+                grade.cycle = c.cycle;
+                staffing.push({
+                    id: newId(),
+                    gradeId: grade.id,
+                    className: c.name,
+                    teacher: c.teacher === TEACHER_TBC ? '' : c.teacher,
+                    color: c.color || CLASS_COLOR_PALETTE[staffing.length % CLASS_COLOR_PALETTE.length]
+                });
+            });
+
+            const klas = list('KLA', i => ({ id: newId(), name: text(`KLA_${i}_Name`).trim() })).filter(k => k.name);
+            const activities = list('Activity', i => ({ id: newId(), name: text(`Activity_${i}_Name`).trim() }))
+                .filter(a => a.name)
+                .map(a => a.name.toLowerCase() === AMADEUS_ACTIVITY_NAME.toLowerCase()
+                    ? { ...a, name: AMADEUS_ACTIVITY_NAME, locked: true }
+                    : a);
+            if (!activities.some(a => a.locked)) activities.push({ id: newId(), name: AMADEUS_ACTIVITY_NAME, locked: true });
+
+            return {
+                schoolName: text('SchoolName').trim(),
+                schoolStart: text('SchoolStart') || defaults.schoolStart,
+                schoolEnd: text('SchoolEnd') || defaults.schoolEnd,
+                breaks: list('Break', i => ({
+                    id: newId(),
+                    name: text(`Break_${i}_Name`),
+                    start: text(`Break_${i}_Start`),
+                    end: text(`Break_${i}_End`)
+                })),
+                klas: klas.length ? klas : defaults.klas,
+                grades: grades,
+                staffing: staffing,
+                specialists: list('Specialist', i => ({
+                    id: newId(),
+                    name: text(`Specialist_${i}_Name`).trim(),
+                    kla: text(`Specialist_${i}_KLA`).trim(),
+                    cycle: clampCycle(values[`Specialist_${i}_Cycle`])
+                })).filter(s => s.name),
+                activities: activities
+            };
+        };
+
+        // For each specialist, the grades whose cycle isn't a multiple of
+        // theirs: the sync can't line those lessons up week by week.
+        const findCycleMismatches = (data) => {
+            const classes = getClassesToGenerate(data);
+            const grades = data.grades.filter(g => classes.some(c => c.gradeId === g.id));
+            const mismatches = {};
+            getSpecialistsToGenerate(data).forEach(s => {
+                const cycle = s.cycle || 1;
+                const misfits = grades.filter(g => g.cycle % cycle !== 0);
+                if (misfits.length) mismatches[s.id] = misfits;
+            });
+            return mismatches;
+        };
+
+        const describeCycleMismatch = (specialist, grades) => {
+            const cycle = specialist.cycle || 1;
+            // Grouped by cycle: "Kindergarten (3-week cycle); Year 1, Year 2 (1-week cycle)".
+            const cycles = [...new Set(grades.map(g => g.cycle))];
+            const gradeList = cycles.map(c => `${grades.filter(g => g.cycle === c).map(g => g.name).join(', ')} (${c}-week cycle)`).join('; ');
+            return `${specialist.name.trim() || 'This specialist'}'s ${cycle}-week cycle doesn't fit ${gradeList}. ` +
+                `A class's cycle needs to be a multiple of the specialist's (${cycle}, ${cycle * 2}, ... weeks) for the lessons to line up; ` +
+                `otherwise the sync puts lessons from different weeks together.`;
+        };
+
+        // Roughly how long generating takes, from the load test (28 classes,
+        // 6 specialists: 93 seconds): setup, building the first tab of each
+        // cycle, copying the rest, and each specialist's clash check.
+        const estimateGeneration = (data) => {
+            const classes = getClassesToGenerate(data);
+            const specialists = getSpecialistsToGenerate(data);
+            const firstTabs = new Set(classes.map(c => c.grade.cycle)).size +
+                new Set(specialists.map(s => s.cycle || 1)).size;
+            const seconds = 10 + 11 * firstTabs + 0.7 * (classes.length + specialists.length) + 3 * specialists.length;
+            const halfMinutes = Math.max(2, Math.round(seconds / 30));
+            const minutes = Math.floor(halfMinutes / 2) + (halfMinutes % 2 ? '½' : '');
+            return {
+                classTabs: classes.length,
+                specialistTabs: specialists.length,
+                seconds: Math.round(seconds),
+                text: seconds < 45 ? 'under a minute' : `about ${minutes} minute${halfMinutes > 2 ? 's' : ''}`
+            };
+        };
+
+        // Rows copied from a spreadsheet: class name, then teacher (cells are
+        // tab-separated when pasted). A heading row is dropped.
+        const parsePastedClasses = (text) => {
+            const rows = String(text || '').split(/\r?\n/)
+                .map(line => line.split('\t').map(cell => cell.trim()))
+                .filter(cells => cells.some(Boolean));
+            if (rows.length && /^class(\s*name)?$/i.test(rows[0][0])) rows.shift();
+            return rows.map(cells => ({ className: cells[0] || '', teacher: cells[1] || '' }));
+        };
+
         const App = () => {
             const [step, setStep] = useState(1);
 
@@ -248,67 +484,110 @@
                     setColorPickerPos({ top: rect.bottom + 6, left: rect.left });
                 };
                 reposition();
+                const closeOnEscape = (e) => {
+                    if (e.key !== 'Escape') return;
+                    const trigger = colorTriggerRefs.current[colorPickerFor];
+                    setColorPickerFor(null);
+                    if (trigger) trigger.focus();
+                };
                 window.addEventListener('scroll', reposition, true);
                 window.addEventListener('resize', reposition);
+                window.addEventListener('keydown', closeOnEscape);
                 return () => {
                     window.removeEventListener('scroll', reposition, true);
                     window.removeEventListener('resize', reposition);
+                    window.removeEventListener('keydown', closeOnEscape);
                 };
             }, [colorPickerFor]);
             const [generatedUrl, setGeneratedUrl] = useState("");
             const [generationError, setGenerationError] = useState("");
 
             // App state for wizard data
-            const [data, setData] = useState({
-                schoolName: "",
-                schoolStart: "08:30",
-                schoolEnd: "15:15",
-                breaks: [
-                    { id: 1, name: "Recess", start: "10:30", end: "11:00" },
-                    { id: 2, name: "Lunch", start: "13:00", end: "13:45" }
-                ],
-                klas: [
-                    { id: 10, name: "English" },
-                    { id: 20, name: "Mathematics" },
-                    { id: 30, name: "Religion" },
-                    { id: 40, name: "Science & Tech" },
-                    { id: 50, name: "HSIE" },
-                    { id: 60, name: "PDHPE" },
-                    { id: 70, name: "Creative Arts" },
-                    { id: 80, name: "Non-Curricular" }
-                ],
-                grades: [
-                    { id: "k", name: "Kindergarten", classes: 2, cycle: 1 },
-                    { id: "y1", name: "Year 1", classes: 2, cycle: 1 },
-                    { id: "y2", name: "Year 2", classes: 2, cycle: 1 },
-                    { id: "y3", name: "Year 3", classes: 2, cycle: 1 },
-                    { id: "y4", name: "Year 4", classes: 2, cycle: 1 },
-                    { id: "y5", name: "Year 5", classes: 2, cycle: 1 },
-                    { id: "y6", name: "Year 6", classes: 2, cycle: 1 }
-                ],
-                staffing: [
-                    { id: 101, gradeId: "k", className: "Kindergarten Blue", teacher: "", color: CLASS_COLOR_PALETTE[0] },
-                    { id: 102, gradeId: "k", className: "Kindergarten Red", teacher: "", color: CLASS_COLOR_PALETTE[1] },
-                    { id: 103, gradeId: "y1", className: "Year 1 Gold", teacher: "", color: CLASS_COLOR_PALETTE[2] },
-                    { id: 104, gradeId: "y1", className: "Year 1 Green", teacher: "", color: CLASS_COLOR_PALETTE[3] },
-                    { id: 105, gradeId: "y2", className: "Year 2 Amber", teacher: "", color: CLASS_COLOR_PALETTE[4] },
-                    { id: 106, gradeId: "y2", className: "Year 2 Jade", teacher: "", color: CLASS_COLOR_PALETTE[5] }
-                ],
-                specialists: [
-                    { id: 301, name: "", kla: "", cycle: 1 } // Initial empty template
-                ],
-                activities: [
-                    { id: 201, name: "Assembly" },
-                    { id: 202, name: "Library" },
-                    // Amadeus runs in Years 3-6 in every school, so it can't be
-                    // renamed or removed (the name must match TEMPLATE!B21).
-                    { id: 203, name: "Amadeus - Tutorials", locked: true }
-                ]
-            });
+            const [data, setData] = useState(makeInitialData);
+            const dataRef = useRef(data);
+            dataRef.current = data;
 
             const [errors, setErrors] = useState({});
             const [expandedSummary, setExpandedSummary] = useState({ staff: true, specialists: true, activities: true });
             const logContainerRef = useRef(null);
+            const stepHeadingRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const [setupNotice, setSetupNotice] = useState(null); // { ok, text } after saving or loading a setup file
+            const [pasteFor, setPasteFor] = useState(null); // grade id with the paste box open
+            const [pasteText, setPasteText] = useState("");
+
+            // Drafts: the setup is saved for this user (saveDraft in Code.gs) a
+            // moment after each change, and offered back when the wizard opens.
+            const [draftOffer, setDraftOffer] = useState(null);
+            const [draftStatus, setDraftStatus] = useState("");
+            const draftsEnabled = useRef(false); // not until any saved draft has been offered
+            const hasServer = typeof google !== 'undefined' && google.script;
+            const initialJson = JSON.stringify(makeInitialData());
+
+            useEffect(() => {
+                if (!hasServer) return;
+                google.script.run
+                    .withSuccessHandler((json) => {
+                        let draft = null;
+                        try { draft = json ? JSON.parse(json) : null; } catch (e) { /* a damaged draft is ignored */ }
+                        // Only offered if nothing has been typed in the meantime.
+                        if (draft && draft.data && Array.isArray(draft.data.grades) && JSON.stringify(dataRef.current) === initialJson) {
+                            setDraftOffer(draft);
+                        } else {
+                            draftsEnabled.current = true;
+                        }
+                    })
+                    .withFailureHandler(() => { draftsEnabled.current = true; })
+                    .loadDraft();
+            }, []);
+
+            useEffect(() => {
+                if (!hasServer || !draftsEnabled.current || isGenerating || isSuccess) return;
+                if (JSON.stringify(data) === initialJson) return; // nothing worth keeping yet
+                const timer = setTimeout(() => {
+                    const draft = { savedAt: new Date().toISOString(), step: step, data: data };
+                    google.script.run
+                        .withSuccessHandler((saved) => {
+                            setDraftStatus(saved
+                                ? `Draft saved ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                                : "");
+                        })
+                        .withFailureHandler(() => setDraftStatus(""))
+                        .saveDraft(JSON.stringify(draft));
+                }, 1500);
+                return () => clearTimeout(timer);
+            }, [data, step]);
+
+            const resumeDraft = () => {
+                draftsEnabled.current = true;
+                setData(draftOffer.data);
+                setStep(Math.min(4, Math.max(1, Number(draftOffer.step) || 1)));
+                setErrors({});
+                setActiveGradeTab(null);
+                setDraftOffer(null);
+            };
+
+            const startNew = () => {
+                draftsEnabled.current = true;
+                setDraftOffer(null);
+                setData(makeInitialData());
+                setErrors({});
+                setStep(1);
+                setActiveGradeTab(null);
+                setIsSuccess(false);
+                setGeneratedUrl("");
+                setGenerationError("");
+                setSetupNotice(null);
+                setDraftStatus("");
+                if (hasServer) google.script.run.clearDraft();
+            };
+
+            // Each new step is announced: focus moves to its (visually hidden) heading.
+            const firstRender = useRef(true);
+            useEffect(() => {
+                if (firstRender.current) { firstRender.current = false; return; }
+                if (stepHeadingRef.current) stepHeadingRef.current.focus();
+            }, [step]);
 
             useEffect(() => {
                 let timerInterval = null;
@@ -395,6 +674,7 @@
                 });
                 // The error on the field being edited no longer applies.
                 setErrors(prev => {
+                    if (listKey === 'staffing' && prev.noClasses) prev = { ...prev, noClasses: undefined };
                     if (!prev[listKey]?.[index]?.[field]) return prev;
                     const listErrors = { ...prev[listKey], [index]: { ...prev[listKey][index], [field]: undefined } };
                     return { ...prev, [listKey]: listErrors };
@@ -484,31 +764,34 @@
                 let firstErrorGradeId = null;
                 let firstErrorStaffId = null;
 
-                // Only classes in grades that still have classes are generated.
+                // Only classes in grades that still have classes are generated,
+                // and rows left completely blank are skipped. A teacher can be
+                // left blank until they're known (the timetable shows TBC).
                 const activeGradeIds = data.grades.filter(g => g.classes > 0).map(g => g.id);
-                const activeStaffing = data.staffing.filter(s => activeGradeIds.includes(s.gradeId));
-                const duplicateClasses = findDuplicates(activeStaffing.map(s => s.className));
+                const classesToGenerate = getClassesToGenerate(data);
+                const duplicateClasses = findDuplicates(classesToGenerate.map(s => s.className));
                 const breakNames = data.breaks.map(b => b.name.trim().toLowerCase()).filter(Boolean);
+                if (!classesToGenerate.length) { currentErrors.noClasses = true; isValid = false; }
 
                 data.staffing.forEach((s, i) => {
                     currentErrors.staffing[i] = {};
-                    if (!activeGradeIds.includes(s.gradeId)) return;
+                    if (!activeGradeIds.includes(s.gradeId) || isBlankClass(s)) return;
                     const key = s.className.trim().toLowerCase();
                     const nameError = getNameError(s.className, true)
                         || (duplicateClasses.has(key) ? "Duplicate name" : "")
                         || (breakNames.includes(key) ? "Same as a break" : "");
                     if (nameError) { currentErrors.staffing[i].className = nameError; isValid = false; }
-                    if (!s.teacher.trim()) { currentErrors.staffing[i].teacher = "Required"; isValid = false; }
-                    else if (s.teacher.trim().startsWith('=')) { currentErrors.staffing[i].teacher = "Can't start with ="; isValid = false; }
+                    if (s.teacher.trim().startsWith('=')) { currentErrors.staffing[i].teacher = "Can't start with ="; isValid = false; }
                     if (Object.keys(currentErrors.staffing[i]).length && !firstErrorGradeId) {
                         firstErrorGradeId = s.gradeId;
                         firstErrorStaffId = s.id;
                     }
                 });
 
-                const duplicateSpecialists = findDuplicates(data.specialists.map(s => s.name));
+                const duplicateSpecialists = findDuplicates(getSpecialistsToGenerate(data).map(s => s.name));
                 data.specialists.forEach((s, i) => {
                     currentErrors.specialists[i] = {};
+                    if (isBlankSpecialist(s)) return;
                     const nameError = getNameError(s.name, false)
                         || (duplicateSpecialists.has(s.name.trim().toLowerCase()) ? "Duplicate name" : "");
                     if (nameError) { currentErrors.specialists[i].name = nameError; isValid = false; }
@@ -518,8 +801,7 @@
 
                 data.activities.forEach((a, i) => {
                     currentErrors.activities[i] = {};
-                    if (!a.name.trim()) { currentErrors.activities[i].name = "Required"; isValid = false; }
-                    else if (a.name.trim().startsWith('=')) { currentErrors.activities[i].name = "Can't start with ="; isValid = false; }
+                    if (a.name.trim().startsWith('=')) { currentErrors.activities[i].name = "Can't start with ="; isValid = false; }
                 });
 
                 setErrors(currentErrors);
@@ -596,6 +878,144 @@
                 setStep(step - 1);
             };
 
+            // The summary's Edit links.
+            const goToStep = (target) => {
+                setGenerationError("");
+                setStep(target);
+            };
+
+            // Every problem on the current step, each linked to its field.
+            const listProblems = () => {
+                const items = [];
+                const add = (text, targetId, gradeId) => items.push({ text, targetId, gradeId });
+                if (step === 1) {
+                    if (errors.schoolName) add(`School name: ${errors.schoolName}`, 'school-name');
+                    if (errors.schoolStart) add(`School start time: ${errors.schoolStart}`, 'school-start');
+                    if (errors.schoolEnd) add(`School end time: ${errors.schoolEnd}`, 'school-end');
+                    data.breaks.forEach((b, i) => {
+                        const e = errors.breaks?.[i] || {};
+                        const label = b.name.trim() || `Break ${i + 1}`;
+                        if (e.name) add(`${label} name: ${e.name}`, `break-${b.id}-name`);
+                        if (e.start) add(`${label} start: ${e.start}`, `break-${b.id}-start`);
+                        if (e.end) add(`${label} end: ${e.end}`, `break-${b.id}-end`);
+                    });
+                }
+                if (step === 2) {
+                    data.grades.forEach((g, i) => {
+                        const e = errors.grades?.[i] || {};
+                        if (e.classes) add(`${g.name} classes: ${e.classes}`, `grade-${g.id}-classes`);
+                        if (e.cycle) add(`${g.name} cycle length: ${e.cycle}`, `grade-${g.id}-cycle`);
+                    });
+                }
+                if (step === 3) {
+                    if (errors.noClasses) add("Every class row is blank. Give at least one class a name.", null);
+                    data.grades.forEach(g => {
+                        data.staffing.forEach((s, i) => {
+                            if (s.gradeId !== g.id) return;
+                            const e = errors.staffing?.[i] || {};
+                            const position = data.staffing.filter(st => st.gradeId === g.id).indexOf(s) + 1;
+                            const label = `${g.name}, class ${position}${s.className.trim() ? ` (${s.className.trim()})` : ''}`;
+                            if (e.className) add(`${label} name: ${e.className}`, `class-${s.id}-name`, g.id);
+                            if (e.teacher) add(`${label} teacher: ${e.teacher}`, `class-${s.id}-teacher`, g.id);
+                        });
+                    });
+                    data.specialists.forEach((s, i) => {
+                        const e = errors.specialists?.[i] || {};
+                        const label = `Specialist ${i + 1}${s.name.trim() ? ` (${s.name.trim()})` : ''}`;
+                        if (e.name) add(`${label} name: ${e.name}`, `spec-${s.id}-name`);
+                        if (e.kla) add(`${label} KLA: ${e.kla}`, `spec-${s.id}-kla`);
+                        if (e.cycle) add(`${label} cycle length: ${e.cycle}`, `spec-${s.id}-cycle`);
+                    });
+                    data.activities.forEach((a, i) => {
+                        const e = errors.activities?.[i] || {};
+                        if (e.name) add(`Activity "${a.name.trim()}": ${e.name}`, `activity-${a.id}`);
+                    });
+                }
+                return items;
+            };
+
+            const goToProblem = (item) => {
+                if (item.gradeId) setActiveGradeTab(item.gradeId);
+                setTimeout(() => {
+                    const field = item.targetId && document.getElementById(item.targetId);
+                    if (!field) return;
+                    field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    field.focus({ preventScroll: true });
+                }, 50);
+            };
+
+            // Replaces a grade's classes with rows pasted from a spreadsheet.
+            const applyPaste = (gradeId, rows) => {
+                setData(prev => {
+                    const existing = prev.staffing.filter(s => s.gradeId === gradeId);
+                    const others = prev.staffing.filter(s => s.gradeId !== gradeId);
+                    const pasted = rows.map((row, i) => ({
+                        id: existing[i] ? existing[i].id : newId(),
+                        gradeId: gradeId,
+                        className: row.className,
+                        teacher: row.teacher,
+                        color: existing[i] ? existing[i].color : CLASS_COLOR_PALETTE[(others.length + i) % CLASS_COLOR_PALETTE.length]
+                    }));
+                    return {
+                        ...prev,
+                        grades: prev.grades.map(g => g.id === gradeId ? { ...g, classes: pasted.length } : g),
+                        staffing: others.concat(pasted)
+                    };
+                });
+                // Errors are kept by row position, which has changed.
+                setErrors(prev => ({ ...prev, staffing: {}, noClasses: undefined }));
+                setPasteFor(null);
+                setPasteText("");
+            };
+
+            // Setup files: the same name/value list the timetable keeps in its DATA tab.
+            const saveSetupFile = () => {
+                const file = {
+                    type: SETUP_FILE_TYPE,
+                    version: 1,
+                    savedAt: new Date().toISOString(),
+                    exportVariables: buildExportVariables(data)
+                };
+                const fileName = `${(data.schoolName.trim() || 'Timetable').replace(/[\\/:*?"<>|]/g, '')} - timetable setup.json`;
+                const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                setSetupNotice({ ok: true, text: `Saved "${fileName}" to your downloads. Use "Load a saved setup" to start from it again, for example next year.` });
+            };
+
+            const loadSetupFile = (event) => {
+                const file = event.target.files && event.target.files[0];
+                event.target.value = ""; // so the same file can be chosen again
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const parsed = JSON.parse(reader.result);
+                        if (!parsed || !Array.isArray(parsed.exportVariables)) throw new Error('Not a setup file');
+                        const loaded = setupFromVariables(parsed.exportVariables);
+                        setData(loaded);
+                        setErrors({});
+                        setGenerationError("");
+                        setActiveGradeTab(null);
+                        setStep(1);
+                        const classCount = getClassesToGenerate(loaded).length;
+                        const specialistCount = loaded.specialists.length;
+                        setSetupNotice({ ok: true, text: `Loaded the setup${loaded.schoolName ? ` for ${loaded.schoolName}` : ''}: ` +
+                            `${classCount} ${classCount === 1 ? 'class' : 'classes'} and ${specialistCount} ${specialistCount === 1 ? 'specialist' : 'specialists'}. ` +
+                            `Check each step before generating.` });
+                    } catch (e) {
+                        setSetupNotice({ ok: false, text: `"${file.name}" isn't a timetable setup file. Choose a file saved with "Save setup to a file".` });
+                    }
+                };
+                reader.onerror = () => setSetupNotice({ ok: false, text: `"${file.name}" couldn't be read.` });
+                reader.readAsText(file);
+            };
+
             // Message for a failed generateTimetable call. The server already
             // words its own errors; a timeout comes from Google instead.
             const describeFailure = (error) => {
@@ -624,44 +1044,7 @@
                     percent: 5
                 }]);
 
-                // Build variables
-                const exportVariables = [];
-                exportVariables.push({ name: 'SchoolName', value: data.schoolName.trim() });
-                exportVariables.push({ name: 'SchoolStart', value: data.schoolStart });
-                exportVariables.push({ name: 'SchoolEnd', value: data.schoolEnd });
-
-                data.breaks.forEach((b, i) => {
-                    exportVariables.push({ name: `Break_${i+1}_Name`, value: b.name });
-                    exportVariables.push({ name: `Break_${i+1}_Start`, value: b.start });
-                    exportVariables.push({ name: `Break_${i+1}_End`, value: b.end });
-                });
-
-                data.klas.forEach((k, i) => {
-                    exportVariables.push({ name: `KLA_${i+1}_Name`, value: k.name });
-                });
-
-                data.specialists.forEach((s, i) => {
-                    exportVariables.push({ name: `Specialist_${i+1}_Name`, value: s.name });
-                    exportVariables.push({ name: `Specialist_${i+1}_KLA`, value: s.kla });
-                    exportVariables.push({ name: `Specialist_${i+1}_Cycle`, value: s.cycle || 1 });
-                });
-
-                let classCounter = 1;
-                data.grades.forEach((g) => {
-                    const staff = data.staffing.filter(s => s.gradeId === g.id);
-                    staff.forEach((s) => {
-                        exportVariables.push({ name: `Class_${classCounter}_Name`, value: s.className });
-                        exportVariables.push({ name: `Class_${classCounter}_Teacher`, value: s.teacher });
-                        exportVariables.push({ name: `Class_${classCounter}_Grade`, value: g.name });
-                        exportVariables.push({ name: `Class_${classCounter}_Cycle`, value: g.cycle });
-                        exportVariables.push({ name: `Class_${classCounter}_Color`, value: s.color || '' });
-                        classCounter++;
-                    });
-                });
-
-                data.activities.forEach((a, i) => {
-                    exportVariables.push({ name: `Activity_${i+1}_Name`, value: a.name });
-                });
+                const exportVariables = buildExportVariables(data);
 
                 const payloadToSubmit = {
                     jobId: jobId,
@@ -672,6 +1055,9 @@
                 if (typeof google !== 'undefined' && google.script) {
                     google.script.run
                         .withSuccessHandler((url) => {
+                            // The setup is in the timetable now; nothing to resume.
+                            google.script.run.clearDraft();
+                            setDraftStatus("");
                             setLoadingProgress(100);
                             setLoadingMessage("Finalizing spreadsheet setup...");
                             setLogs(prev => [...prev, {
@@ -777,8 +1163,8 @@
                             <p className="text-sm text-slate-500 mt-1">Used in the timetable's file name.</p>
                         </div>
                         <div className="space-y-2">
-                            <Label>School Name</Label>
-                            <Input placeholder="e.g. St Mary's Primary" value={data.schoolName} onChange={(e) => updateField('schoolName', e.target.value)} error={errors.schoolName} />
+                            <Label htmlFor="school-name">School Name</Label>
+                            <Input id="school-name" placeholder="e.g. St Mary's Primary" value={data.schoolName} onChange={(e) => updateField('schoolName', e.target.value)} error={errors.schoolName} />
                         </div>
                     </div>
 
@@ -790,12 +1176,12 @@
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>School Start Time</Label>
-                                <Input type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
+                                <Label htmlFor="school-start">School Start Time</Label>
+                                <Input id="school-start" type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
                             </div>
                             <div className="space-y-2">
-                                <Label>School End Time</Label>
-                                <Input type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
+                                <Label htmlFor="school-end">School End Time</Label>
+                                <Input id="school-end" type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
                             </div>
                         </div>
                     </div>
@@ -826,17 +1212,17 @@
                                     return (
                                     <div key={b.id} className="flex flex-col sm:flex-row items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg animate-pop">
                                         <div className="w-full sm:w-1/4 lg:w-1/3">
-                                            <Label className="text-xs mb-1 block">Break Name</Label>
-                                            <Input id={`input-${b.id}`} placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
+                                            <Label htmlFor={`break-${b.id}-name`} className="text-xs mb-1 block">Break Name</Label>
+                                            <Input id={`break-${b.id}-name`} placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
                                         </div>
                                         <div className="flex gap-3 w-full sm:w-auto sm:flex-1 items-end">
                                             <div className="flex-1 sm:w-28">
-                                                <Label className="text-xs mb-1 block">Start</Label>
-                                                <Input type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
+                                                <Label htmlFor={`break-${b.id}-start`} className="text-xs mb-1 block">Start</Label>
+                                                <Input id={`break-${b.id}-start`} type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
                                             </div>
                                             <div className="flex-1 sm:w-28 relative">
-                                                <Label className="text-xs mb-1 block">End</Label>
-                                                <Input type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
+                                                <Label htmlFor={`break-${b.id}-end`} className="text-xs mb-1 block">End</Label>
+                                                <Input id={`break-${b.id}-end`} type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
                                             </div>
                                             <div className="flex items-center">
                                                 <div className="h-10 px-3 flex items-center justify-center bg-slate-200/50 border border-slate-200 text-slate-600 text-xs font-bold rounded-md whitespace-nowrap min-w-[72px]">
@@ -844,7 +1230,7 @@
                                                 </div>
                                             </div>
                                             <div>
-                                                <Button variant="bin" className="px-2 h-10 w-10 shadow-sm shrink-0" onClick={() => removeFromList('breaks', b.id)}>
+                                                <Button variant="bin" className="px-2 h-10 w-10 shadow-sm shrink-0" onClick={() => removeFromList('breaks', b.id)} aria-label={`Remove ${b.name.trim() || 'this break'}`}>
                                                     <TrashIcon />
                                                 </Button>
                                             </div>
@@ -895,15 +1281,15 @@
                                         </div>
                                     </div>
                                     <div className="w-full sm:w-24">
-                                        <Label className="text-xs mb-1 block">Total Classes</Label>
-                                        <Input type="number" min="0" step="1" value={g.classes} onChange={(e) => {
+                                        <Label htmlFor={`grade-${g.id}-classes`} className="text-xs mb-1 block">Total Classes</Label>
+                                        <Input id={`grade-${g.id}-classes`} type="number" min="0" step="1" value={g.classes} onChange={(e) => {
                                             const val = parseInt(e.target.value, 10);
                                             updateList('grades', i, 'classes', isNaN(val) ? 0 : Math.max(0, val));
                                         }} error={errors.grades?.[i]?.classes} />
                                     </div>
                                     <div className="w-full sm:w-40">
-                                        <Label className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
-                                        <Input type="number" min="1" max={MAX_CYCLE_WEEKS} step="1" value={g.cycle} onChange={(e) => {
+                                        <Label htmlFor={`grade-${g.id}-cycle`} className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
+                                        <Input id={`grade-${g.id}-cycle`} type="number" min="1" max={MAX_CYCLE_WEEKS} step="1" value={g.cycle} onChange={(e) => {
                                             const val = parseInt(e.target.value, 10);
                                             updateList('grades', i, 'cycle', isNaN(val) ? 1 : Math.min(MAX_CYCLE_WEEKS, Math.max(1, val)));
                                         }} error={errors.grades?.[i]?.cycle} disabled={isInactive} />
@@ -911,11 +1297,11 @@
                                     <div className="w-full sm:w-auto">
                                         <Label className="text-xs mb-1 block">&nbsp;</Label>
                                         {isInactive ? (
-                                            <Button variant="outline" className="px-3 h-10 w-full sm:w-auto shadow-sm text-slate-600 border-slate-300 hover:bg-slate-100 hover:text-slate-900" onClick={() => updateList('grades', i, 'classes', 1)}>
+                                            <Button variant="outline" className="px-3 h-10 w-full sm:w-auto shadow-sm text-slate-600 border-slate-300 hover:bg-slate-100 hover:text-slate-900" onClick={() => updateList('grades', i, 'classes', 1)} aria-label={`Add ${g.name} classes`}>
                                                 <PlusIcon className="w-4 h-4 mr-1" /> Add
                                             </Button>
                                         ) : (
-                                            <Button variant="bin" className="px-2 h-10 w-full sm:w-10 shadow-sm" onClick={() => updateList('grades', i, 'classes', 0)}>
+                                            <Button variant="bin" className="px-2 h-10 w-full sm:w-10 shadow-sm" onClick={() => updateList('grades', i, 'classes', 0)} aria-label={`No ${g.name} classes`}>
                                                 <TrashIcon />
                                             </Button>
                                         )}
@@ -929,14 +1315,31 @@
 
             const renderStep3 = () => {
                 // A class needs attention if it has an error from the last check,
-                // or its name or teacher is still blank.
+                // or a teacher but no name. Blank rows are skipped; a blank
+                // teacher is fine (TBC).
                 const classNeedsAttention = (s) => {
+                    if (isBlankClass(s)) return false;
                     const globalIdx = data.staffing.findIndex(st => st.id === s.id);
                     const rowErrors = errors.staffing?.[globalIdx] || {};
-                    return Object.values(rowErrors).some(Boolean) || !s.className.trim() || !s.teacher.trim();
+                    return Object.values(rowErrors).some(Boolean) || !s.className.trim();
                 };
                 const countNeedingAttention = (gradeId) =>
                     data.staffing.filter(s => s.gradeId === gradeId && classNeedsAttention(s)).length;
+                const countClasses = (gradeId) =>
+                    data.staffing.filter(s => s.gradeId === gradeId && !isBlankClass(s)).length;
+                const cycleMismatches = findCycleMismatches(data);
+
+                // Arrow keys, Home and End move between the grade tabs.
+                const tabIds = data.grades.filter(g => g.classes > 0).map(g => g.id);
+                const onTabKeyDown = (e) => {
+                    const index = tabIds.indexOf(currentTabId);
+                    const next = { ArrowRight: tabIds[(index + 1) % tabIds.length], ArrowLeft: tabIds[(index - 1 + tabIds.length) % tabIds.length],
+                        Home: tabIds[0], End: tabIds[tabIds.length - 1] }[e.key];
+                    if (!next) return;
+                    e.preventDefault();
+                    setActiveGradeTab(next);
+                    setTimeout(() => { const tab = document.getElementById(`grade-tab-${next}`); if (tab) tab.focus(); }, 0);
+                };
 
                 const gradesWithClasses = data.grades.filter(g => g.classes > 0);
                 const currentTabId = activeGradeTab && gradesWithClasses.some(g => g.id === activeGradeTab)
@@ -949,7 +1352,7 @@
                         <div>
                             <div className="mb-4">
                                 <h4 className="text-base font-semibold flex items-center gap-2"><UsersIcon className="w-5 h-5 text-brand-dark" /> Teacher Assignments</h4>
-                                <p className="text-sm text-slate-500 mt-1">Name your class partitions and assign teachers. The number of rows is set by Step 2.</p>
+                                <p className="text-sm text-slate-500 mt-1">Name each class and add its teacher. The number of rows is set by Step 2. Leave a teacher blank if they aren't known yet (the timetable shows TBC); rows left completely blank are skipped.</p>
                             </div>
 
                             {gradesWithClasses.length === 0 ? (
@@ -961,15 +1364,18 @@
                              ) : (
                                 <div className="border border-slate-200 rounded-lg bg-white overflow-hidden shadow-sm">
                                     {/* Tabs Header */}
-                                    <div role="tablist" className="flex overflow-x-auto border-b border-slate-200 custom-scrollbar bg-slate-50/50 pt-2 px-2 gap-1">
+                                    <div role="tablist" aria-label="Grades" onKeyDown={onTabKeyDown} className="flex overflow-x-auto border-b border-slate-200 custom-scrollbar bg-slate-50/50 pt-2 px-2 gap-1">
                                         {gradesWithClasses.map(g => {
                                             const attentionCount = countNeedingAttention(g.id);
                                             const isActive = currentTabId === g.id;
                                             return (
                                                 <button
                                                     key={g.id}
+                                                    type="button"
+                                                    id={`grade-tab-${g.id}`}
                                                     role="tab"
                                                     aria-selected={isActive}
+                                                    aria-controls={`grade-panel-${g.id}`}
                                                     tabIndex={isActive ? 0 : -1}
                                                     onClick={() => setActiveGradeTab(g.id)}
                                                     className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap rounded-t-md focus-visible:outline-none focus-visible:bg-slate-100 ${
@@ -979,13 +1385,13 @@
                                                     }`}
                                                 >
                                                     {g.name}
-                                                    <span className="text-[11px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded">{g.classes}</span>
+                                                    <span className="text-[11px] font-semibold text-slate-600 bg-slate-200/70 px-1.5 py-0.5 rounded"><span className="sr-only">, </span>{countClasses(g.id)}<span className="sr-only"> classes</span></span>
                                                     {attentionCount === 0 ? (
-                                                        <CheckCircleIcon className="w-4 h-4 text-brand-dark" />
+                                                        <CheckCircleIcon className="w-4 h-4 text-brand-dark" aria-hidden="true" />
                                                     ) : (
-                                                        <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded" title={`${attentionCount} ${attentionCount === 1 ? 'class needs' : 'classes need'} attention`}>
-                                                            <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-500" />
-                                                            {attentionCount} to fix
+                                                        <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded" title={`${attentionCount} ${attentionCount === 1 ? 'class needs' : 'classes need'} attention`}>
+                                                            <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-600" aria-hidden="true" />
+                                                            <span className="sr-only">, </span>{attentionCount} to fix
                                                         </span>
                                                     )}
                                                 </button>
@@ -999,31 +1405,68 @@
                                         {gradesWithClasses.filter(g => g.id === currentTabId).map((g) => {
                                             const staffForGrade = data.staffing.filter(s => s.gradeId === g.id);
                                             const attentionCount = countNeedingAttention(g.id);
+                                            const classCount = countClasses(g.id);
+                                            const pasted = pasteFor === g.id ? parsePastedClasses(pasteText) : [];
                                             return (
-                                                <div key={g.id} className="space-y-4 animate-pop">
-                                                    <div className="flex items-center justify-between pb-2">
+                                                <div key={g.id} id={`grade-panel-${g.id}`} role="tabpanel" aria-labelledby={`grade-tab-${g.id}`} className="space-y-4 animate-pop">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
                                                         <span className="font-semibold text-slate-800 text-base">Classes for {g.name}</span>
-                                                        <span className={`text-[11px] font-bold px-2 py-1 rounded tracking-wide ${attentionCount ? 'text-amber-800 bg-amber-100' : 'text-slate-500 bg-slate-100'}`}>
-                                                            {g.classes} {g.classes === 1 ? 'class' : 'classes'}
-                                                            {attentionCount > 0 && ` · ${attentionCount} ${attentionCount === 1 ? 'needs' : 'need'} attention`}
-                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-[11px] font-bold px-2 py-1 rounded tracking-wide ${attentionCount ? 'text-amber-800 bg-amber-100' : 'text-slate-600 bg-slate-100'}`}>
+                                                                {classCount} {classCount === 1 ? 'class' : 'classes'}
+                                                                {attentionCount > 0 && ` · ${attentionCount} ${attentionCount === 1 ? 'needs' : 'need'} attention`}
+                                                            </span>
+                                                            <Button variant="outline" className="h-8 px-3 text-xs" aria-expanded={pasteFor === g.id}
+                                                                onClick={() => { setPasteFor(pasteFor === g.id ? null : g.id); setPasteText(""); }}>
+                                                                Paste from a spreadsheet
+                                                            </Button>
+                                                        </div>
                                                     </div>
+
+                                                    {pasteFor === g.id && (
+                                                        <div className="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2 animate-pop">
+                                                            <Label htmlFor={`paste-${g.id}`}>Paste class names and teachers</Label>
+                                                            <p id={`paste-${g.id}-help`} className="text-xs text-slate-600">
+                                                                In your spreadsheet, select two columns (class name, then teacher), copy, and paste here: one class per line.
+                                                                This replaces the {g.name} classes below.
+                                                            </p>
+                                                            <textarea
+                                                                id={`paste-${g.id}`}
+                                                                aria-describedby={`paste-${g.id}-help`}
+                                                                rows={6}
+                                                                value={pasteText}
+                                                                onChange={(e) => setPasteText(e.target.value)}
+                                                                placeholder={"3 Blue\tMs Lee\n3 Gold\tMr Tran"}
+                                                                className="w-full rounded-md border border-slate-200 bg-white p-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
+                                                            />
+                                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                                                <span className="text-xs text-slate-600 mr-auto" aria-live="polite">
+                                                                    {pasted.length ? `Found ${pasted.length} ${pasted.length === 1 ? 'class' : 'classes'}: ${pasted.slice(0, 3).map(row => row.className || '(no name)').join(', ')}${pasted.length > 3 ? ', ...' : ''}` : ''}
+                                                                </span>
+                                                                <Button variant="outline" className="h-9" onClick={() => { setPasteFor(null); setPasteText(""); }}>Cancel</Button>
+                                                                <Button variant="brand" className="h-9" disabled={!pasted.length} onClick={() => applyPaste(g.id, pasted)}>
+                                                                    {pasted.length ? `Use these ${pasted.length} ${pasted.length === 1 ? 'class' : 'classes'}` : 'Paste some rows first'}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     {staffForGrade.map((s, idx) => {
                                                         const globalIdx = data.staffing.findIndex(st => st.id === s.id);
                                                         const hasError = Object.values(errors.staffing?.[globalIdx] || {}).some(Boolean);
+                                                        const isBlank = isBlankClass(s);
                                                         return (
                                                             <div key={s.id} id={`class-row-${s.id}`} className={`flex flex-col sm:flex-row items-start gap-3 p-3 rounded-lg border transition-colors ${hasError ? 'bg-red-50/60 border-red-300' : 'bg-slate-50 border-slate-100'}`}>
-                                                                <div className="flex items-center justify-center bg-slate-200 text-slate-500 w-6 h-6 rounded-full text-xs font-bold sm:mt-[26px] mb-1 sm:mb-0 shrink-0">
+                                                                <div className="flex items-center justify-center bg-slate-200 text-slate-600 w-6 h-6 rounded-full text-xs font-bold sm:mt-[26px] mb-1 sm:mb-0 shrink-0" aria-hidden="true">
                                                                     {idx + 1}
                                                                 </div>
                                                                 <div className="flex-1 w-full">
-                                                                    <Label className="text-xs mb-1 block">Class Name</Label>
-                                                                    <Input placeholder="e.g. 8 Blue" value={s.className} onChange={(e) => updateList('staffing', globalIdx, 'className', e.target.value)} error={errors.staffing?.[globalIdx]?.className} />
+                                                                    <Label htmlFor={`class-${s.id}-name`} className="text-xs mb-1 block">Class Name</Label>
+                                                                    <Input id={`class-${s.id}-name`} placeholder="e.g. 3 Blue" value={s.className} onChange={(e) => updateList('staffing', globalIdx, 'className', e.target.value)} error={errors.staffing?.[globalIdx]?.className} />
                                                                 </div>
                                                                 <div className="flex-1 w-full">
-                                                                    <Label className="text-xs mb-1 block">Assigned Teacher</Label>
-                                                                    <Input placeholder="Teacher Name" value={s.teacher} onChange={(e) => updateList('staffing', globalIdx, 'teacher', e.target.value)} error={errors.staffing?.[globalIdx]?.teacher} />
+                                                                    <Label htmlFor={`class-${s.id}-teacher`} className="text-xs mb-1 block">Assigned Teacher</Label>
+                                                                    <Input id={`class-${s.id}-teacher`} placeholder={isBlank ? "Blank row: skipped" : "TBC"} value={s.teacher} onChange={(e) => updateList('staffing', globalIdx, 'teacher', e.target.value)} error={errors.staffing?.[globalIdx]?.teacher} />
                                                                 </div>
                                                                 <div className="w-full sm:w-auto">
                                                                     <Label className="text-xs mb-1 block">&nbsp;</Label>
@@ -1031,16 +1474,21 @@
                                                                         ref={(el) => { colorTriggerRefs.current[s.id] = el; }}
                                                                         type="button"
                                                                         onClick={() => setColorPickerFor(prev => prev === s.id ? null : s.id)}
+                                                                        aria-label={`Colour for ${s.className.trim() || `class ${idx + 1}`}`}
+                                                                        aria-haspopup="dialog"
+                                                                        aria-expanded={colorPickerFor === s.id}
                                                                         title="Choose class colour"
                                                                         className="group relative w-10 h-10 rounded-md border border-black/10 shadow-sm cursor-pointer transition-transform hover:scale-105"
                                                                         style={{ backgroundColor: s.color || CLASS_COLOR_PALETTE[0] }}
                                                                     >
-                                                                        <PencilIcon className="w-4 h-4 text-white absolute inset-0 m-auto opacity-0 group-hover:opacity-100 transition-opacity duration-150" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.5))' }} />
+                                                                        <PencilIcon aria-hidden="true" className="w-4 h-4 text-white absolute inset-0 m-auto opacity-0 group-hover:opacity-100 transition-opacity duration-150" style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.5))' }} />
                                                                     </button>
                                                                     {colorPickerFor === s.id && ReactDOM.createPortal(
                                                                         <React.Fragment>
                                                                             <div className="fixed inset-0 z-40" onClick={() => setColorPickerFor(null)} />
                                                                             <div
+                                                                                role="dialog"
+                                                                                aria-label={`Colour for ${s.className.trim() || `class ${idx + 1}`}`}
                                                                                 className="fixed z-50 p-2.5 bg-white border border-slate-200 rounded-lg shadow-xl animate-pop w-[152px]"
                                                                                 style={{ top: colorPickerPos.top, left: colorPickerPos.left }}
                                                                             >
@@ -1051,6 +1499,8 @@
                                                                                             type="button"
                                                                                             onClick={() => { updateList('staffing', globalIdx, 'color', hex); setColorPickerFor(null); }}
                                                                                             title={hex}
+                                                                                            aria-label={`Colour ${hex}`}
+                                                                                            aria-pressed={s.color === hex}
                                                                                             className={`w-5 h-5 rounded-sm border transition-all ${s.color === hex ? 'ring-2 ring-offset-1 ring-slate-400 border-white' : 'border-black/10 hover:scale-110'}`}
                                                                                             style={{ backgroundColor: hex }}
                                                                                         />
@@ -1066,6 +1516,7 @@
                                                                                         <input
                                                                                             id={`custom-color-${s.id}`}
                                                                                             type="color"
+                                                                                            aria-label="Custom colour"
                                                                                             value={s.color || CLASS_COLOR_PALETTE[0]}
                                                                                             onChange={(e) => { updateList('staffing', globalIdx, 'color', e.target.value); setColorPickerFor(null); }}
                                                                                             className="absolute w-0 h-0 opacity-0"
@@ -1077,6 +1528,7 @@
                                                                         document.body
                                                                     )}
                                                                 </div>
+                                                                {isBlank && <span className="text-xs italic text-slate-600 sm:self-center sm:mt-5">Blank: skipped</span>}
                                                             </div>
                                                         )
                                                     })}
@@ -1093,7 +1545,7 @@
                             <div className="flex items-center justify-between mb-4">
                                 <div>
                                     <h4 className="text-base font-semibold flex items-center gap-2"><StarIcon className="w-5 h-5 text-brand-dark" /> Specialist Profiles</h4>
-                                    <p className="text-sm text-slate-500 mt-1">Add specialist teachers and assign them to a KLA.</p>
+                                    <p className="text-sm text-slate-500 mt-1">Add specialist teachers and assign them to a KLA. Rows left blank are skipped.</p>
                                 </div>
                                 <Button variant="brand" size="sm" onClick={() => addToList('specialists', { name: "", kla: "", cycle: 1 })} className="h-8 gap-1">
                                     <PlusIcon className="w-4 h-4 mr-1" /> Add Specialist
@@ -1108,14 +1560,15 @@
                                     </div>
                                 ) : (
                                     data.specialists.map((s, i) => (
-                                        <div key={s.id} className="flex flex-col sm:flex-row items-start gap-2 animate-pop bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                        <div key={s.id} className="animate-pop bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-2">
+                                        <div className="flex flex-col sm:flex-row items-start gap-2">
                                             <div className="w-full sm:flex-1">
-                                                <Label className="text-xs mb-1 block">Specialist Name</Label>
-                                                <Input placeholder="e.g. Mr. Smith" value={s.name} onChange={(e) => updateList('specialists', i, 'name', e.target.value)} error={errors.specialists?.[i]?.name} />
+                                                <Label htmlFor={`spec-${s.id}-name`} className="text-xs mb-1 block">Specialist Name</Label>
+                                                <Input id={`spec-${s.id}-name`} placeholder="e.g. Mr. Smith" value={s.name} onChange={(e) => updateList('specialists', i, 'name', e.target.value)} error={errors.specialists?.[i]?.name} />
                                             </div>
                                             <div className="w-full sm:flex-1">
-                                                <Label className="text-xs mb-1 block">Assigned KLA</Label>
-                                                <Select value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
+                                                <Label htmlFor={`spec-${s.id}-kla`} className="text-xs mb-1 block">Assigned KLA</Label>
+                                                <Select id={`spec-${s.id}-kla`} value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
                                                     <option value="">Select KLA...</option>
                                                     {data.klas.filter(k => k.name.trim() && !/^non[- ]?curricul(?:ar|um)$/i.test(k.name.trim())).map(k => (
                                                         <option key={k.id} value={k.name}>{k.name}</option>
@@ -1123,18 +1576,25 @@
                                                 </Select>
                                             </div>
                                             <div className="w-full sm:w-40">
-                                                <Label className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
-                                                <Input type="number" min="1" max={MAX_CYCLE_WEEKS} step="1" value={s.cycle} onChange={(e) => {
+                                                <Label htmlFor={`spec-${s.id}-cycle`} className="text-xs mb-1 block">Cycle Length (Weeks)</Label>
+                                                <Input id={`spec-${s.id}-cycle`} type="number" min="1" max={MAX_CYCLE_WEEKS} step="1" value={s.cycle} onChange={(e) => {
                                                     const val = parseInt(e.target.value, 10);
                                                     updateList('specialists', i, 'cycle', isNaN(val) ? 1 : Math.min(MAX_CYCLE_WEEKS, Math.max(1, val)));
                                                 }} error={errors.specialists?.[i]?.cycle} />
                                             </div>
                                             <div className="w-full sm:w-auto">
                                                 <Label className="text-xs mb-1 block">&nbsp;</Label>
-                                                <Button variant="bin" className="px-2 shadow-sm w-full sm:w-10 h-10" onClick={() => removeFromList('specialists', s.id)}>
+                                                <Button variant="bin" className="px-2 shadow-sm w-full sm:w-10 h-10" onClick={() => removeFromList('specialists', s.id)} aria-label={`Remove ${s.name.trim() || 'this specialist'}`}>
                                                     <TrashIcon />
                                                 </Button>
                                             </div>
+                                        </div>
+                                        {cycleMismatches[s.id] && (
+                                            <p className="flex items-start gap-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                                                <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                                                <span>{describeCycleMismatch(s, cycleMismatches[s.id])}</span>
+                                            </p>
+                                        )}
                                         </div>
                                     ))
                                 )}
@@ -1163,9 +1623,9 @@
                                     data.activities.map((a, i) => (
                                         <div key={a.id} className="flex items-center gap-2 animate-pop">
                                             <div className="flex-1">
-                                                <Input id={`input-${a.id}`} placeholder="Activity Name (e.g. Debate Club)" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} disabled={a.locked} title={a.locked ? "Required for Years 3-6" : undefined} />
+                                                <Input id={`activity-${a.id}`} aria-label="Activity name" placeholder="Activity Name (e.g. Debate Club)" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} disabled={a.locked} title={a.locked ? "Required for Years 3-6" : undefined} />
                                             </div>
-                                            <Button variant="bin" className="px-2 shadow-sm" onClick={() => removeFromList('activities', a.id)} disabled={a.locked}>
+                                            <Button variant="bin" className="px-2 shadow-sm" onClick={() => removeFromList('activities', a.id)} disabled={a.locked} aria-label={`Remove ${a.name.trim() || 'this activity'}`}>
                                                 <TrashIcon />
                                             </Button>
                                         </div>
@@ -1180,19 +1640,33 @@
             const renderStep4 = () => {
                 const weeklyTeachingMins = dailyTeachingMins * 5;
 
-                // Group staffing by grade
-                const expectedGroups = data.grades.filter(g => g.classes > 0).map(g => {
-                    const classList = data.staffing.filter(s => s.gradeId === g.id).map(s => ({
+                // Group staffing by grade (blank rows are skipped)
+                const classesToGenerate = getClassesToGenerate(data);
+                const expectedGroups = data.grades.filter(g => classesToGenerate.some(c => c.gradeId === g.id)).map(g => {
+                    const classList = classesToGenerate.filter(s => s.gradeId === g.id).map(s => ({
                         name: s.className,
-                        teacher: s.teacher || 'Unassigned',
+                        teacher: s.teacher.trim() || TEACHER_TBC,
                         color: s.color || CLASS_COLOR_PALETTE[0]
                     }));
                     return { grade: g.name, cycle: `${g.cycle} Week${g.cycle > 1 ? 's' : ''}`, classes: classList };
                 });
+                const specialists = getSpecialistsToGenerate(data);
+                const activities = data.activities.filter(a => a.name.trim());
+                const estimate = estimateGeneration(data);
+                const cycleMismatches = findCycleMismatches(data);
+                const tbcCount = classesToGenerate.filter(s => !s.teacher.trim()).length;
 
                 const toggleSummary = (key) => {
                     setExpandedSummary(prev => ({...prev, [key]: !prev[key]}));
                 };
+
+                // "Edit" beside a section heading, back to the step that sets it.
+                const renderEditLink = (target, what) => (
+                    <button type="button" onClick={() => goToStep(target)}
+                        className="text-xs font-semibold normal-case tracking-normal text-brand-dark hover:underline rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                        Edit<span className="sr-only"> {what}</span>
+                    </button>
+                );
 
                 return (
                     <div className="space-y-6 animate-step" key="step4">
@@ -1201,11 +1675,36 @@
                             <p className="text-base text-slate-500">Please review your configurations before generating the timetable template{data.schoolName.trim() ? <> for <strong className="text-slate-700">{data.schoolName.trim()}</strong></> : ''}.</p>
                         </div>
 
+                        {/* What will be made */}
+                        <div className="bg-brand-green/10 border border-brand-green/20 rounded-lg p-4 space-y-2">
+                            <p className="font-semibold text-slate-900">Ready to generate</p>
+                            <p className="text-sm text-slate-700">
+                                <strong>{estimate.classTabs}</strong> class {estimate.classTabs === 1 ? 'tab' : 'tabs'} and <strong>{estimate.specialistTabs}</strong> specialist {estimate.specialistTabs === 1 ? 'tab' : 'tabs'},
+                                plus Start here, DATA and OVERVIEW. Generating takes <strong>{estimate.text}</strong>.
+                            </p>
+                            {tbcCount > 0 && (
+                                <p className="text-sm text-slate-700">{tbcCount} {tbcCount === 1 ? 'class has' : 'classes have'} no teacher yet and will show TBC. Teachers can be added on each class tab later.</p>
+                            )}
+                            {Object.keys(cycleMismatches).length > 0 && (
+                                <div className="flex items-start gap-1.5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                                    <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                                    <div className="space-y-1">
+                                        {specialists.filter(s => cycleMismatches[s.id]).map(s => (
+                                            <p key={s.id}>{describeCycleMismatch(s, cycleMismatches[s.id])}</p>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="max-h-[calc(100vh-24rem)] overflow-y-auto custom-scrollbar p-1 -m-1 space-y-6">
 
                             {/* Core Schedule & Calculations */}
                             <div className="space-y-3">
-                                <h5 className="text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 flex items-center gap-2"><BellIcon className="w-4 h-4 text-slate-500" /> Core Schedule</h5>
+                                <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-1">
+                                    <h5 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2"><BellIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Core Schedule</h5>
+                                    {renderEditLink(1, 'school name, bell times and breaks')}
+                                </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
@@ -1268,16 +1767,23 @@
 
                             {/* Grouped Staffing by Grade */}
                             <div className="space-y-3 pt-2">
+                                <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
                                 <button
+                                    type="button"
                                     onClick={() => toggleSummary('staff')}
-                                    className="w-full flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 hover:text-brand-dark transition-colors"
+                                    aria-expanded={expandedSummary.staff}
+                                    aria-controls="summary-staff"
+                                    className="flex-1 flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider hover:text-brand-dark transition-colors"
                                 >
-                                    <span className="flex items-center gap-2"><LayersIcon className="w-4 h-4 text-slate-500" /> Classes & Staffing ({data.staffing.length} total)</span>
-                                    {expandedSummary.staff ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+                                    <span className="flex items-center gap-2"><LayersIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Classes & Staffing ({classesToGenerate.length} total)</span>
+                                    {expandedSummary.staff ? <ChevronUpIcon className="w-5 h-5 text-slate-500" aria-hidden="true" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" aria-hidden="true" />}
                                 </button>
+                                    {renderEditLink(2, 'grades and cycle lengths')}
+                                    {renderEditLink(3, 'classes and teachers')}
+                                </div>
 
                                 {expandedSummary.staff && (
-                                    <div className="space-y-4 animate-pop">
+                                    <div id="summary-staff" className="space-y-4 animate-pop">
                                         {expectedGroups.map((group, idx) => (
                                             <div key={idx} className="bg-slate-50 rounded-lg border border-slate-200 shadow-sm overflow-hidden">
                                                 <div className="bg-slate-200/50 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
@@ -1287,10 +1793,10 @@
                                                 <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                                     {group.classes.map((cls, cIdx) => (
                                                         <div key={cIdx} className="bg-white border border-slate-200 p-2.5 rounded-md flex items-start gap-2 shadow-sm">
-                                                            <span className="w-3 h-3 rounded-full border border-slate-200 mt-1 shrink-0" style={{ backgroundColor: cls.color }} title={cls.color}></span>
+                                                            <span className="w-3 h-3 rounded-full border border-slate-200 mt-1 shrink-0" style={{ backgroundColor: cls.color }} title={cls.color} aria-hidden="true"></span>
                                                             <div className="flex flex-col">
-                                                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{cls.name || 'Unnamed Class'}</span>
-                                                                <span className={`text-sm font-medium ${cls.teacher === 'Unassigned' ? 'text-red-500 italic' : 'text-brand-dark'}`}>{cls.teacher}</span>
+                                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{cls.name || 'Unnamed Class'}</span>
+                                                                <span className={`text-sm font-medium ${cls.teacher === TEACHER_TBC ? 'text-amber-800 italic' : 'text-brand-dark'}`}>{cls.teacher}</span>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -1305,17 +1811,23 @@
 
                             {/* Specialists */}
                             <div className="space-y-3 pt-2">
+                                <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
                                 <button
+                                    type="button"
                                     onClick={() => toggleSummary('specialists')}
-                                    className="w-full flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 hover:text-brand-dark transition-colors"
+                                    aria-expanded={expandedSummary.specialists}
+                                    aria-controls="summary-specialists"
+                                    className="flex-1 flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider hover:text-brand-dark transition-colors"
                                 >
-                                    <span className="flex items-center gap-2"><StarIcon className="w-4 h-4 text-slate-500" /> Specialist Profiles ({data.specialists.length})</span>
-                                    {expandedSummary.specialists ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+                                    <span className="flex items-center gap-2"><StarIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Specialist Profiles ({specialists.length})</span>
+                                    {expandedSummary.specialists ? <ChevronUpIcon className="w-5 h-5 text-slate-500" aria-hidden="true" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" aria-hidden="true" />}
                                 </button>
+                                    {renderEditLink(3, 'specialists')}
+                                </div>
 
                                 {expandedSummary.specialists && (
-                                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
-                                        {data.specialists.filter(s => s.name).map(s => (
+                                    <ul id="summary-specialists" className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
+                                        {specialists.map(s => (
                                             <li key={s.id} className="bg-slate-50 p-2.5 rounded-md border border-slate-100 flex flex-col gap-1 shadow-sm">
                                                 <span className="font-semibold text-slate-900">{s.name}</span>
                                                 <div className="flex items-center gap-2 flex-wrap">
@@ -1324,29 +1836,35 @@
                                                 </div>
                                             </li>
                                         ))}
-                                        {data.specialists.filter(s => s.name).length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
+                                        {specialists.length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
                                     </ul>
                                 )}
                             </div>
 
                             {/* Activities */}
                             <div className="space-y-3 pt-2">
+                                <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
                                 <button
+                                    type="button"
                                     onClick={() => toggleSummary('activities')}
-                                    className="w-full flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-1 hover:text-brand-dark transition-colors"
+                                    aria-expanded={expandedSummary.activities}
+                                    aria-controls="summary-activities"
+                                    className="flex-1 flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider hover:text-brand-dark transition-colors"
                                 >
-                                    <span className="flex items-center gap-2"><ActivityIcon className="w-4 h-4 text-slate-500" /> Extra-Curriculars ({data.activities.length})</span>
-                                    {expandedSummary.activities ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+                                    <span className="flex items-center gap-2"><ActivityIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Extra-Curriculars ({activities.length})</span>
+                                    {expandedSummary.activities ? <ChevronUpIcon className="w-5 h-5 text-slate-500" aria-hidden="true" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" aria-hidden="true" />}
                                 </button>
+                                    {renderEditLink(3, 'extra-curricular activities')}
+                                </div>
 
                                 {expandedSummary.activities && (
-                                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
-                                        {data.activities.filter(a => a.name).map(a => (
+                                    <ul id="summary-activities" className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
+                                        {activities.map(a => (
                                             <li key={a.id} className="bg-slate-50 p-2.5 rounded-md border border-slate-100 flex items-center gap-2 shadow-sm">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>{a.name}
+                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" aria-hidden="true"></span>{a.name}
                                             </li>
                                         ))}
-                                        {data.activities.filter(a => a.name).length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
+                                        {activities.length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
                                     </ul>
                                 )}
                             </div>
@@ -1404,13 +1922,14 @@
                                         <span className="uppercase tracking-wider text-slate-500">Total Completion</span>
                                         <span className="text-brand-dark font-mono text-sm">{loadingProgress}%</span>
                                     </div>
-                                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200"
+                                        role="progressbar" aria-label="Timetable generation" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadingProgress}>
                                         <div
                                             className="bg-brand-dark h-full rounded-full transition-all duration-500 ease-out"
                                             style={{ width: `${loadingProgress}%` }}
                                         ></div>
                                     </div>
-                                    <div className="flex items-center gap-2 pt-1 text-xs font-semibold text-slate-800 animate-pulse">
+                                    <div className="flex items-center gap-2 pt-1 text-xs font-semibold text-slate-800 animate-pulse" aria-live="polite">
                                         <span className="w-2 h-2 rounded-full bg-brand-green"></span>
                                         <span>Current Action: <span className="font-normal text-slate-600">{loadingMessage || 'Processing...'}</span></span>
                                     </div>
@@ -1446,7 +1965,7 @@
                                 <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-lg flex items-start gap-3 text-xs text-amber-900">
                                     <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                                     <p className="leading-relaxed">
-                                        Creating multi-week timetable structures and copying templates takes up to 1-2 minutes depending on class count. <strong>Please keep this window open</strong> while Google Apps Script sets up your spreadsheet.
+                                        For this school, generating takes {estimateGeneration(data).text}. <strong>Please keep this window open</strong> while Google Apps Script sets up your spreadsheet.
                                     </p>
                                 </div>
                             </CardContent>
@@ -1464,37 +1983,96 @@
                                 <p className="text-base text-slate-500 mb-10 max-w-md">Your timetable has been created and saved in the <strong>Timetables</strong> folder in your My Drive.</p>
 
                                 <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
-                                    <a href={generatedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-base font-bold transition-all duration-200 active:scale-95 h-12 px-8 bg-brand-dark text-white hover:bg-[#00663C] shadow-lg">
-                                        Open Spreadsheet
+                                    <a href={generatedUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-base font-bold transition-all duration-200 active:scale-95 h-12 px-8 bg-brand-dark text-white hover:bg-[#00663C] shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2">
+                                        Open Spreadsheet<span className="sr-only"> (opens in a new tab)</span>
                                     </a>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-3 w-full justify-center mt-6">
+                                    <Button variant="outline" onClick={() => { setIsSuccess(false); setStep(4); }}>Back to the wizard</Button>
+                                    <Button variant="outline" onClick={startNew}>Start a new timetable</Button>
+                                </div>
+                                <p className="text-xs text-slate-600 mt-4 max-w-md">"Back to the wizard" keeps this setup, for example to change something and generate again.</p>
+                            </CardContent>
+                        </Card>
+                    ) : draftOffer ? (
+                        /* RESUME SCREEN */
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden animate-pop flex flex-col">
+                            <CardContent className="p-10 flex flex-col items-center justify-center text-center min-h-[360px]">
+                                <h2 className="text-2xl font-bold text-slate-800 mb-3">Continue where you left off?</h2>
+                                <p className="text-base text-slate-600 mb-8 max-w-md">
+                                    You have an unfinished timetable setup{draftOffer.data.schoolName ? <> for <strong>{draftOffer.data.schoolName}</strong></> : ''},
+                                    saved {new Date(draftOffer.savedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} at
+                                    step {draftOffer.step || 1} ({STEP_NAMES[(draftOffer.step || 1) - 1]}).
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <Button variant="footerSolid" className="h-11 px-6" onClick={resumeDraft}>Resume</Button>
+                                    <Button variant="outline" className="h-11 px-6" onClick={startNew}>Start new</Button>
                                 </div>
                             </CardContent>
                         </Card>
                     ) : (
                         /* WIZARD SCREEN */
+                        <React.Fragment>
+                        <div className="w-full flex flex-wrap items-center justify-end gap-2 mb-3">
+                            <span className="text-xs text-slate-600 mr-auto" aria-live="polite">{draftStatus}</span>
+                            <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={loadSetupFile} />
+                            <Button variant="ghost" className="h-9 text-slate-700" onClick={() => fileInputRef.current && fileInputRef.current.click()}>Load a saved setup</Button>
+                            <Button variant="ghost" className="h-9 text-slate-700" onClick={saveSetupFile}>Save setup to a file</Button>
+                        </div>
+                        {setupNotice && (
+                            <div role="status" className={`w-full mb-3 p-3 rounded-lg border text-sm flex items-start gap-3 ${setupNotice.ok ? 'bg-brand-green/10 border-brand-green/20 text-slate-800' : 'bg-red-50 border-red-200 text-red-900'}`}>
+                                <p className="flex-1">{setupNotice.text}</p>
+                                <button type="button" onClick={() => setSetupNotice(null)} className="text-xs font-semibold underline">Dismiss</button>
+                            </div>
+                        )}
                         <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden flex flex-col">
                             <CardHeader className="border-b border-slate-200 bg-slate-50 px-6 py-8 sm:px-10 z-10 relative shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)]">
                                 {/* Stepper Header */}
-                                <div className="flex items-center justify-between relative">
-                                    <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-[2px] bg-slate-300 -z-10"></div>
+                                <div className="relative">
+                                <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-[2px] bg-slate-300 -z-10" aria-hidden="true"></div>
+                                <ol aria-label="Steps" className="flex items-center justify-between relative">
 
                                     {[1, 2, 3, 4].map((s) => (
-                                        <div key={s} aria-current={step === s ? "step" : undefined} className="flex flex-col items-center gap-2 bg-slate-50 px-2 sm:px-4">
-                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors ${
+                                        <li key={s} aria-current={step === s ? "step" : undefined} className="flex flex-col items-center gap-2 bg-slate-50 px-2 sm:px-4">
+                                            <div aria-hidden="true" className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors ${
                                                 step === s ? 'border-slate-900 bg-slate-900 text-white shadow-md' :
-                                                step > s ? 'border-brand-green bg-brand-green text-white' : 'border-slate-300 bg-white text-slate-400'
+                                                step > s ? 'border-brand-dark bg-brand-dark text-white' : 'border-slate-300 bg-white text-slate-500'
                                             }`}>
                                                 {step > s ? <CheckIcon /> : s}
                                             </div>
-                                            <span className={`text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${step >= s ? 'text-slate-900' : 'text-slate-400'} hidden md:block`}>
-                                                {s === 1 ? 'Core Schedule' : s === 2 ? 'Grades' : s === 3 ? 'Staff' : 'Summary'}
+                                            <span aria-hidden="true" className={`text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider ${step >= s ? 'text-slate-900' : 'text-slate-500'} hidden md:block`}>
+                                                {STEP_NAMES[s - 1]}
                                             </span>
-                                        </div>
+                                            <span className="sr-only">Step {s}: {STEP_NAMES[s - 1]}{step > s ? ' (done)' : step === s ? ' (current step)' : ''}</span>
+                                        </li>
                                     ))}
+                                </ol>
                                 </div>
                             </CardHeader>
 
                             <CardContent className="p-6 sm:p-10 min-h-[400px] bg-white relative flex-1">
+                                <h2 ref={stepHeadingRef} tabIndex={-1} className="sr-only">Step {step} of 4: {STEP_NAMES[step - 1]}</h2>
+                                {(() => {
+                                    const problems = listProblems();
+                                    if (!problems.length) return null;
+                                    return (
+                                        <div role="alert" className="mb-6 bg-red-50 border border-red-200 p-4 rounded-lg text-sm text-red-900 animate-pop">
+                                            <p className="font-semibold mb-2 flex items-center gap-2">
+                                                <AlertTriangleIcon className="w-4 h-4 text-red-600" aria-hidden="true" />
+                                                {problems.length === 1 ? '1 thing needs fixing' : `${problems.length} things need fixing`} before you continue:
+                                            </p>
+                                            <ul className="list-disc pl-6 space-y-1">
+                                                {problems.map((item, i) => (
+                                                    <li key={i}>
+                                                        {item.targetId
+                                                            ? <button type="button" className="underline text-left hover:text-red-700" onClick={() => goToProblem(item)}>{item.text}</button>
+                                                            : item.text}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    );
+                                })()}
                                 {step === 1 && renderStep1()}
                                 {step === 2 && renderStep2()}
                                 {step === 3 && renderStep3()}
@@ -1525,10 +2103,11 @@
                                 )}
                             </CardFooter>
                         </Card>
+                        </React.Fragment>
                     )}
 
                     {/* SUITE TAG */}
-                    <div className="mt-12 mb-4 text-[11px] font-medium text-brand-green tracking-widest text-center uppercase">
+                    <div className="mt-12 mb-4 text-[11px] font-medium text-brand-dark tracking-widest text-center uppercase">
                         A Sydney Catholic Schools Curriculum Tool - 2026
                     </div>
                 </div>

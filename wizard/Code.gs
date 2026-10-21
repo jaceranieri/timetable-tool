@@ -28,6 +28,7 @@ function getTemplateId() {
  * TEMPLATE!B21 exactly, because C21 counts cells with this value.
  */
 const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
+const TEACHER_TBC = 'TBC';
 
 function isAmadeusGrade(grade) {
   return /^Year\s*[3-6]$/i.test(String(grade || '').trim());
@@ -41,6 +42,56 @@ function checkProgress(jobId) {
   } catch (error) {
     return null;
   }
+}
+
+
+/**
+ * The wizard's unfinished setup, kept per user (User Properties) so it can be
+ * resumed on any computer. Stored in parts because one property holds at
+ * most 9 KB.
+ */
+const DRAFT_PROPERTY = 'WIZARD_DRAFT';
+const DRAFT_PART_LENGTH = 8000;
+const DRAFT_MAX_PARTS = 40;
+
+function saveDraft(draftJson) {
+  const text = String(draftJson || '');
+  const partCount = Math.ceil(text.length / DRAFT_PART_LENGTH);
+  if (!partCount || partCount > DRAFT_MAX_PARTS) return false;
+  const properties = PropertiesService.getUserProperties();
+  const values = { [DRAFT_PROPERTY]: String(partCount) };
+  for (let i = 0; i < partCount; i++) {
+    values[DRAFT_PROPERTY + '_' + i] = text.substring(i * DRAFT_PART_LENGTH, (i + 1) * DRAFT_PART_LENGTH);
+  }
+  properties.setProperties(values);
+  // Parts left over from a longer draft.
+  for (let i = partCount; i < DRAFT_MAX_PARTS; i++) {
+    if (properties.getProperty(DRAFT_PROPERTY + '_' + i) === null) break;
+    properties.deleteProperty(DRAFT_PROPERTY + '_' + i);
+  }
+  return true;
+}
+
+
+function loadDraft() {
+  const properties = PropertiesService.getUserProperties();
+  const partCount = Number(properties.getProperty(DRAFT_PROPERTY)) || 0;
+  let text = '';
+  for (let i = 0; i < partCount; i++) {
+    const part = properties.getProperty(DRAFT_PROPERTY + '_' + i);
+    if (part === null) return null; // incomplete: ignore it
+    text += part;
+  }
+  return text || null;
+}
+
+
+function clearDraft() {
+  const properties = PropertiesService.getUserProperties();
+  const partCount = Number(properties.getProperty(DRAFT_PROPERTY)) || 0;
+  properties.deleteProperty(DRAFT_PROPERTY);
+  for (let i = 0; i < Math.max(partCount, 1); i++) properties.deleteProperty(DRAFT_PROPERTY + '_' + i);
+  return true;
 }
 
 
@@ -281,9 +332,8 @@ function parsePayloadConfig(payload) {
   index = 1;
   while (varMap['Class_' + index + '_Name'] !== undefined) {
     const name = String(varMap['Class_' + index + '_Name'] || '').trim();
-    const teacher = String(
-      varMap['Class_' + index + '_Teacher'] || 'N/A'
-    ).trim();
+    // A teacher can be left blank in the wizard until they're known.
+    const teacher = String(varMap['Class_' + index + '_Teacher'] || '').trim() || TEACHER_TBC;
     const grade = String(varMap['Class_' + index + '_Grade'] || '').trim();
     const cycle = Number(varMap['Class_' + index + '_Cycle']);
     const color = String(varMap['Class_' + index + '_Color'] || '').trim();
@@ -292,7 +342,7 @@ function parsePayloadConfig(payload) {
     if (name) {
       classes.push({
         name: name,
-        teacher: teacher || 'N/A',
+        teacher: teacher,
         grade: grade,
         cycle: cycle,
         color: color

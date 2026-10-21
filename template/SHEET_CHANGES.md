@@ -207,3 +207,18 @@ No sheet changes. Paste the updated `template/TimetableTools.gs` into the templa
   - Every lesson shows its start and end times, including 5-minute ones (e.g. the last slot of the day).
   - Synced specialist lessons show the specialist's name under the KLA.
 - [ ] **Make a Google Doc of the compliance summary**: percentages within their range are green, outside it red; the table stretches across the page.
+
+## Phase 7
+
+No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project and redeploy (Deploy → Manage deployments → edit → New version).
+
+- [ ] **Drafts:** fill in Step 1 and part of Step 2, wait for "Draft saved" above the wizard, then reload the page. "Continue where you left off?" appears: **Resume** goes back to the same step with everything filled in; reload again and **Start new** gives an empty wizard.
+- [ ] **Problem list:** click Continue on Step 1 with no school name. A red box lists the problem; clicking it puts the cursor in the field, and the box goes once it's fixed. On Step 3, make two classes in different grades share a name: both are listed, and clicking one opens its grade tab.
+- [ ] **TBC and blank rows:** leave a class's teacher blank (allowed), and clear both fields of another class ("Blank: skipped"). The summary counts classes without the blank one and says how many show TBC. In the generated timetable, the class's teacher is **TBC** (Start here and C27).
+- [ ] **Paste:** in a spreadsheet, select class names and teachers (two columns), copy, then in Step 3 **Paste from a spreadsheet** and paste. It shows how many it found; **Use these N classes** replaces that grade's classes.
+- [ ] **Cycle warning:** give a specialist a 2-week cycle while a grade has 1 or 3 weeks: a warning shows under the specialist and on the summary.
+- [ ] **Preview:** the summary says how many class and specialist tabs will be made and roughly how long it takes; compare with the real time.
+- [ ] **Edit links:** each summary section's Edit goes back to its step.
+- [ ] **Setup file:** **Save setup to a file** downloads `<school> - timetable setup.json`. In a new wizard, **Load a saved setup** with it fills every step the same way. Choosing another file explains it isn't a setup file.
+- [ ] **After generating:** **Back to the wizard** returns to the summary with the setup kept; **Start a new timetable** gives an empty wizard.
+- [ ] **Keyboard:** on Step 3, Tab to the grade tabs and use the left/right arrow keys; open a class colour and close it with Escape.

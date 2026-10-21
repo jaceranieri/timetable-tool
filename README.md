@@ -57,6 +57,12 @@ Generated timetables are saved in a **Timetables** folder in the user's My
 Drive (created the first time), named
 `<school name> - Timetable - <date>`.
 
+Unfinished setups are saved for each user (Apps Script User Properties) and
+offered back the next time they open the wizard. A setup can also be saved
+to a file and loaded later, for example to start next year's timetable; the
+file holds the same name/value list the timetable keeps in its DATA tab
+(`RawData_JSON`).
+
 The `appsscript.json` manifests in this repo reflect those settings. Check
 them against the ones in the Apps Script editor (Project Settings → "Show
 appsscript.json manifest file") before pushing them.
