@@ -88,8 +88,14 @@
         }
         .animate-success { animation: successPop 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
+        @keyframes softPulse {
+            0%, 100% { box-shadow: 0 10px 25px -10px rgba(0, 122, 72, 0.55), 0 0 0 0 rgba(0, 178, 104, 0.45); transform: scale(1); }
+            50% { box-shadow: 0 14px 30px -10px rgba(0, 122, 72, 0.6), 0 0 0 14px rgba(0, 178, 104, 0); transform: scale(1.02); }
+        }
+        .animate-soft-pulse { animation: softPulse 2.8s ease-in-out infinite; }
+
         @media (prefers-reduced-motion: reduce) {
-            .animate-step, .animate-pop, .animate-success, .animate-spin, .animate-pulse { animation: none; }
+            .animate-step, .animate-pop, .animate-success, .animate-spin, .animate-pulse, .animate-soft-pulse { animation: none; }
         }
     </style>
 </head>
@@ -740,6 +746,7 @@
 
             const [errors, setErrors] = useState({});
             const [showLogs, setShowLogs] = useState(false);
+            const [summaryDetail, setSummaryDetail] = useState(null); // the summary card whose details are shown
             const [showAllProblems, setShowAllProblems] = useState(false);
             const [quipTick, setQuipTick] = useState(0);
             const quipStart = useRef(0);
@@ -1141,6 +1148,16 @@
                 }, 50);
             };
 
+            // A field to put the cursor in once it has rendered (no timer, so it
+            // can't take the cursor from somewhere the user has since moved to).
+            const [focusRequest, setFocusRequest] = useState(null);
+            useEffect(() => {
+                if (!focusRequest) return;
+                const field = document.getElementById(focusRequest);
+                if (field) { field.focus(); if (field.select) field.select(); }
+                setFocusRequest(null);
+            }, [focusRequest]);
+
             // Adds a class to a grade (its class count follows) and puts the cursor in its name.
             const addClass = (gradeId) => {
                 const id = newId();
@@ -1157,7 +1174,7 @@
                         }])
                     };
                 });
-                setTimeout(() => { const field = document.getElementById(`class-${id}-name`); if (field) { field.focus(); field.select(); } }, 50);
+                setFocusRequest(`class-${id}-name`);
             };
 
             const removeClass = (classId) => {
@@ -1523,7 +1540,7 @@
                                         const staffForGrade = data.staffing.filter(s => s.gradeId === g.id);
                                         const status = gradeStatus(g);
                                         const pasted = pasteFor === g.id ? parsePastedClasses(pasteText) : [];
-                                        const openPaste = () => { setPasteFor(g.id); setPasteText(""); setTimeout(() => { const box = document.getElementById(`paste-${g.id}`); if (box) box.focus(); }, 50); };
+                                        const openPaste = () => { setPasteFor(g.id); setPasteText(""); setFocusRequest(`paste-${g.id}`); };
 
                                         // A grade without classes: one line, to add some.
                                         if (!staffForGrade.length && pasteFor !== g.id) {
@@ -1790,7 +1807,7 @@
                 </div>
             );
 
-            const renderStep4 = () => {
+            const renderSummaryStep = () => {
                 const classesToGenerate = getClassesToGenerate(data);
                 const gradeGroups = data.grades
                     .map(g => ({ grade: g, classes: classesToGenerate.filter(c => c.gradeId === g.id) }))
@@ -1800,45 +1817,149 @@
                 const estimate = estimateGeneration(data);
                 const cycleMismatches = findCycleMismatches(data);
                 const schoolName = data.schoolName.trim();
+                const dayHours = Math.floor(dailyTeachingMins / 60);
+                const dayMinutes = dailyTeachingMins % 60;
 
-                // "Edit" beside a section heading, back to the step that sets it.
-                const renderEditLink = (target, what, text = "Edit") => (
-                    <button key={what} type="button" onClick={() => goToStep(target)}
-                        className="text-xs font-semibold text-brand-dark hover:underline rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
-                        {text}<span className="sr-only"> {what}</span>
+                const renderEditLink = (target, what) => (
+                    <button type="button" onClick={() => goToStep(target)}
+                        className="text-sm font-semibold text-brand-dark hover:underline rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                        Edit<span className="sr-only"> {what}</span>
                     </button>
                 );
-                // A card for one part of the setup, with its Edit links.
-                const renderCard = (title, editLinks, content, className = "") => (
-                    <section className={`rounded-lg border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                            <h5 className="text-sm font-bold text-slate-900">{title}</h5>
-                            <div className="flex items-center gap-1">{editLinks}</div>
-                        </div>
-                        {content}
-                    </section>
-                );
-                // A headline figure.
-                const renderStat = (label, value, detail, highlight) => (
-                    <div className={`rounded-lg border p-3 ${highlight ? 'bg-brand-green/10 border-brand-green/30' : 'bg-slate-50 border-slate-200'}`}>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">{label}</p>
-                        <p className={`text-2xl font-bold mt-1 leading-tight ${highlight ? 'text-brand-dark' : 'text-slate-900'}`}>{value}</p>
-                        <p className="text-xs text-slate-600 mt-0.5">{detail}</p>
-                    </div>
-                );
+
+                // The four headline cards; each opens its details below.
+                const cards = [
+                    { key: 'classes', label: 'Classes', value: classesToGenerate.length,
+                        detail: `in ${plural(gradeGroups.length, 'grade', 'grades')}` },
+                    { key: 'day', label: 'School day',
+                        value: <>{dayHours}<span className="text-3xl">h</span>{dayMinutes ? <> {dayMinutes}<span className="text-3xl">m</span></> : ''}</>,
+                        detail: 'teaching a day' },
+                    { key: 'specialists', label: 'Specialists', value: specialists.length,
+                        detail: specialists.length ? [...new Set(specialists.map(s => s.kla))].join(', ') : 'none' },
+                    { key: 'activities', label: 'Extra-curriculars', value: activities.length,
+                        detail: activities.length === 1 ? 'activity' : 'activities' }
+                ];
+
+                const details = {
+                    classes: {
+                        title: `Classes (${classesToGenerate.length})`,
+                        edit: renderEditLink(STEP.CLASSES, 'grades and classes'),
+                        body: (
+                            <table className="w-full text-sm">
+                                <tbody>
+                                    {gradeGroups.map(group => (
+                                        <tr key={group.grade.id} className="align-top border-t border-slate-100 first:border-t-0">
+                                            <th scope="row" className="text-left font-semibold text-slate-900 py-2 pr-4 whitespace-nowrap w-0">
+                                                {group.grade.name}
+                                                <span className="block text-xs font-normal text-slate-600">{group.grade.cycle}-week cycle</span>
+                                            </th>
+                                            <td className="py-2">
+                                                <ul className="flex flex-wrap gap-1.5">
+                                                    {group.classes.map(c => (
+                                                        <li key={c.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-0.5">
+                                                            <span className="w-2.5 h-2.5 rounded-full border border-black/10" style={{ backgroundColor: c.color || CLASS_COLOR_PALETTE[0] }} aria-hidden="true"></span>
+                                                            <span className="font-medium text-slate-900">{c.className}</span>
+                                                            <span className="text-slate-600">{c.teacher}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )
+                    },
+                    day: {
+                        title: 'School day',
+                        edit: renderEditLink(STEP.SCHEDULE, 'school day and breaks'),
+                        body: (
+                            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 text-sm">
+                                <div>
+                                    <dt className="text-xs text-slate-600">Hours</dt>
+                                    <dd className="font-semibold text-slate-900">{formatAMPM(data.schoolStart)} - {formatAMPM(data.schoolEnd)}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">Breaks</dt>
+                                    <dd className="text-slate-900">
+                                        {data.breaks.length ? data.breaks.map(b => (
+                                            <span key={b.id} className="block">{b.name || 'Unnamed'} {formatAMPM(b.start)} - {formatAMPM(b.end)}</span>
+                                        )) : 'None'}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">Teaching time a day</dt>
+                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins)}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">A week</dt>
+                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins * 5)}</dd>
+                                </div>
+                            </dl>
+                        )
+                    },
+                    specialists: {
+                        title: `Specialists (${specialists.length})`,
+                        edit: renderEditLink(STEP.SPECIALISTS, 'specialists'),
+                        body: specialists.length ? (
+                            <ul className="divide-y divide-slate-100 text-sm">
+                                {specialists.map(s => (
+                                    <li key={s.id} className="flex items-baseline justify-between gap-3 py-1.5">
+                                        <span className="font-medium text-slate-900">{s.name}</span>
+                                        <span className="text-slate-600 text-right">{s.kla} · {s.cycle || 1}-week cycle</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-sm text-slate-600">No specialists.</p>
+                    },
+                    activities: {
+                        title: `Extra-curricular activities (${activities.length})`,
+                        edit: renderEditLink(STEP.ACTIVITIES, 'extra-curricular activities'),
+                        body: activities.length ? (
+                            <ul className="flex flex-wrap gap-1.5 text-sm">
+                                {activities.map(a => (
+                                    <li key={a.id} className="bg-slate-50 border border-slate-200 rounded-md px-2 py-0.5 text-slate-900">{a.name.trim()}</li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-sm text-slate-600">No activities.</p>
+                    }
+                };
+                const open = summaryDetail && details[summaryDetail];
 
                 return (
-                    <div className="animate-step space-y-4" key="step4">
+                    <div className="animate-step space-y-6" key="step-summary">
                         <div>
-                            <h4 className="text-xl font-semibold text-slate-800">Ready to generate{schoolName ? <> for <span className="text-brand-dark">{schoolName}</span></> : ''}</h4>
-                            <p className="text-sm text-slate-600 mt-1">Check the details, then generate. Use Edit to change anything.</p>
+                            <h3 className="text-xl font-bold tracking-tight text-slate-900">Ready to generate{schoolName ? <> for <span className="text-brand-dark">{schoolName}</span></> : ''}</h3>
+                            <p className="text-sm text-slate-600 mt-1">Click a card to see its details.</p>
                         </div>
 
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-label="At a glance" role="group">
-                            {renderStat('Class tabs', classesToGenerate.length, plural(gradeGroups.length, 'grade', 'grades'))}
-                            {renderStat('Specialist tabs', specialists.length, specialists.length ? [...new Set(specialists.map(s => s.kla))].join(', ') : 'None')}
-                            {renderStat('Teaching time', formatMinutes(dailyTeachingMins), `a day · ${formatMinutes(dailyTeachingMins * 5)} a week`, true)}
-                            {renderStat('Generating takes', estimate.short, 'plus Start here, DATA and OVERVIEW')}
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            {cards.map(card => {
+                                const selected = summaryDetail === card.key;
+                                return (
+                                    <button key={card.key} type="button" id={`summary-card-${card.key}`}
+                                        aria-expanded={selected} aria-controls="summary-details"
+                                        onClick={() => setSummaryDetail(selected ? null : card.key)}
+                                        className={`flex flex-col justify-between text-left min-h-[11rem] rounded-2xl border-2 p-5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 ${
+                                            selected ? 'border-brand-dark bg-brand-green/10 shadow-md -translate-y-0.5' : 'border-slate-200 bg-white shadow-sm hover:border-brand-green hover:-translate-y-0.5 hover:shadow-md'}`}>
+                                        <span className={`text-xs font-bold uppercase tracking-wider ${selected ? 'text-brand-dark' : 'text-slate-600'}`}>{card.label}</span>
+                                        <span className="text-5xl font-extrabold tracking-tight text-slate-900 leading-none my-3">{card.value}</span>
+                                        <span className="text-sm text-slate-600 leading-snug">{card.detail}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div id="summary-details" role="region" aria-label={open ? open.title : 'Details'}>
+                            {open && (
+                                <section key={summaryDetail} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm animate-pop">
+                                    <div className="flex items-center justify-between gap-3 mb-3">
+                                        <h4 className="text-base font-bold text-slate-900">{open.title}</h4>
+                                        {open.edit}
+                                    </div>
+                                    {open.body}
+                                </section>
+                            )}
                         </div>
 
                         {Object.keys(cycleMismatches).length > 0 && (
@@ -1852,73 +1973,15 @@
                             </div>
                         )}
 
-                        <div className="grid gap-4 md:grid-cols-2">
-                            {renderCard('School day', [renderEditLink(STEP.SCHEDULE, 'school day and breaks')],
-                                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                    <div>
-                                        <dt className="text-xs text-slate-600">Hours</dt>
-                                        <dd className="font-semibold text-slate-900">{formatAMPM(data.schoolStart)} - {formatAMPM(data.schoolEnd)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-xs text-slate-600">Breaks</dt>
-                                        <dd className="text-slate-900">
-                                            {data.breaks.length ? data.breaks.map(b => (
-                                                <span key={b.id} className="block">{b.name || 'Unnamed'} {formatAMPM(b.start)} - {formatAMPM(b.end)}</span>
-                                            )) : 'None'}
-                                        </dd>
-                                    </div>
-                                </dl>
-                            )}
-                            {renderCard(`Specialists (${specialists.length})`, [renderEditLink(STEP.SPECIALISTS, 'specialists')],
-                                specialists.length ? (
-                                    <ul className="space-y-1 text-sm">
-                                        {specialists.map(s => (
-                                            <li key={s.id} className="flex items-baseline justify-between gap-3">
-                                                <span className="font-medium text-slate-900">{s.name}</span>
-                                                <span className="text-slate-600 text-right">{s.kla} · {s.cycle || 1}-week cycle</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : <p className="text-sm text-slate-600">None</p>
-                            )}
+                        <div className="flex flex-col items-center gap-3 pt-4 pb-2">
+                            <button type="button" onClick={handleSubmit} disabled={isGenerating}
+                                className="animate-soft-pulse inline-flex items-center justify-center gap-3 rounded-2xl bg-brand-dark px-12 py-5 text-xl font-bold text-white hover:bg-[#00663C] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-green/40">
+                                Generate timetable
+                            </button>
+                            <p className="text-sm text-slate-600">
+                                {plural(classesToGenerate.length, 'class tab', 'class tabs')} and {plural(specialists.length, 'specialist tab', 'specialist tabs')} · takes {estimate.text}
+                            </p>
                         </div>
-
-                        {renderCard(`Classes (${classesToGenerate.length})`,
-                            [renderEditLink(STEP.CLASSES, 'grades and classes')],
-                            <table className="w-full text-sm">
-                                <tbody>
-                                    {gradeGroups.map(group => (
-                                        <tr key={group.grade.id} className="align-top border-t border-slate-100 first:border-t-0">
-                                            <th scope="row" className="text-left font-semibold text-slate-900 py-1.5 pr-4 whitespace-nowrap w-0">
-                                                {group.grade.name}
-                                                <span className="block text-xs font-normal text-slate-600">{group.grade.cycle}-week cycle</span>
-                                            </th>
-                                            <td className="py-1.5">
-                                                <ul className="flex flex-wrap gap-1.5">
-                                                    {group.classes.map(c => (
-                                                        <li key={c.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-0.5">
-                                                            <span className="w-2.5 h-2.5 rounded-full border border-black/10" style={{ backgroundColor: c.color || CLASS_COLOR_PALETTE[0] }} aria-hidden="true"></span>
-                                                            <span className="font-medium text-slate-900">{c.className}</span>
-                                                            <span className="text-slate-600">{c.teacher}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-
-                        {renderCard(`Extra-curricular activities (${activities.length})`, [renderEditLink(STEP.ACTIVITIES, 'extra-curricular activities')],
-                            activities.length ? (
-                                <ul className="flex flex-wrap gap-1.5 text-sm">
-                                    {activities.map(a => (
-                                        <li key={a.id} className="bg-slate-50 border border-slate-200 rounded px-2 py-0.5 text-slate-900">{a.name.trim()}</li>
-                                    ))}
-                                </ul>
-                            ) : <p className="text-sm text-slate-600">None</p>
-                        )}
                     </div>
                 );
             };
@@ -2124,7 +2187,7 @@
                                         <Button variant="outline" onClick={handleSubmit} className="shrink-0">Try again</Button>
                                     </div>
                                 )}
-                                {step === LAST_STEP && renderStep4()}
+                                {step === LAST_STEP && renderSummaryStep()}
                             </CardContent>
 
                             <CardFooter className="flex items-start justify-between bg-slate-50 rounded-b-xl border-t border-slate-200 p-6 sm:px-10 h-28 pt-8 shrink-0">
@@ -2132,12 +2195,8 @@
                                     Back
                                 </Button>
 
-                                {step < LAST_STEP ? (
+                                {step < LAST_STEP && (
                                     <Button variant="default" onClick={handleNext}>Next: {STEP_NAMES[step]}</Button>
-                                ) : (
-                                    <Button variant="footerSolid" onClick={handleSubmit} disabled={isGenerating} className="gap-2 px-6">
-                                        Generate Timetable Template
-                                    </Button>
                                 )}
                             </CardFooter>
                         </Card>

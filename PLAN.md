@@ -119,6 +119,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 - The wizard starts with two Kindergarten classes; other grades start empty. Cycle lengths (grades and specialists) are a square button showing the weeks inside a circular arrow. Class rows: a numbered colour swatch, then Class name and Teacher boxes with their labels inside. The progress bar fills one segment after another.
 - The grade tabs replaced by one card per grade (all visible at once): the header has the cycle choice, "Add class", a "..." menu (paste, no classes) and a status icon (not finished, ready, or problems after Next); each class is one compact row (name, teacher, colour, remove); a grade with no classes is one line. Problems only show after Next. The problem list shows the first 6 with "Show all".
 - Five steps: Core Schedule, Classes, Specialists, Activities, Summary (specialists and activities have their own steps; Grades merged into Classes, with each grade's cycle chosen on its card and its class count following its rows). No "Step N of 6" line; section headings are larger, with their description behind an "i" button; no section icons; "Next: <step>" buttons.
+- Summary: four large cards (classes, school day, specialists, extra-curriculars) that show their details below when clicked, and a large, slowly pulsing Generate button.
 - Toasts appear at the top; no subtitle under the name; while generating, the "keep this window open" reminder alternates with teacher in-jokes.
 
 ## Phase 8: Edit setup after generating, and start next year
