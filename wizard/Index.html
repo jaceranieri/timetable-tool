@@ -155,6 +155,56 @@
             );
         };
 
+        const DotsIcon = () => <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>;
+
+        // A "..." button with a short menu. Arrow keys move through the items;
+        // Escape or a click elsewhere closes it.
+        const MoreMenu = ({ label, items, className = "" }) => {
+            const [open, setOpen] = useState(false);
+            const buttonRef = useRef(null);
+            const menuRef = useRef(null);
+            useEffect(() => {
+                if (!open) return;
+                const first = menuRef.current && menuRef.current.querySelector('[role="menuitem"]');
+                if (first) first.focus();
+                const closeOnOutsideClick = (e) => {
+                    if (menuRef.current && !menuRef.current.contains(e.target) && !buttonRef.current.contains(e.target)) setOpen(false);
+                };
+                document.addEventListener('mousedown', closeOnOutsideClick);
+                return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+            }, [open]);
+            const onKeyDown = (e) => {
+                const entries = [...menuRef.current.querySelectorAll('[role="menuitem"]')];
+                const index = entries.indexOf(document.activeElement);
+                if (e.key === 'Escape') { e.preventDefault(); setOpen(false); buttonRef.current.focus(); }
+                else if (e.key === 'ArrowDown') { e.preventDefault(); entries[(index + 1) % entries.length].focus(); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); entries[(index - 1 + entries.length) % entries.length].focus(); }
+                else if (e.key === 'Tab') setOpen(false);
+            };
+            return (
+                <div className={`relative ${className}`}>
+                    <button ref={buttonRef} type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
+                        onClick={() => setOpen(prev => !prev)}
+                        className="w-9 h-9 inline-flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-200/70 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                        <DotsIcon />
+                    </button>
+                    {open && (
+                        <div ref={menuRef} role="menu" aria-label={label} onKeyDown={onKeyDown}
+                            className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-slate-200 rounded-lg shadow-xl py-1 animate-pop">
+                            {items.map(item => (
+                                <button key={item.label} type="button" role="menuitem" tabIndex={-1}
+                                    onClick={() => { setOpen(false); item.onSelect(); }}
+                                    className="w-full text-left px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none">
+                                    <span className="font-medium">{item.label}</span>
+                                    {item.hint && <span className="block text-xs text-slate-600">{item.hint}</span>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         const GridIcon = () => (
             <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#00b268" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
@@ -228,7 +278,44 @@
         };
 
         const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
-        const TEACHER_TBC = 'TBC'; // what the server writes for a teacher left blank
+        // Every class needs its teacher's name for compliance, so stand-ins
+        // are refused (the same rule as TEACHER_PLACEHOLDER in Code.gs).
+        const TEACHER_PLACEHOLDER = /^(tbc|tba|tbd|n\/?a|none|unknown|teacher|[-?.\s]*)$/i;
+        const getTeacherError = (teacher) => {
+            const trimmed = teacher.trim();
+            if (!trimmed) return "Required";
+            if (TEACHER_PLACEHOLDER.test(trimmed)) return "Enter their name";
+            if (trimmed.startsWith('=')) return "Can't start with =";
+            return "";
+        };
+
+        // A class named after a colour starts with that colour from the palette
+        // ("Kindergarten Blue" is blue), until a colour is picked for it.
+        const COLOUR_WORDS = [
+            [['red', 'scarlet', 'crimson', 'ruby', 'cherry'], '#FFADAD'],
+            [['coral', 'peach', 'salmon'], '#FBC4AB'],
+            [['orange', 'amber', 'tangerine', 'bronze', 'copper'], '#FFD6A5'],
+            [['apricot', 'cream', 'sand', 'honey'], '#FFE5B4'],
+            [['gold', 'golden', 'yellow', 'lemon', 'sun', 'sunshine'], '#FDFFB6'],
+            [['green', 'lime', 'emerald', 'olive', 'forest'], '#CAFFBF'],
+            [['jade', 'mint'], '#C1FFD7'],
+            [['sage'], '#D0F4DE'],
+            [['aqua', 'turquoise', 'teal', 'cyan'], '#9BF6FF'],
+            [['sky', 'ice'], '#C4FAF8'],
+            [['blue', 'navy', 'azure', 'sapphire', 'cobalt', 'royal'], '#A0C4FF'],
+            [['purple', 'violet', 'indigo', 'plum', 'grape'], '#BDB2FF'],
+            [['lilac', 'lavender', 'mauve'], '#E4C1F9'],
+            [['pink', 'magenta', 'fuchsia'], '#FFC6FF'],
+            [['rose', 'blush'], '#FFCFE0']
+        ];
+        const colourForName = (name) => {
+            const words = String(name || '').toLowerCase().match(/[a-z]+/g) || [];
+            for (let i = words.length - 1; i >= 0; i--) {
+                const match = COLOUR_WORDS.find(([names]) => names.includes(words[i]));
+                if (match) return match[1];
+            }
+            return null;
+        };
         const SETUP_FILE_TYPE = 'timetable-tool-setup';
         const STEP_NAMES = ['Core Schedule', 'Grades', 'Staff', 'Summary'];
         const DEFAULT_GRADES = [
@@ -265,12 +352,12 @@
             ],
             grades: DEFAULT_GRADES.map(g => ({ ...g, classes: 2, cycle: 1 })),
             staffing: [
-                { id: 101, gradeId: "k", className: "Kindergarten Blue", teacher: "", color: CLASS_COLOR_PALETTE[0] },
-                { id: 102, gradeId: "k", className: "Kindergarten Red", teacher: "", color: CLASS_COLOR_PALETTE[1] },
-                { id: 103, gradeId: "y1", className: "Year 1 Gold", teacher: "", color: CLASS_COLOR_PALETTE[2] },
-                { id: 104, gradeId: "y1", className: "Year 1 Green", teacher: "", color: CLASS_COLOR_PALETTE[3] },
-                { id: 105, gradeId: "y2", className: "Year 2 Amber", teacher: "", color: CLASS_COLOR_PALETTE[4] },
-                { id: 106, gradeId: "y2", className: "Year 2 Jade", teacher: "", color: CLASS_COLOR_PALETTE[5] }
+                { id: 101, gradeId: "k", className: "Kindergarten Blue", teacher: "", color: colourForName("Kindergarten Blue") },
+                { id: 102, gradeId: "k", className: "Kindergarten Red", teacher: "", color: colourForName("Kindergarten Red") },
+                { id: 103, gradeId: "y1", className: "Year 1 Gold", teacher: "", color: colourForName("Year 1 Gold") },
+                { id: 104, gradeId: "y1", className: "Year 1 Green", teacher: "", color: colourForName("Year 1 Green") },
+                { id: 105, gradeId: "y2", className: "Year 2 Amber", teacher: "", color: colourForName("Year 2 Amber") },
+                { id: 106, gradeId: "y2", className: "Year 2 Jade", teacher: "", color: colourForName("Year 2 Jade") }
             ],
             specialists: [
                 { id: 301, name: "", kla: "", cycle: 1 } // Initial empty template
@@ -322,7 +409,7 @@
             });
             getClassesToGenerate(data).forEach((s, i) => {
                 add(`Class_${i+1}_Name`, s.className);
-                add(`Class_${i+1}_Teacher`, s.teacher.trim()); // blank: the server writes TBC
+                add(`Class_${i+1}_Teacher`, s.teacher.trim());
                 add(`Class_${i+1}_Grade`, s.grade.name);
                 add(`Class_${i+1}_Cycle`, s.grade.cycle);
                 add(`Class_${i+1}_Color`, s.color || '');
@@ -367,8 +454,8 @@
                     id: newId(),
                     gradeId: grade.id,
                     className: c.name,
-                    teacher: c.teacher === TEACHER_TBC ? '' : c.teacher,
-                    color: c.color || CLASS_COLOR_PALETTE[staffing.length % CLASS_COLOR_PALETTE.length]
+                    teacher: c.teacher,
+                    color: c.color || colourForName(c.name) || CLASS_COLOR_PALETTE[staffing.length % CLASS_COLOR_PALETTE.length]
                 });
             });
 
@@ -508,18 +595,24 @@
             dataRef.current = data;
 
             const [errors, setErrors] = useState({});
-            const [expandedSummary, setExpandedSummary] = useState({ staff: true, specialists: true, activities: true });
+            const [showLogs, setShowLogs] = useState(false);
             const logContainerRef = useRef(null);
             const stepHeadingRef = useRef(null);
             const fileInputRef = useRef(null);
-            const [setupNotice, setSetupNotice] = useState(null); // { ok, text } after saving or loading a setup file
+            // Short messages at the bottom of the screen ("Draft saved", setup file results).
+            const [toast, setToast] = useState(null); // { id, text, tone: 'info' | 'ok' | 'error' }
+            const showToast = (text, tone, ms) => setToast({ id: Date.now() + Math.random(), text, tone, ms });
+            useEffect(() => {
+                if (!toast) return;
+                const timer = setTimeout(() => setToast(current => (current && current.id === toast.id ? null : current)), toast.ms || 4000);
+                return () => clearTimeout(timer);
+            }, [toast]);
             const [pasteFor, setPasteFor] = useState(null); // grade id with the paste box open
             const [pasteText, setPasteText] = useState("");
 
             // Drafts: the setup is saved for this user (saveDraft in Code.gs) a
             // moment after each change, and offered back when the wizard opens.
             const [draftOffer, setDraftOffer] = useState(null);
-            const [draftStatus, setDraftStatus] = useState("");
             const draftsEnabled = useRef(false); // not until any saved draft has been offered
             const hasServer = typeof google !== 'undefined' && google.script;
             const initialJson = JSON.stringify(makeInitialData());
@@ -547,12 +640,7 @@
                 const timer = setTimeout(() => {
                     const draft = { savedAt: new Date().toISOString(), step: step, data: data };
                     google.script.run
-                        .withSuccessHandler((saved) => {
-                            setDraftStatus(saved
-                                ? `Draft saved ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-                                : "");
-                        })
-                        .withFailureHandler(() => setDraftStatus(""))
+                        .withSuccessHandler((saved) => { if (saved) showToast("Draft saved", 'info', 2000); })
                         .saveDraft(JSON.stringify(draft));
                 }, 1500);
                 return () => clearTimeout(timer);
@@ -577,8 +665,7 @@
                 setIsSuccess(false);
                 setGeneratedUrl("");
                 setGenerationError("");
-                setSetupNotice(null);
-                setDraftStatus("");
+                setToast(null);
                 if (hasServer) google.script.run.clearDraft();
             };
 
@@ -649,6 +736,8 @@
                 }
             }, [logs]);
 
+            const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
             // Helper to format elapsed time
             const formatElapsed = (seconds) => {
                 const mins = Math.floor(seconds / 60);
@@ -670,6 +759,10 @@
                 setData(prev => {
                     const list = [...prev[listKey]];
                     list[index] = { ...list[index], [field]: val };
+                    if (listKey === 'staffing' && field === 'color') list[index].colorChosen = true;
+                    if (listKey === 'staffing' && field === 'className' && !list[index].colorChosen) {
+                        list[index].color = colourForName(val) || list[index].color;
+                    }
                     return { ...prev, [listKey]: list };
                 });
                 // The error on the field being edited no longer applies.
@@ -765,8 +858,8 @@
                 let firstErrorStaffId = null;
 
                 // Only classes in grades that still have classes are generated,
-                // and rows left completely blank are skipped. A teacher can be
-                // left blank until they're known (the timetable shows TBC).
+                // and rows left completely blank are skipped. Every class needs
+                // its teacher's name (compliance), not a stand-in like TBC.
                 const activeGradeIds = data.grades.filter(g => g.classes > 0).map(g => g.id);
                 const classesToGenerate = getClassesToGenerate(data);
                 const duplicateClasses = findDuplicates(classesToGenerate.map(s => s.className));
@@ -781,7 +874,8 @@
                         || (duplicateClasses.has(key) ? "Duplicate name" : "")
                         || (breakNames.includes(key) ? "Same as a break" : "");
                     if (nameError) { currentErrors.staffing[i].className = nameError; isValid = false; }
-                    if (s.teacher.trim().startsWith('=')) { currentErrors.staffing[i].teacher = "Can't start with ="; isValid = false; }
+                    const teacherError = getTeacherError(s.teacher);
+                    if (teacherError) { currentErrors.staffing[i].teacher = teacherError; isValid = false; }
                     if (Object.keys(currentErrors.staffing[i]).length && !firstErrorGradeId) {
                         firstErrorGradeId = s.gradeId;
                         firstErrorStaffId = s.id;
@@ -841,12 +935,13 @@
                                     const toAdd = g.classes - existingForGrade.length;
                                     const startIdx = existingForGrade.length + 1;
                                     for (let i = 0; i < toAdd; i++) {
+                                        const className = `${g.name} - ${startIdx + i}`;
                                         newStaffing.push({
                                             id: Date.now() + Math.random(),
                                             gradeId: g.id,
-                                            className: `${g.name} - ${startIdx + i}`,
+                                            className: className,
                                             teacher: "",
-                                            color: CLASS_COLOR_PALETTE[newStaffing.length % CLASS_COLOR_PALETTE.length]
+                                            color: colourForName(className) || CLASS_COLOR_PALETTE[newStaffing.length % CLASS_COLOR_PALETTE.length]
                                         });
                                     }
                                 } else if (existingForGrade.length > g.classes) {
@@ -954,7 +1049,7 @@
                         gradeId: gradeId,
                         className: row.className,
                         teacher: row.teacher,
-                        color: existing[i] ? existing[i].color : CLASS_COLOR_PALETTE[(others.length + i) % CLASS_COLOR_PALETTE.length]
+                        color: colourForName(row.className) || (existing[i] ? existing[i].color : CLASS_COLOR_PALETTE[(others.length + i) % CLASS_COLOR_PALETTE.length])
                     }));
                     return {
                         ...prev,
@@ -985,7 +1080,7 @@
                 link.click();
                 link.remove();
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
-                setSetupNotice({ ok: true, text: `Saved "${fileName}" to your downloads. Use "Load a saved setup" to start from it again, for example next year.` });
+                showToast(`Saved "${fileName}" to your downloads.`, 'ok', 5000);
             };
 
             const loadSetupFile = (event) => {
@@ -1005,14 +1100,14 @@
                         setStep(1);
                         const classCount = getClassesToGenerate(loaded).length;
                         const specialistCount = loaded.specialists.length;
-                        setSetupNotice({ ok: true, text: `Loaded the setup${loaded.schoolName ? ` for ${loaded.schoolName}` : ''}: ` +
+                        showToast(`Loaded the setup${loaded.schoolName ? ` for ${loaded.schoolName}` : ''}: ` +
                             `${classCount} ${classCount === 1 ? 'class' : 'classes'} and ${specialistCount} ${specialistCount === 1 ? 'specialist' : 'specialists'}. ` +
-                            `Check each step before generating.` });
+                            `Check each step before generating.`, 'ok', 7000);
                     } catch (e) {
-                        setSetupNotice({ ok: false, text: `"${file.name}" isn't a timetable setup file. Choose a file saved with "Save setup to a file".` });
+                        showToast(`"${file.name}" isn't a timetable setup file. Choose a file saved with "Save setup to a file".`, 'error', 10000);
                     }
                 };
-                reader.onerror = () => setSetupNotice({ ok: false, text: `"${file.name}" couldn't be read.` });
+                reader.onerror = () => showToast(`"${file.name}" couldn't be read.`, 'error', 10000);
                 reader.readAsText(file);
             };
 
@@ -1032,6 +1127,7 @@
                 setGenerationError("");
                 const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
                 setActiveJobId(jobId);
+                setShowLogs(false);
                 setIsGenerating(true);
                 setLoadingProgress(5);
 
@@ -1057,7 +1153,6 @@
                         .withSuccessHandler((url) => {
                             // The setup is in the timetable now; nothing to resume.
                             google.script.run.clearDraft();
-                            setDraftStatus("");
                             setLoadingProgress(100);
                             setLoadingMessage("Finalizing spreadsheet setup...");
                             setLogs(prev => [...prev, {
@@ -1315,13 +1410,12 @@
 
             const renderStep3 = () => {
                 // A class needs attention if it has an error from the last check,
-                // or a teacher but no name. Blank rows are skipped; a blank
-                // teacher is fine (TBC).
+                // or its name or teacher is still blank. Blank rows are skipped.
                 const classNeedsAttention = (s) => {
                     if (isBlankClass(s)) return false;
                     const globalIdx = data.staffing.findIndex(st => st.id === s.id);
                     const rowErrors = errors.staffing?.[globalIdx] || {};
-                    return Object.values(rowErrors).some(Boolean) || !s.className.trim();
+                    return Object.values(rowErrors).some(Boolean) || !s.className.trim() || !s.teacher.trim();
                 };
                 const countNeedingAttention = (gradeId) =>
                     data.staffing.filter(s => s.gradeId === gradeId && classNeedsAttention(s)).length;
@@ -1352,7 +1446,7 @@
                         <div>
                             <div className="mb-4">
                                 <h4 className="text-base font-semibold flex items-center gap-2"><UsersIcon className="w-5 h-5 text-brand-dark" /> Teacher Assignments</h4>
-                                <p className="text-sm text-slate-500 mt-1">Name each class and add its teacher. The number of rows is set by Step 2. Leave a teacher blank if they aren't known yet (the timetable shows TBC); rows left completely blank are skipped.</p>
+                                <p className="text-sm text-slate-500 mt-1">Name each class and add its teacher's name (needed for compliance). The number of rows is set by Step 2; rows left completely blank are skipped.</p>
                             </div>
 
                             {gradesWithClasses.length === 0 ? (
@@ -1362,9 +1456,10 @@
                                     <p className="text-xs mb-4 text-center">Return to Step 2 and configure at least 1 class for a grade.</p>
                                 </div>
                              ) : (
-                                <div className="border border-slate-200 rounded-lg bg-white overflow-hidden shadow-sm">
-                                    {/* Tabs Header */}
-                                    <div role="tablist" aria-label="Grades" onKeyDown={onTabKeyDown} className="flex overflow-x-auto border-b border-slate-200 custom-scrollbar bg-slate-50/50 pt-2 px-2 gap-1">
+                                <div className="border border-slate-200 rounded-lg bg-white shadow-sm">
+                                    {/* Tabs Header, with the grade's "..." menu at the end */}
+                                    <div className="flex items-end border-b border-slate-200 bg-slate-50/50 rounded-t-lg">
+                                    <div role="tablist" aria-label="Grades" onKeyDown={onTabKeyDown} className="flex flex-1 min-w-0 overflow-x-auto custom-scrollbar pt-2 px-2 gap-1">
                                         {gradesWithClasses.map(g => {
                                             const attentionCount = countNeedingAttention(g.id);
                                             const isActive = currentTabId === g.id;
@@ -1398,6 +1493,16 @@
                                             )
                                         })}
                                     </div>
+                                    <MoreMenu
+                                        className="shrink-0 px-1 pb-1"
+                                        label={`More options for ${(data.grades.find(g => g.id === currentTabId) || {}).name || 'this grade'}`}
+                                        items={[{
+                                            label: 'Paste from a spreadsheet',
+                                            hint: `Replace the ${(data.grades.find(g => g.id === currentTabId) || {}).name || ''} classes with names and teachers copied from a spreadsheet`,
+                                            onSelect: () => { setPasteFor(currentTabId); setPasteText(""); setTimeout(() => { const box = document.getElementById(`paste-${currentTabId}`); if (box) box.focus(); }, 50); }
+                                        }]}
+                                    />
+                                    </div>
 
                                     {/* Tab Content */}
                                     {/* No inner scroll area: every class is visible as the page scrolls. */}
@@ -1411,16 +1516,10 @@
                                                 <div key={g.id} id={`grade-panel-${g.id}`} role="tabpanel" aria-labelledby={`grade-tab-${g.id}`} className="space-y-4 animate-pop">
                                                     <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
                                                         <span className="font-semibold text-slate-800 text-base">Classes for {g.name}</span>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`text-[11px] font-bold px-2 py-1 rounded tracking-wide ${attentionCount ? 'text-amber-800 bg-amber-100' : 'text-slate-600 bg-slate-100'}`}>
-                                                                {classCount} {classCount === 1 ? 'class' : 'classes'}
-                                                                {attentionCount > 0 && ` · ${attentionCount} ${attentionCount === 1 ? 'needs' : 'need'} attention`}
-                                                            </span>
-                                                            <Button variant="outline" className="h-8 px-3 text-xs" aria-expanded={pasteFor === g.id}
-                                                                onClick={() => { setPasteFor(pasteFor === g.id ? null : g.id); setPasteText(""); }}>
-                                                                Paste from a spreadsheet
-                                                            </Button>
-                                                        </div>
+                                                        <span className={`text-[11px] font-bold px-2 py-1 rounded tracking-wide ${attentionCount ? 'text-amber-800 bg-amber-100' : 'text-slate-600 bg-slate-100'}`}>
+                                                            {classCount} {classCount === 1 ? 'class' : 'classes'}
+                                                            {attentionCount > 0 && ` · ${attentionCount} ${attentionCount === 1 ? 'needs' : 'need'} attention`}
+                                                        </span>
                                                     </div>
 
                                                     {pasteFor === g.id && (
@@ -1466,7 +1565,7 @@
                                                                 </div>
                                                                 <div className="flex-1 w-full">
                                                                     <Label htmlFor={`class-${s.id}-teacher`} className="text-xs mb-1 block">Assigned Teacher</Label>
-                                                                    <Input id={`class-${s.id}-teacher`} placeholder={isBlank ? "Blank row: skipped" : "TBC"} value={s.teacher} onChange={(e) => updateList('staffing', globalIdx, 'teacher', e.target.value)} error={errors.staffing?.[globalIdx]?.teacher} />
+                                                                    <Input id={`class-${s.id}-teacher`} placeholder={isBlank ? "Blank row: skipped" : "Teacher's name"} value={s.teacher} onChange={(e) => updateList('staffing', globalIdx, 'teacher', e.target.value)} error={errors.staffing?.[globalIdx]?.teacher} />
                                                                 </div>
                                                                 <div className="w-full sm:w-auto">
                                                                     <Label className="text-xs mb-1 block">&nbsp;</Label>
@@ -1638,237 +1737,122 @@
             };
 
             const renderStep4 = () => {
-                const weeklyTeachingMins = dailyTeachingMins * 5;
-
-                // Group staffing by grade (blank rows are skipped)
                 const classesToGenerate = getClassesToGenerate(data);
-                const expectedGroups = data.grades.filter(g => classesToGenerate.some(c => c.gradeId === g.id)).map(g => {
-                    const classList = classesToGenerate.filter(s => s.gradeId === g.id).map(s => ({
-                        name: s.className,
-                        teacher: s.teacher.trim() || TEACHER_TBC,
-                        color: s.color || CLASS_COLOR_PALETTE[0]
-                    }));
-                    return { grade: g.name, cycle: `${g.cycle} Week${g.cycle > 1 ? 's' : ''}`, classes: classList };
-                });
+                const gradeGroups = data.grades
+                    .map(g => ({ grade: g, classes: classesToGenerate.filter(c => c.gradeId === g.id) }))
+                    .filter(group => group.classes.length);
                 const specialists = getSpecialistsToGenerate(data);
                 const activities = data.activities.filter(a => a.name.trim());
                 const estimate = estimateGeneration(data);
                 const cycleMismatches = findCycleMismatches(data);
-                const tbcCount = classesToGenerate.filter(s => !s.teacher.trim()).length;
-
-                const toggleSummary = (key) => {
-                    setExpandedSummary(prev => ({...prev, [key]: !prev[key]}));
-                };
+                const schoolName = data.schoolName.trim();
 
                 // "Edit" beside a section heading, back to the step that sets it.
-                const renderEditLink = (target, what) => (
-                    <button type="button" onClick={() => goToStep(target)}
-                        className="text-xs font-semibold normal-case tracking-normal text-brand-dark hover:underline rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
-                        Edit<span className="sr-only"> {what}</span>
+                const renderEditLink = (target, what, text = "Edit") => (
+                    <button key={what} type="button" onClick={() => goToStep(target)}
+                        className="text-xs font-semibold text-brand-dark hover:underline rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                        {text}<span className="sr-only"> {what}</span>
                     </button>
+                );
+                const renderSection = (title, editLinks, content) => (
+                    <section className="py-3 border-t border-slate-200">
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                            <h5 className="text-xs font-bold text-slate-600 uppercase tracking-wider">{title}</h5>
+                            <div className="flex items-center gap-1">{editLinks}</div>
+                        </div>
+                        {content}
+                    </section>
                 );
 
                 return (
-                    <div className="space-y-6 animate-step" key="step4">
-                        <div className="mb-4">
-                            <h4 className="text-xl font-semibold text-slate-800">Summary Review</h4>
-                            <p className="text-base text-slate-500">Please review your configurations before generating the timetable template{data.schoolName.trim() ? <> for <strong className="text-slate-700">{data.schoolName.trim()}</strong></> : ''}.</p>
-                        </div>
-
-                        {/* What will be made */}
-                        <div className="bg-brand-green/10 border border-brand-green/20 rounded-lg p-4 space-y-2">
-                            <p className="font-semibold text-slate-900">Ready to generate</p>
-                            <p className="text-sm text-slate-700">
-                                <strong>{estimate.classTabs}</strong> class {estimate.classTabs === 1 ? 'tab' : 'tabs'} and <strong>{estimate.specialistTabs}</strong> specialist {estimate.specialistTabs === 1 ? 'tab' : 'tabs'},
-                                plus Start here, DATA and OVERVIEW. Generating takes <strong>{estimate.text}</strong>.
+                    <div className="animate-step" key="step4">
+                        <div className="mb-3">
+                            <h4 className="text-xl font-semibold text-slate-800">Ready to generate{schoolName ? <> for <span className="text-brand-dark">{schoolName}</span></> : ''}</h4>
+                            <p className="text-sm text-slate-600 mt-1">
+                                {plural(estimate.classTabs, 'class tab', 'class tabs')} and {plural(estimate.specialistTabs, 'specialist tab', 'specialist tabs')},
+                                plus Start here, DATA and OVERVIEW. Generating takes {estimate.text}.
                             </p>
-                            {tbcCount > 0 && (
-                                <p className="text-sm text-slate-700">{tbcCount} {tbcCount === 1 ? 'class has' : 'classes have'} no teacher yet and will show TBC. Teachers can be added on each class tab later.</p>
-                            )}
-                            {Object.keys(cycleMismatches).length > 0 && (
-                                <div className="flex items-start gap-1.5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-                                    <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
-                                    <div className="space-y-1">
-                                        {specialists.filter(s => cycleMismatches[s.id]).map(s => (
-                                            <p key={s.id}>{describeCycleMismatch(s, cycleMismatches[s.id])}</p>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
-                        <div className="max-h-[calc(100vh-24rem)] overflow-y-auto custom-scrollbar p-1 -m-1 space-y-6">
-
-                            {/* Core Schedule & Calculations */}
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-1">
-                                    <h5 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2"><BellIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Core Schedule</h5>
-                                    {renderEditLink(1, 'school name, bell times and breaks')}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-                                    {/* Box 1: School Day */}
-                                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col shadow-sm relative">
-                                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">School Day</span>
-                                        <span className="text-2xl sm:text-3xl font-black text-slate-800 mb-6">{formatMinutes(totalSchoolMins)}</span>
-
-                                        <div className="space-y-2 mt-auto">
-                                            <div className="flex justify-between items-center text-sm border-t border-slate-200/60 pt-2">
-                                                <span className="text-slate-500 font-medium">Start</span>
-                                                <span className="font-bold text-slate-700">{formatAMPM(data.schoolStart) || 'Not set'}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-500 font-medium">End</span>
-                                                <span className="font-bold text-slate-700">{formatAMPM(data.schoolEnd) || 'Not set'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Box 2: Break Time */}
-                                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col shadow-sm">
-                                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Break Time</span>
-                                        <span className="text-2xl sm:text-3xl font-black text-slate-800 mb-6">{formatMinutes(totalBreakMins)}</span>
-
-                                        <div className="space-y-3 mt-auto">
-                                            {data.breaks.length === 0 && <span className="text-sm text-slate-500 italic block border-t border-slate-200/60 pt-2">No breaks configured.</span>}
-                                            {data.breaks.map((b, idx) => {
-                                                const dur = timeToMinutes(b.end) - timeToMinutes(b.start);
-                                                return (
-                                                <div key={b.id} className={`flex flex-col gap-0.5 text-sm ${idx === 0 ? 'border-t border-slate-200/60 pt-2' : ''}`}>
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-slate-700 font-semibold truncate pr-2" title={b.name}>{b.name || 'Unnamed'}</span>
-                                                        <span className="font-bold text-slate-700 shrink-0 text-right">{dur > 0 ? formatMinutes(dur) : '0 min'}</span>
-                                                    </div>
-                                                    <span className="text-xs text-slate-500 font-medium">
-                                                        {formatAMPM(b.start) || 'Not set'} - {formatAMPM(b.end) || 'Not set'}
-                                                    </span>
-                                                </div>
-                                            )})}
-                                        </div>
-                                    </div>
-
-                                    {/* Box 3: Teaching Time */}
-                                    <div className="border rounded-lg p-4 flex flex-col shadow-sm relative bg-brand-green/10 border-brand-green/20">
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block text-brand-dark">Teaching Time</span>
-                                        </div>
-                                        <span className="text-2xl sm:text-3xl font-black mb-6 text-brand-dark">{formatMinutes(dailyTeachingMins)}</span>
-
-                                        <div className="space-y-2 mt-auto">
-                                            <div className="flex justify-between items-center text-sm border-t pt-2 border-brand-green/20">
-                                                <span className="font-medium text-slate-600">Weekly Total</span>
-                                                <span className="font-bold text-brand-dark">{formatMinutes(weeklyTeachingMins)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                        {Object.keys(cycleMismatches).length > 0 && (
+                            <div className="mb-3 flex items-start gap-1.5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                                <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                                <div className="space-y-1">
+                                    {specialists.filter(s => cycleMismatches[s.id]).map(s => (
+                                        <p key={s.id}>{describeCycleMismatch(s, cycleMismatches[s.id])}</p>
+                                    ))}
                                 </div>
                             </div>
+                        )}
 
-                            {/* Grouped Staffing by Grade */}
-                            <div className="space-y-3 pt-2">
-                                <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
-                                <button
-                                    type="button"
-                                    onClick={() => toggleSummary('staff')}
-                                    aria-expanded={expandedSummary.staff}
-                                    aria-controls="summary-staff"
-                                    className="flex-1 flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider hover:text-brand-dark transition-colors"
-                                >
-                                    <span className="flex items-center gap-2"><LayersIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Classes & Staffing ({classesToGenerate.length} total)</span>
-                                    {expandedSummary.staff ? <ChevronUpIcon className="w-5 h-5 text-slate-500" aria-hidden="true" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" aria-hidden="true" />}
-                                </button>
-                                    {renderEditLink(2, 'grades and cycle lengths')}
-                                    {renderEditLink(3, 'classes and teachers')}
+                        {renderSection('School day', [renderEditLink(1, 'school day and breaks')],
+                            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-sm">
+                                <div>
+                                    <dt className="text-xs text-slate-600">Hours</dt>
+                                    <dd className="font-semibold text-slate-900">{formatAMPM(data.schoolStart)} - {formatAMPM(data.schoolEnd)}</dd>
                                 </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">Breaks</dt>
+                                    <dd className="text-slate-900">
+                                        {data.breaks.length ? data.breaks.map(b => (
+                                            <span key={b.id} className="block">{b.name || 'Unnamed'} {formatAMPM(b.start)} - {formatAMPM(b.end)}</span>
+                                        )) : 'None'}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">Teaching time a day</dt>
+                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins)}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">A week</dt>
+                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins * 5)}</dd>
+                                </div>
+                            </dl>
+                        )}
 
-                                {expandedSummary.staff && (
-                                    <div id="summary-staff" className="space-y-4 animate-pop">
-                                        {expectedGroups.map((group, idx) => (
-                                            <div key={idx} className="bg-slate-50 rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                                                <div className="bg-slate-200/50 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
-                                                    <span className="font-bold text-slate-800 text-sm">{group.grade}</span>
-                                                    <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded tracking-wider">{group.cycle}</span>
-                                                </div>
-                                                <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                    {group.classes.map((cls, cIdx) => (
-                                                        <div key={cIdx} className="bg-white border border-slate-200 p-2.5 rounded-md flex items-start gap-2 shadow-sm">
-                                                            <span className="w-3 h-3 rounded-full border border-slate-200 mt-1 shrink-0" style={{ backgroundColor: cls.color }} title={cls.color} aria-hidden="true"></span>
-                                                            <div className="flex flex-col">
-                                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{cls.name || 'Unnamed Class'}</span>
-                                                                <span className={`text-sm font-medium ${cls.teacher === TEACHER_TBC ? 'text-amber-800 italic' : 'text-brand-dark'}`}>{cls.teacher}</span>
-                                                            </div>
-                                                        </div>
+                        {renderSection(`Classes (${classesToGenerate.length})`,
+                            [renderEditLink(2, 'grades and cycle lengths', 'Edit grades'), renderEditLink(3, 'classes and teachers', 'Edit classes')],
+                            <table className="w-full text-sm">
+                                <tbody>
+                                    {gradeGroups.map(group => (
+                                        <tr key={group.grade.id} className="align-top border-t border-slate-100 first:border-t-0">
+                                            <th scope="row" className="text-left font-semibold text-slate-900 py-1.5 pr-4 whitespace-nowrap w-0">
+                                                {group.grade.name}
+                                                <span className="block text-xs font-normal text-slate-600">{group.grade.cycle}-week cycle</span>
+                                            </th>
+                                            <td className="py-1.5">
+                                                <ul className="flex flex-wrap gap-1.5">
+                                                    {group.classes.map(c => (
+                                                        <li key={c.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-0.5">
+                                                            <span className="w-2.5 h-2.5 rounded-full border border-black/10" style={{ backgroundColor: c.color || CLASS_COLOR_PALETTE[0] }} aria-hidden="true"></span>
+                                                            <span className="font-medium text-slate-900">{c.className}</span>
+                                                            <span className="text-slate-600">{c.teacher}</span>
+                                                        </li>
                                                     ))}
-                                                    {group.classes.length === 0 && <span className="text-xs italic text-slate-500">No classes configured.</span>}
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {expectedGroups.length === 0 && <p className="text-sm text-slate-500 italic">No grades configured.</p>}
-                                    </div>
-                                )}
-                            </div>
+                                                </ul>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
 
-                            {/* Specialists */}
-                            <div className="space-y-3 pt-2">
-                                <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
-                                <button
-                                    type="button"
-                                    onClick={() => toggleSummary('specialists')}
-                                    aria-expanded={expandedSummary.specialists}
-                                    aria-controls="summary-specialists"
-                                    className="flex-1 flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider hover:text-brand-dark transition-colors"
-                                >
-                                    <span className="flex items-center gap-2"><StarIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Specialist Profiles ({specialists.length})</span>
-                                    {expandedSummary.specialists ? <ChevronUpIcon className="w-5 h-5 text-slate-500" aria-hidden="true" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" aria-hidden="true" />}
-                                </button>
-                                    {renderEditLink(3, 'specialists')}
-                                </div>
+                        {renderSection(`Specialists (${specialists.length})`, [renderEditLink(3, 'specialists')],
+                            specialists.length ? (
+                                <ul className="flex flex-wrap gap-1.5 text-sm">
+                                    {specialists.map(s => (
+                                        <li key={s.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-0.5">
+                                            <span className="font-medium text-slate-900">{s.name}</span>
+                                            <span className="text-slate-600">{s.kla} · {s.cycle || 1}-week cycle</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : <p className="text-sm text-slate-600">None</p>
+                        )}
 
-                                {expandedSummary.specialists && (
-                                    <ul id="summary-specialists" className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
-                                        {specialists.map(s => (
-                                            <li key={s.id} className="bg-slate-50 p-2.5 rounded-md border border-slate-100 flex flex-col gap-1 shadow-sm">
-                                                <span className="font-semibold text-slate-900">{s.name}</span>
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="text-xs text-brand-dark font-medium bg-brand-green/10 px-2 py-0.5 rounded-md">{s.kla || 'No KLA Assigned'}</span>
-                                                    <span className="text-xs text-slate-600 font-medium bg-slate-200/70 px-2 py-0.5 rounded-md">{s.cycle || 1} Week{(s.cycle || 1) > 1 ? 's' : ''}</span>
-                                                </div>
-                                            </li>
-                                        ))}
-                                        {specialists.length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
-                                    </ul>
-                                )}
-                            </div>
-
-                            {/* Activities */}
-                            <div className="space-y-3 pt-2">
-                                <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
-                                <button
-                                    type="button"
-                                    onClick={() => toggleSummary('activities')}
-                                    aria-expanded={expandedSummary.activities}
-                                    aria-controls="summary-activities"
-                                    className="flex-1 flex justify-between items-center text-sm font-bold text-slate-900 uppercase tracking-wider hover:text-brand-dark transition-colors"
-                                >
-                                    <span className="flex items-center gap-2"><ActivityIcon className="w-4 h-4 text-slate-500" aria-hidden="true" /> Extra-Curriculars ({activities.length})</span>
-                                    {expandedSummary.activities ? <ChevronUpIcon className="w-5 h-5 text-slate-500" aria-hidden="true" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" aria-hidden="true" />}
-                                </button>
-                                    {renderEditLink(3, 'extra-curricular activities')}
-                                </div>
-
-                                {expandedSummary.activities && (
-                                    <ul id="summary-activities" className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 animate-pop">
-                                        {activities.map(a => (
-                                            <li key={a.id} className="bg-slate-50 p-2.5 rounded-md border border-slate-100 flex items-center gap-2 shadow-sm">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" aria-hidden="true"></span>{a.name}
-                                            </li>
-                                        ))}
-                                        {activities.length === 0 && <li className="text-slate-500 italic text-xs list-none col-span-2">None configured.</li>}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
+                        {renderSection(`Extra-curricular activities (${activities.length})`, [renderEditLink(3, 'extra-curricular activities')],
+                            <p className="text-sm text-slate-900">{activities.length ? activities.map(a => a.name.trim()).join(', ') : 'None'}</p>
+                        )}
                     </div>
                 );
             };
@@ -1893,81 +1877,38 @@
 
                     {/* GENERATION PROGRESS SCREEN */}
                     {isGenerating ? (
-                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden animate-pop flex flex-col">
-                            <CardHeader className="border-b border-slate-200 bg-white p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 z-10 relative shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)]">
-                                <div className="flex items-center gap-3">
-                                    <div className="relative">
-                                        <div className="w-10 h-10 rounded-full border-2 border-slate-200 border-t-brand-green animate-spin"></div>
-                                        <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-slate-800">
-                                            {loadingProgress}%
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h3 className="text-lg font-bold text-slate-900 leading-tight">Generating Timetable</h3>
-                                        <p className="text-xs text-slate-500">Google Apps Script Execution Engine</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4 text-xs bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600">
-                                    <div className="flex items-center gap-1.5">
-                                        <ClockIcon />
-                                        <span>Elapsed: <strong className="text-slate-900 font-mono">{formatElapsed(elapsedSeconds)}</strong></span>
-                                    </div>
-                                </div>
-                            </CardHeader>
-
-                            <CardContent className="p-6 sm:p-8 bg-slate-50 flex flex-col gap-6">
-                                {/* Progress Bar */}
-                                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
-                                    <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                                        <span className="uppercase tracking-wider text-slate-500">Total Completion</span>
-                                        <span className="text-brand-dark font-mono text-sm">{loadingProgress}%</span>
-                                    </div>
-                                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200"
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 animate-pop">
+                            <CardContent className="p-8 sm:p-12 flex flex-col items-center text-center gap-5">
+                                <h2 className="text-xl font-bold text-slate-900">Generating your timetable</h2>
+                                <div className="w-full max-w-lg flex items-center gap-3">
+                                    <div className="flex-1 bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200"
                                         role="progressbar" aria-label="Timetable generation" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadingProgress}>
-                                        <div
-                                            className="bg-brand-dark h-full rounded-full transition-all duration-500 ease-out"
-                                            style={{ width: `${loadingProgress}%` }}
-                                        ></div>
+                                        <div className="bg-brand-dark h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${loadingProgress}%` }}></div>
                                     </div>
-                                    <div className="flex items-center gap-2 pt-1 text-xs font-semibold text-slate-800 animate-pulse" aria-live="polite">
-                                        <span className="w-2 h-2 rounded-full bg-brand-green"></span>
-                                        <span>Current Action: <span className="font-normal text-slate-600">{loadingMessage || 'Processing...'}</span></span>
-                                    </div>
+                                    <span className="text-sm font-mono font-semibold text-slate-700 w-12 text-right" aria-hidden="true">{loadingProgress}%</span>
                                 </div>
-
-                                {/* Live Activity Log Stream */}
-                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                                    <div className="bg-slate-100/70 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
-                                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                                            <ActivityIcon className="w-3.5 h-3.5 text-brand-dark" />
-                                            Live Execution Log ({logs.length} events)
-                                        </span>
-                                        <span className="text-[10px] font-mono text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded">
-                                            Job ID: {activeJobId || 'Simulated'}
-                                        </span>
+                                <p className="text-sm text-slate-600 max-w-md">
+                                    This usually takes {estimateGeneration(data).text}. Please keep this window open.
+                                </p>
+                                <Button variant="ghost" className="h-9 text-slate-700" aria-expanded={showLogs} aria-controls="generation-log" onClick={() => setShowLogs(prev => !prev)}>
+                                    {showLogs ? 'Hide the log' : 'View the log'}
+                                </Button>
+                                {showLogs && (
+                                    <div id="generation-log" className="w-full max-w-lg text-left bg-slate-50 border border-slate-200 rounded-lg animate-pop">
+                                        <div className="flex justify-between px-3 py-2 border-b border-slate-200 text-xs text-slate-600">
+                                            <span>{plural(logs.length, 'step', 'steps')}</span>
+                                            <span>Elapsed <span className="font-mono">{formatElapsed(elapsedSeconds)}</span></span>
+                                        </div>
+                                        <ol ref={logContainerRef} className="p-3 max-h-[220px] overflow-y-auto custom-scrollbar text-xs space-y-1.5">
+                                            {logs.map((log) => (
+                                                <li key={log.id} className="flex items-start gap-2.5 leading-relaxed">
+                                                    <span className="text-slate-500 font-mono shrink-0">{log.time}</span>
+                                                    <span className="text-slate-800 break-words flex-1">{log.text}</span>
+                                                </li>
+                                            ))}
+                                        </ol>
                                     </div>
-
-                                    <div
-                                        ref={logContainerRef}
-                                        className="p-4 max-h-[220px] overflow-y-auto custom-scrollbar font-mono text-xs space-y-2 bg-white text-slate-800"
-                                    >
-                                        {logs.map((log) => (
-                                            <div key={log.id} className="flex items-start gap-2.5 leading-relaxed animate-pop">
-                                                <span className="text-slate-400 text-[10px] shrink-0 pt-0.5 font-sans">{log.time}</span>
-                                                <span className="text-brand-dark font-bold shrink-0">[{log.percent}%]</span>
-                                                <span className="text-slate-700 break-words flex-1 font-sans">{log.text}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Callout Notice */}
-                                <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-lg flex items-start gap-3 text-xs text-amber-900">
-                                    <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                    <p className="leading-relaxed">
-                                        For this school, generating takes {estimateGeneration(data).text}. <strong>Please keep this window open</strong> while Google Apps Script sets up your spreadsheet.
-                                    </p>
-                                </div>
+                                )}
                             </CardContent>
                         </Card>
                     ) : isSuccess ? (
@@ -2013,20 +1954,18 @@
                     ) : (
                         /* WIZARD SCREEN */
                         <React.Fragment>
-                        <div className="w-full flex flex-wrap items-center justify-end gap-2 mb-3">
-                            <span className="text-xs text-slate-600 mr-auto" aria-live="polite">{draftStatus}</span>
-                            <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={loadSetupFile} />
-                            <Button variant="ghost" className="h-9 text-slate-700" onClick={() => fileInputRef.current && fileInputRef.current.click()}>Load a saved setup</Button>
-                            <Button variant="ghost" className="h-9 text-slate-700" onClick={saveSetupFile}>Save setup to a file</Button>
-                        </div>
-                        {setupNotice && (
-                            <div role="status" className={`w-full mb-3 p-3 rounded-lg border text-sm flex items-start gap-3 ${setupNotice.ok ? 'bg-brand-green/10 border-brand-green/20 text-slate-800' : 'bg-red-50 border-red-200 text-red-900'}`}>
-                                <p className="flex-1">{setupNotice.text}</p>
-                                <button type="button" onClick={() => setSetupNotice(null)} className="text-xs font-semibold underline">Dismiss</button>
-                            </div>
-                        )}
-                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden flex flex-col">
-                            <CardHeader className="border-b border-slate-200 bg-slate-50 px-6 py-8 sm:px-10 z-10 relative shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)]">
+                        <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={loadSetupFile} aria-hidden="true" tabIndex={-1} />
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 flex flex-col">
+                            <CardHeader className="border-b border-slate-200 bg-slate-50 rounded-t-xl px-6 py-8 sm:px-10 z-10 relative shadow-[0_4px_10px_-5px_rgba(0,0,0,0.05)]">
+                                <div className="absolute top-2 right-2 z-20">
+                                <MoreMenu
+                                    label="Setup options"
+                                    items={[
+                                        { label: 'Save setup to a file', hint: 'Download this setup to load again later, e.g. next year', onSelect: saveSetupFile },
+                                        { label: 'Load a saved setup', hint: 'Fill the wizard from a setup file', onSelect: () => fileInputRef.current && fileInputRef.current.click() }
+                                    ]}
+                                />
+                                </div>
                                 {/* Stepper Header */}
                                 <div className="relative">
                                 <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-full h-[2px] bg-slate-300 -z-10" aria-hidden="true"></div>
@@ -2089,7 +2028,7 @@
                                 {step === 4 && renderStep4()}
                             </CardContent>
 
-                            <CardFooter className="flex items-start justify-between bg-slate-50 border-t border-slate-200 p-6 sm:px-10 h-28 pt-8 shrink-0">
+                            <CardFooter className="flex items-start justify-between bg-slate-50 rounded-b-xl border-t border-slate-200 p-6 sm:px-10 h-28 pt-8 shrink-0">
                                 <Button variant="outline" onClick={handleBack} disabled={step === 1}>
                                     Back
                                 </Button>
@@ -2105,6 +2044,20 @@
                         </Card>
                         </React.Fragment>
                     )}
+
+                    {/* Toast: always present so screen readers announce what appears in it */}
+                    <div aria-live="polite" className="fixed bottom-4 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
+                        {toast && (
+                            <div role="status" className={`pointer-events-auto max-w-lg flex items-start gap-3 rounded-lg shadow-lg px-4 py-2.5 text-sm animate-pop ${
+                                toast.tone === 'error' ? 'bg-red-700 text-white' : toast.tone === 'ok' ? 'bg-brand-dark text-white' : 'bg-slate-800 text-white'}`}>
+                                {toast.tone === 'info' && <CheckIcon />}
+                                <span className="flex-1">{toast.text}</span>
+                                {toast.tone !== 'info' && (
+                                    <button type="button" onClick={() => setToast(null)} className="text-xs font-semibold underline shrink-0">Dismiss</button>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
                     {/* SUITE TAG */}
                     <div className="mt-12 mb-4 text-[11px] font-medium text-brand-dark tracking-widest text-center uppercase">

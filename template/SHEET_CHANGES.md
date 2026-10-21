@@ -212,13 +212,14 @@ No sheet changes. Paste the updated `template/TimetableTools.gs` into the templa
 
 No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project and redeploy (Deploy → Manage deployments → edit → New version).
 
-- [ ] **Drafts:** fill in Step 1 and part of Step 2, wait for "Draft saved" above the wizard, then reload the page. "Continue where you left off?" appears: **Resume** goes back to the same step with everything filled in; reload again and **Start new** gives an empty wizard.
+- [ ] **Drafts:** fill in Step 1 and part of Step 2; "Draft saved" pops up at the bottom of the screen. Reload the page: "Continue where you left off?" appears. **Resume** goes back to the same step with everything filled in; reload again and **Start new** gives an empty wizard.
 - [ ] **Problem list:** click Continue on Step 1 with no school name. A red box lists the problem; clicking it puts the cursor in the field, and the box goes once it's fixed. On Step 3, make two classes in different grades share a name: both are listed, and clicking one opens its grade tab.
-- [ ] **TBC and blank rows:** leave a class's teacher blank (allowed), and clear both fields of another class ("Blank: skipped"). The summary counts classes without the blank one and says how many show TBC. In the generated timetable, the class's teacher is **TBC** (Start here and C27).
-- [ ] **Paste:** in a spreadsheet, select class names and teachers (two columns), copy, then in Step 3 **Paste from a spreadsheet** and paste. It shows how many it found; **Use these N classes** replaces that grade's classes.
+- [ ] **Teachers:** leave a class's teacher blank, and type TBC for another: both are listed as problems and Continue is blocked. Clear both fields of a third class: it says "Blank: skipped" and isn't counted on the summary.
+- [ ] **Colours:** the default classes have matching colours (Kindergarten Blue is blue, Year 1 Gold is yellow...). Rename a class "Year 3 Purple": it turns purple. Pick a colour for it, then rename it again: your colour stays.
+- [ ] **Paste:** in a spreadsheet, select class names and teachers (two columns) and copy. On Step 3, open the **...** at the end of the grade tabs, **Paste from a spreadsheet**, and paste. It shows how many it found; **Use these N classes** replaces that grade's classes.
 - [ ] **Cycle warning:** give a specialist a 2-week cycle while a grade has 1 or 3 weeks: a warning shows under the specialist and on the summary.
-- [ ] **Preview:** the summary says how many class and specialist tabs will be made and roughly how long it takes; compare with the real time.
-- [ ] **Edit links:** each summary section's Edit goes back to its step.
-- [ ] **Setup file:** **Save setup to a file** downloads `<school> - timetable setup.json`. In a new wizard, **Load a saved setup** with it fills every step the same way. Choosing another file explains it isn't a setup file.
+- [ ] **Summary:** compact, with the number of tabs and roughly how long it takes at the top; each section's Edit goes back to its step.
+- [ ] **Setup file:** the **...** at the top right of the wizard has **Save setup to a file** (downloads `<school> - timetable setup.json`) and **Load a saved setup**. Loading it in a new wizard fills every step the same way; another file gets "isn't a timetable setup file" at the bottom of the screen.
+- [ ] **Generating:** a progress bar only; **View the log** shows the steps. Compare the real time with the estimate.
 - [ ] **After generating:** **Back to the wizard** returns to the summary with the setup kept; **Start a new timetable** gives an empty wizard.
-- [ ] **Keyboard:** on Step 3, Tab to the grade tabs and use the left/right arrow keys; open a class colour and close it with Escape.
+- [ ] **Keyboard:** on Step 3, Tab to the grade tabs and use the left/right arrow keys; open a class colour and close it with Escape; open a **...** menu and use the up/down arrows and Enter.

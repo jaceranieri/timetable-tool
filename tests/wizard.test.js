@@ -13,7 +13,8 @@ const { makePayload, makeLargeSchoolPayload } = require('./helpers/payload');
 const html = fs.readFileSync(path.join(__dirname, '..', 'wizard', 'Index.html'), 'utf8');
 const helperSource = html.match(/(const CLASS_COLOR_PALETTE[\s\S]*?)\n\s*const App = /)[1];
 const wizard = vm.runInNewContext(helperSource + `;({ makeInitialData, buildExportVariables, setupFromVariables,
-  getClassesToGenerate, findCycleMismatches, describeCycleMismatch, estimateGeneration, parsePastedClasses })`, {});
+  getClassesToGenerate, findCycleMismatches, describeCycleMismatch, estimateGeneration, parsePastedClasses,
+  getTeacherError, colourForName })`, {});
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const valuesOf = variables => Object.fromEntries(variables.map(item => [item.name, item.value]));
@@ -28,15 +29,17 @@ test('a setup loaded from a timetable payload (RawData_JSON) gives back the same
   assert.deepEqual(plain(wizard.buildExportVariables(data)), plain(payload.exportVariables));
 });
 
-test('grades the wizard does not list are added; a TBC teacher comes back blank', () => {
+test('grades the wizard does not list are added; teachers and colours come back as saved', () => {
   const payload = makePayload({ classes: [['Stage 1 Blue', 'TBC', 'Stage 1', 2], ['K Blue', 'Ms Adams', 'Kindergarten', 1]] });
   const data = wizard.setupFromVariables(payload.exportVariables);
   const stage = data.grades.find(g => g.name === 'Stage 1');
   assert.deepEqual([stage.classes, stage.cycle, data.grades.indexOf(stage)], [1, 2, 7]);
-  assert.equal(data.staffing.find(s => s.className === 'Stage 1 Blue').teacher, '');
+  // Kept as saved; Step 3 asks for a real name before generating.
+  assert.equal(data.staffing.find(s => s.className === 'Stage 1 Blue').teacher, 'TBC');
+  assert.equal(data.staffing.find(s => s.className === 'K Blue').color, '#FFADAD');
 });
 
-test('blank class and specialist rows are left out of what is generated; blank teachers are sent blank', () => {
+test('blank class and specialist rows are left out of what is generated', () => {
   const data = wizard.makeInitialData();
   data.schoolName = 'St X';
   data.staffing[1].className = '';             // K Red: fully blank (teacher already blank)
@@ -81,4 +84,20 @@ test('pasted rows: tab-separated name and teacher, heading and blank lines dropp
     { className: '3 Gold', teacher: '' },
     { className: '3 Red', teacher: 'Mr Tran' }
   ]);
+});
+
+test('a teacher is required, and stand-ins like TBC are refused', () => {
+  assert.deepEqual(['', '  ', 'TBC', 'tba', 'N/A', 'na', '-', '?', 'Teacher', '=A1', 'Ms Adams', 'Mr T. B. Cole']
+    .map(wizard.getTeacherError), ['Required', 'Required', 'Enter their name', 'Enter their name', 'Enter their name',
+    'Enter their name', 'Enter their name', 'Enter their name', 'Enter their name', "Can't start with =", '', '']);
+});
+
+test('default and pasted classes named after a colour get that colour', () => {
+  const defaults = wizard.makeInitialData().staffing.map(s => [s.className, s.color]);
+  assert.deepEqual(plain(defaults), [
+    ['Kindergarten Blue', '#A0C4FF'], ['Kindergarten Red', '#FFADAD'], ['Year 1 Gold', '#FDFFB6'],
+    ['Year 1 Green', '#CAFFBF'], ['Year 2 Amber', '#FFD6A5'], ['Year 2 Jade', '#C1FFD7']
+  ]);
+  assert.equal(wizard.colourForName('3/4 Purple'), '#BDB2FF');
+  assert.equal(wizard.colourForName('Year 3 - 1'), null);
 });

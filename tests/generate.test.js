@@ -415,10 +415,16 @@ test('Start here links copied tabs too (their ids come from the Sheets API reque
   });
 });
 
-test('a class with no teacher yet is generated with "TBC" as its teacher', () => {
-  const { ss } = generate(makePayload({ classes: [['K Blue', '', 'Kindergarten', 1], ['K Red', 'Mr Brown', 'Kindergarten', 1]] }));
-  assert.equal(ss.getSheetByName('K Blue').getRange('C27').getValue(), 'TBC');
-  assert.equal(ss.getSheetByName('Start here').getRange('B18').getValue(), 'TBC');
+test('every class needs its teacher\'s name: blank or a stand-in like TBC is refused', () => {
+  const { world, wizard } = setUp();
+  const payload = makePayload({ classes: [['K Blue', '', 'Kindergarten', 1], ['K Red', 'TBC', 'Kindergarten', 1], ['K Gold', 'n/a', 'Kindergarten', 1]] });
+  assert.throws(() => wizard.generateTimetable(payload), error => {
+    assert.match(error.message, /Class "K Blue" needs its teacher's name\./);
+    assert.match(error.message, /Class "K Red" needs its teacher's name \("TBC" isn't a name\)\./);
+    assert.match(error.message, /Class "K Gold" needs its teacher's name \("n\/a" isn't a name\)\./);
+    return true;
+  });
+  assert.equal(world.lastCopyId, undefined, 'nothing is copied');
 });
 
 test('wizard drafts are saved per user in parts, read back whole, and cleared', () => {

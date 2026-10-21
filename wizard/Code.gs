@@ -28,7 +28,8 @@ function getTemplateId() {
  * TEMPLATE!B21 exactly, because C21 counts cells with this value.
  */
 const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
-const TEACHER_TBC = 'TBC';
+// Every class needs its teacher's name for compliance, so stand-ins are refused.
+const TEACHER_PLACEHOLDER = /^(tbc|tba|tbd|n\/?a|none|unknown|teacher|[-?.\s]*)$/i;
 
 function isAmadeusGrade(grade) {
   return /^Year\s*[3-6]$/i.test(String(grade || '').trim());
@@ -332,8 +333,7 @@ function parsePayloadConfig(payload) {
   index = 1;
   while (varMap['Class_' + index + '_Name'] !== undefined) {
     const name = String(varMap['Class_' + index + '_Name'] || '').trim();
-    // A teacher can be left blank in the wizard until they're known.
-    const teacher = String(varMap['Class_' + index + '_Teacher'] || '').trim() || TEACHER_TBC;
+    const teacher = String(varMap['Class_' + index + '_Teacher'] || '').trim();
     const grade = String(varMap['Class_' + index + '_Grade'] || '').trim();
     const cycle = Number(varMap['Class_' + index + '_Cycle']);
     const color = String(varMap['Class_' + index + '_Color'] || '').trim();
@@ -443,7 +443,11 @@ function validateConfig(config) {
     if (seenClasses[key]) problems.push(label + ' is used more than once.');
     seenClasses[key] = true;
     if (breakNames.indexOf(key) !== -1) problems.push(label + ' has the same name as a break.');
-    if (startsWithFormula(item.teacher)) problems.push(label + ": the teacher name can't start with =.");
+    if (TEACHER_PLACEHOLDER.test(item.teacher)) {
+      problems.push(label + " needs its teacher's name" + (item.teacher ? ' ("' + item.teacher + '" isn\'t a name).' : '.'));
+    } else if (startsWithFormula(item.teacher)) {
+      problems.push(label + ": the teacher name can't start with =.");
+    }
     if (!isValidCycle(item.cycle)) {
       problems.push(label + ' needs a cycle length of 1 to ' + MAX_CYCLE_WEEKS + ' weeks.');
     }
