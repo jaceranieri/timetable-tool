@@ -14,6 +14,20 @@ A timetable helper wizard tool that assists Primary schools creating their timet
 `wizard/LoadTest.gs` is a development-only load test; don't include it in the
 live wizard project.
 
+## Shared code
+
+Code used by more than one script lives once in `shared/`:
+
+| File | Copied into |
+|---|---|
+| `shared/timetableTabs.gs`: sync note markers and the specialist clash formatting | `wizard/Code.gs`, `template/TemplateSync.gs` |
+| `shared/setupRules.js`: setup limits checked by both the wizard page and the server | `wizard/Code.gs`, `wizard/Index.html` |
+
+Edit the file in `shared/`, run `npm run build` to copy it into the scripts
+(between the `// ---- shared/...` marker lines), then paste the updated
+scripts into Apps Script as usual. Don't edit inside the marker lines: the
+build overwrites them, and `npm test` fails while a copy is out of date.
+
 ## Running the tests
 
 The `tests/` folder runs both scripts against an in-memory stand-in for

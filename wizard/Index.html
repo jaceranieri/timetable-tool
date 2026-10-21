@@ -545,13 +545,26 @@
             '#A0C4FF', '#BDB2FF', '#E4C1F9', '#FFC6FF', '#FFCFE0'
         ];
 
-        // Setup rules shared with the server (validateConfig in Code.gs),
-        // which checks the same things again. Keep the two in step.
+        // ---- shared/setupRules.js (copied here by "npm run build"; edit that file, not this block) ----
+        /*
+         * Setup rules shared by the wizard page (wizard/Index.html), which checks
+         * them as you type, and the server (wizard/Code.gs, validateConfig), which
+         * checks them again before generating: "npm run build" copies this file into
+         * both. Edit it here, run the build, then paste both files into Apps Script.
+         */
         const SLOT_MINUTES = 5;
         const MAX_CYCLE_WEEKS = 10;
         const MAX_NAME_LENGTH = 90;
         const MAX_SCHOOL_NAME_LENGTH = 100;
+        // Tabs that already exist in the template (or are planned), compared
+        // case-insensitively because Google Sheets tab names are.
         const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
+        // Amadeus runs in Years 3-6 in every school. The activity name must match
+        // TEMPLATE!B21 exactly, because C21 counts cells with this value.
+        const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
+        // Every class needs its teacher's name for compliance, so stand-ins are refused.
+        const TEACHER_PLACEHOLDER = /^(tbc|tba|tbd|n\/?a|none|unknown|teacher|[-?.\s]*)$/i;
+        // ---- end of shared/setupRules.js ----
 
         // Short message for a class or specialist name that can't be used as
         // a tab name, or '' if it's fine. Class names can't contain an
@@ -581,10 +594,6 @@
             return (hours * 60 + minutes) % SLOT_MINUTES === 0;
         };
 
-        const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
-        // Every class needs its teacher's name for compliance, so stand-ins
-        // are refused (the same rule as TEACHER_PLACEHOLDER in Code.gs).
-        const TEACHER_PLACEHOLDER = /^(tbc|tba|tbd|n\/?a|none|unknown|teacher|[-?.\s]*)$/i;
         const getTeacherError = (teacher) => {
             const trimmed = teacher.trim();
             if (!trimmed) return "Required";

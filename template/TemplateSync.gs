@@ -26,9 +26,6 @@
  *    specialist week separately.
  */
 
-const SYNC_NOTE_PREFIX = '[SPEC_SYNC]';
-const CONFLICT_NOTE_PREFIX = '[SPEC_CONFLICT]';
-const CONFLICT_VALUE_PREFIX = 'CONFLICT:';
 const LOCK_DESCRIPTION = 'Locked Specialist Slot(s)';
 
 function onOpen() {
@@ -665,9 +662,87 @@ function mergeCellsIntoRectangles(needsLock, numRows, numCols) {
   return rectangles;
 }
 
+
+function computeGcd(a, b) {
+  a = Math.abs(a); b = Math.abs(b);
+  while (b) { const t = b; b = a % b; a = t; }
+  return a || 1;
+}
+
+function computeLcm(a, b) {
+  if (!a || !b) return Math.max(a, b, 1);
+  return Math.abs(a * b) / computeGcd(a, b);
+}
+
+function weekLetterToIndex(letter) {
+  return String(letter).toUpperCase().charCodeAt(0) - 65;
+}
+
+function parseTermWeekLabel(text) {
+  const match = String(text || '').match(/Term\s+(\d+)\s*-\s*Week\s+([A-Za-z])/i);
+  if (!match) return null;
+  return { term: parseInt(match[1], 10), week: weekLetterToIndex(match[2]) };
+}
+
+function parseCycleFromClassSheet(classSheet) {
+  const text = String(classSheet.getRange('C30').getDisplayValue() || '');
+  const match = text.match(/(\d+)/);
+  return match ? Math.max(1, parseInt(match[1], 10)) : 1;
+}
+
+function parseCycleFromSpecialistSheet(specialistSheet) {
+  const parsed = parseInt(specialistSheet.getRange('D3').getValue(), 10);
+  return isNaN(parsed) || parsed < 1 ? 1 : parsed;
+}
+
 /**
- * Keep this function identical in wizard/Code.gs and
- * template/TemplateSync.gs. Generated specialist tabs are named
+ * Maps every schedule column (from column 10 onward) to the {term, week, day}
+ * it represents, by reading the header labels already written to the sheet
+ * (row 1 = "Term X - Week Y", row 4 = day name) rather than assuming a fixed
+ * column arithmetic. This makes the mapping correct regardless of how many
+ * weeks are in this particular sheet's cycle, and naturally skips spacer
+ * columns (which have no day name).
+ */
+function buildScheduleColumnMap(sheet, lastColumn) {
+  const map = {};
+  if (lastColumn < 10) return map;
+
+  // Both header rows in one read each, rather than one read per cell.
+  const width = lastColumn - 9;
+  const termWeekHeaders = sheet.getRange(1, 10, 1, width).getDisplayValues()[0];
+  const dayHeaders = sheet.getRange(4, 10, 1, width).getDisplayValues()[0];
+
+  let currentLabel = null;
+  for (let index = 0; index < width; index++) {
+    const headerText = String(termWeekHeaders[index] || '').trim();
+    if (headerText) {
+      currentLabel = parseTermWeekLabel(headerText);
+    }
+    const dayName = String(dayHeaders[index] || '').trim();
+    if (dayName && currentLabel) {
+      map[index + 10] = { term: currentLabel.term, week: currentLabel.week, day: dayName };
+    }
+  }
+  return map;
+}
+
+
+// ---- shared/timetableTabs.gs (copied here by "npm run build"; edit that file, not this block) ----
+/*
+ * Shared by the wizard (wizard/Code.gs) and the template's own script
+ * (template/TemplateSync.gs): "npm run build" copies this file into both.
+ * Edit it here, run the build, then paste both files into Apps Script.
+ */
+
+// Notes and text the sync puts on class tabs. The wizard reads them too
+// (the Start here tab counts conflicts; an update moves synced lessons when
+// a specialist is renamed or archived).
+const SYNC_NOTE_PREFIX = '[SPEC_SYNC]';
+const CONFLICT_NOTE_PREFIX = '[SPEC_CONFLICT]';
+const CONFLICT_VALUE_PREFIX = 'CONFLICT:';
+
+/**
+ * Generated specialist tabs are named
  * "SPEC_<name>"; SPEC_Template is the master copy and is never one of them.
  * Compared case-insensitively, like Google Sheets tab names.
  */
@@ -677,9 +752,8 @@ function isSpecialistSheet(sheet) {
 }
 
 /**
- * Keep this function identical in wizard/Code.gs and
- * template/TemplateSync.gs: the wizard applies it when generating a
- * timetable, and the Timetable Admin menu re-applies it later.
+ * The wizard applies this when generating a timetable, and the Timetable
+ * Admin menu re-applies it later.
  *
  * Adds two conditional-formatting rules to every specialist tab: break rows
  * in grey, and a live red clash warning when another specialist has the
@@ -773,9 +847,6 @@ function applySpecialistClashFormatting(ss, allSpecialists) {
 }
 
 /**
- * Keep this function identical in wizard/Code.gs and
- * template/TemplateSync.gs.
- *
  * The clash rule's formula for a specialist tab with the given cycle length.
  * It counts how many specialist tabs (this one included) have the same
  * class at the same time, on the same day, in the same term and in a week
@@ -816,69 +887,7 @@ function buildClashFormula(referenceCell, cycle, specialists) {
   return '=AND(LEN(' + referenceCell + ')>0,(' + counts.join('+') + ')>1)';
 }
 
-function computeGcd(a, b) {
-  a = Math.abs(a); b = Math.abs(b);
-  while (b) { const t = b; b = a % b; a = t; }
-  return a || 1;
-}
-
-function computeLcm(a, b) {
-  if (!a || !b) return Math.max(a, b, 1);
-  return Math.abs(a * b) / computeGcd(a, b);
-}
-
-function weekLetterToIndex(letter) {
-  return String(letter).toUpperCase().charCodeAt(0) - 65;
-}
-
-function parseTermWeekLabel(text) {
-  const match = String(text || '').match(/Term\s+(\d+)\s*-\s*Week\s+([A-Za-z])/i);
-  if (!match) return null;
-  return { term: parseInt(match[1], 10), week: weekLetterToIndex(match[2]) };
-}
-
-function parseCycleFromClassSheet(classSheet) {
-  const text = String(classSheet.getRange('C30').getDisplayValue() || '');
-  const match = text.match(/(\d+)/);
-  return match ? Math.max(1, parseInt(match[1], 10)) : 1;
-}
-
-function parseCycleFromSpecialistSheet(specialistSheet) {
-  const parsed = parseInt(specialistSheet.getRange('D3').getValue(), 10);
-  return isNaN(parsed) || parsed < 1 ? 1 : parsed;
-}
-
-/**
- * Maps every schedule column (from column 10 onward) to the {term, week, day}
- * it represents, by reading the header labels already written to the sheet
- * (row 1 = "Term X - Week Y", row 4 = day name) rather than assuming a fixed
- * column arithmetic. This makes the mapping correct regardless of how many
- * weeks are in this particular sheet's cycle, and naturally skips spacer
- * columns (which have no day name).
- */
-function buildScheduleColumnMap(sheet, lastColumn) {
-  const map = {};
-  if (lastColumn < 10) return map;
-
-  // Both header rows in one read each, rather than one read per cell.
-  const width = lastColumn - 9;
-  const termWeekHeaders = sheet.getRange(1, 10, 1, width).getDisplayValues()[0];
-  const dayHeaders = sheet.getRange(4, 10, 1, width).getDisplayValues()[0];
-
-  let currentLabel = null;
-  for (let index = 0; index < width; index++) {
-    const headerText = String(termWeekHeaders[index] || '').trim();
-    if (headerText) {
-      currentLabel = parseTermWeekLabel(headerText);
-    }
-    const dayName = String(dayHeaders[index] || '').trim();
-    if (dayName && currentLabel) {
-      map[index + 10] = { term: currentLabel.term, week: currentLabel.week, day: dayName };
-    }
-  }
-  return map;
-}
-
+/** A tab name with the characters Google Sheets doesn't allow replaced. */
 function sanitizeSheetName(name) {
   const sanitized = String(name || '')
     .replace(/[\/\\?*\[\]:]/g, '_')
@@ -886,3 +895,4 @@ function sanitizeSheetName(name) {
 
   return sanitized || 'Untitled';
 }
+// ---- end of shared/timetableTabs.gs ----

@@ -144,7 +144,7 @@ bottom; tick items off as they are completed. Sizes: **S** = under an hour,
 
 ## Phase 9: Maintainability
 
-- [ ] **34. One source for shared helpers (M).** An Apps Script library, or a build step that copies them into both projects.
+- [x] **34. One source for shared helpers (M).** An Apps Script library, or a build step that copies them into both projects. *Done as a build step, so every pasted file stays self-contained (a library would make every school's timetable depend on another script project, its versions and its sharing). `shared/timetableTabs.gs` (the sync note markers, `isSpecialistSheet`, `applySpecialistClashFormatting`, `buildClashFormula`, `sanitizeSheetName`) goes into `wizard/Code.gs` and `template/TemplateSync.gs`; `shared/setupRules.js` (time steps, cycle and name limits, reserved tab names, Amadeus, refused teacher names) into `wizard/Code.gs` and `wizard/Index.html`. `npm run build` copies them between marker lines; `npm test` fails if a copy is out of date or a shared name is defined twice.*
 
 ## Future ideas (parked)
 

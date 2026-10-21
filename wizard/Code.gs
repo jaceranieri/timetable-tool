@@ -23,13 +23,26 @@ function getTemplateId() {
   return (configuredId || '').trim() || LIVE_TEMPLATE_ID;
 }
 
-/**
- * Amadeus runs in Years 3-6 in every school. The activity name must match
- * TEMPLATE!B21 exactly, because C21 counts cells with this value.
+// ---- shared/setupRules.js (copied here by "npm run build"; edit that file, not this block) ----
+/*
+ * Setup rules shared by the wizard page (wizard/Index.html), which checks
+ * them as you type, and the server (wizard/Code.gs, validateConfig), which
+ * checks them again before generating: "npm run build" copies this file into
+ * both. Edit it here, run the build, then paste both files into Apps Script.
  */
+const SLOT_MINUTES = 5;
+const MAX_CYCLE_WEEKS = 10;
+const MAX_NAME_LENGTH = 90;
+const MAX_SCHOOL_NAME_LENGTH = 100;
+// Tabs that already exist in the template (or are planned), compared
+// case-insensitively because Google Sheets tab names are.
+const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
+// Amadeus runs in Years 3-6 in every school. The activity name must match
+// TEMPLATE!B21 exactly, because C21 counts cells with this value.
 const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
 // Every class needs its teacher's name for compliance, so stand-ins are refused.
 const TEACHER_PLACEHOLDER = /^(tbc|tba|tbd|n\/?a|none|unknown|teacher|[-?.\s]*)$/i;
+// ---- end of shared/setupRules.js ----
 
 function isAmadeusGrade(grade) {
   return /^Year\s*[3-6]$/i.test(String(grade || '').trim());
@@ -115,10 +128,6 @@ function updateJobProgress(jobId, percent, statusText) {
   }
 }
 
-
-// Written by "Sync Specialist Schedules" (TemplateSync.gs) into a class
-// cell that two sources want; the Start here tab counts these.
-const CONFLICT_TEXT_PREFIX = 'CONFLICT:';
 
 // Generated timetables are saved in this folder in the user's My Drive,
 // which is created if it doesn't exist. Set to '' to save them in My Drive
@@ -495,7 +504,7 @@ function updateSyncedLessons(ss, plan) {
   plan.specialists.removed.forEach(item => { bySpecialist[key(item.name)] = { removed: true, oldKla: item.kla }; });
   if (!Object.keys(bySpecialist).length) return;
 
-  const prefix = '[SPEC_SYNC]';
+  const prefix = SYNC_NOTE_PREFIX;
   plan.classes.kept.forEach(pair => {
     const sheet = ss.getSheetByName(getClassTabName(pair.item));
     if (!sheet || sheet.getLastRow() < FIRST_DATA_ROW || sheet.getLastColumn() < FIRST_GRID_COLUMN) return;
@@ -827,18 +836,6 @@ function parsePayloadConfig(payload) {
   };
 }
 
-
-/**
- * Rules shared with the wizard (Index.html), which checks the same things
- * before submitting. Keep the two in step.
- */
-const SLOT_MINUTES = 5;
-const MAX_CYCLE_WEEKS = 10;
-const MAX_NAME_LENGTH = 90;
-const MAX_SCHOOL_NAME_LENGTH = 100;
-// Tabs that already exist in the template (or are planned), compared
-// case-insensitively because Google Sheets tab names are.
-const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
 
 /**
  * Checks the parsed setup and throws one error listing every problem, so
@@ -1517,7 +1514,7 @@ function buildStartHereSheet(ss, config, tabs) {
       classConfig.teacher,
       classConfig.grade,
       '=' + quote(name) + '!C15',
-      '=COUNTIF(' + grid(name) + ',"' + CONFLICT_TEXT_PREFIX + '*")',
+      '=COUNTIF(' + grid(name) + ',"' + CONFLICT_VALUE_PREFIX + '*")',
       '=IF(' + quote(name) + '!C16=TRUE,"Yes","No")'
     ]);
   });
@@ -1930,9 +1927,47 @@ function isValidHexColor(value) {
   return typeof value === 'string' && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value.trim());
 }
 
+
+function ensureSheetSize(sheet, requiredRows, requiredColumns) {
+  const missingRows = requiredRows - sheet.getMaxRows();
+  if (missingRows > 0) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), missingRows);
+  }
+
+  const missingColumns = requiredColumns - sheet.getMaxColumns();
+  if (missingColumns > 0) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), missingColumns);
+  }
+}
+
+function uniqueNonBlank(values) {
+  const seen = {};
+  return values.filter(value => {
+    const cleaned = String(value || '').trim();
+    const key = cleaned.toLowerCase();
+    if (!cleaned || seen[key]) return false;
+    seen[key] = true;
+    return true;
+  }).map(value => String(value).trim());
+}
+
+
+// ---- shared/timetableTabs.gs (copied here by "npm run build"; edit that file, not this block) ----
+/*
+ * Shared by the wizard (wizard/Code.gs) and the template's own script
+ * (template/TemplateSync.gs): "npm run build" copies this file into both.
+ * Edit it here, run the build, then paste both files into Apps Script.
+ */
+
+// Notes and text the sync puts on class tabs. The wizard reads them too
+// (the Start here tab counts conflicts; an update moves synced lessons when
+// a specialist is renamed or archived).
+const SYNC_NOTE_PREFIX = '[SPEC_SYNC]';
+const CONFLICT_NOTE_PREFIX = '[SPEC_CONFLICT]';
+const CONFLICT_VALUE_PREFIX = 'CONFLICT:';
+
 /**
- * Keep this function identical in wizard/Code.gs and
- * template/TemplateSync.gs. Generated specialist tabs are named
+ * Generated specialist tabs are named
  * "SPEC_<name>"; SPEC_Template is the master copy and is never one of them.
  * Compared case-insensitively, like Google Sheets tab names.
  */
@@ -1942,9 +1977,8 @@ function isSpecialistSheet(sheet) {
 }
 
 /**
- * Keep this function identical in wizard/Code.gs and
- * template/TemplateSync.gs: the wizard applies it when generating a
- * timetable, and the Timetable Admin menu re-applies it later.
+ * The wizard applies this when generating a timetable, and the Timetable
+ * Admin menu re-applies it later.
  *
  * Adds two conditional-formatting rules to every specialist tab: break rows
  * in grey, and a live red clash warning when another specialist has the
@@ -2038,9 +2072,6 @@ function applySpecialistClashFormatting(ss, allSpecialists) {
 }
 
 /**
- * Keep this function identical in wizard/Code.gs and
- * template/TemplateSync.gs.
- *
  * The clash rule's formula for a specialist tab with the given cycle length.
  * It counts how many specialist tabs (this one included) have the same
  * class at the same time, on the same day, in the same term and in a week
@@ -2081,29 +2112,7 @@ function buildClashFormula(referenceCell, cycle, specialists) {
   return '=AND(LEN(' + referenceCell + ')>0,(' + counts.join('+') + ')>1)';
 }
 
-function ensureSheetSize(sheet, requiredRows, requiredColumns) {
-  const missingRows = requiredRows - sheet.getMaxRows();
-  if (missingRows > 0) {
-    sheet.insertRowsAfter(sheet.getMaxRows(), missingRows);
-  }
-
-  const missingColumns = requiredColumns - sheet.getMaxColumns();
-  if (missingColumns > 0) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), missingColumns);
-  }
-}
-
-function uniqueNonBlank(values) {
-  const seen = {};
-  return values.filter(value => {
-    const cleaned = String(value || '').trim();
-    const key = cleaned.toLowerCase();
-    if (!cleaned || seen[key]) return false;
-    seen[key] = true;
-    return true;
-  }).map(value => String(value).trim());
-}
-
+/** A tab name with the characters Google Sheets doesn't allow replaced. */
 function sanitizeSheetName(name) {
   const sanitized = String(name || '')
     .replace(/[\/\\?*\[\]:]/g, '_')
@@ -2111,3 +2120,4 @@ function sanitizeSheetName(name) {
 
   return sanitized || 'Untitled';
 }
+// ---- end of shared/timetableTabs.gs ----

@@ -247,3 +247,11 @@ No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html` int
 - [ ] **Draft:** start an edit, reload: "unfinished changes to <file>" resumes the edit.
 - [ ] **View-only:** with a timetable shared with you as a viewer, Update explains you need edit access.
 - [ ] **Start next year:** ☰ > **Start from an existing timetable** with last year's link: the wizard fills in (nothing locked, no banner); generating makes a new timetable and the old one is unchanged.
+
+## Phase 9
+
+No sheet changes and no change in behaviour: the code both scripts share now lives in `shared/` and is copied into them by `npm run build`. Paste the updated `wizard/Code.gs`, `wizard/Index.html` and `template/TemplateSync.gs`, then a quick check that nothing moved:
+
+- [ ] Generate a small timetable: specialist clashes still turn red, and the Start here tab counts conflicts.
+- [ ] Sync a specialist and lock: both work as before.
+- [ ] In the wizard, a 7-minute start time, an 11-week cycle and a teacher typed as "TBC" are still refused.
