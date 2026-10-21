@@ -1,0 +1,286 @@
+# Sheet changes to apply in the template
+
+Changes that live in the template spreadsheet itself rather than in the
+scripts. Apply them to the **test** template first, generate a timetable to
+check, then repeat on the live template. Step numbers match `PLAN.md`.
+
+## Phase 1 (applied and tested)
+
+### Step 3: Amadeus check (TEMPLATE tab)
+
+The wizard now writes `B31` = "Amadeus" and `C31` = TRUE (Years 3–6) or
+FALSE (K–2) on every class tab. In the template, `C31` is blank, so `C18`
+shows "N/A" there.
+
+- [x] **`B31`:** optionally type `Amadeus` and copy the formatting from `B30`, so the template shows the row. Leave `C31` blank.
+- [x] **`C18`:**
+  ```
+  =IF(C31<>TRUE, "N/A",
+    AND(
+      ROUND(E11,1) >= ROUND(F11,1), ROUND(E11,1) <= ROUND(G11,1),
+      C21 > 0,
+      ROUND(E21,1) >= ROUND(F21,1), ROUND(E21,1) <= ROUND(G21,1)
+    )
+  )
+  ```
+  Creative Arts (row 11) within range, Amadeus Tutorials (row 21) present and within range.
+- [x] **`C16`:** add the Amadeus condition:
+  ```
+  =AND(
+    C15=0,
+    ARRAYFORMULA(
+      (ROUND(E5:E12,1) >= ROUND(F5:F12,1)) * (ROUND(E5:E12,1) <= ROUND(G5:G12,1))
+    ),
+    OR(C18="N/A", C18=TRUE)
+  )
+  ```
+- [x] **Conditional formatting on `C18`:** add "Text is exactly" `N/A` with grey text and no fill, alongside the existing TRUE/FALSE rules.
+- [x] Optional: on `B20:G21`, add a custom-formula rule `=$C$18="N/A"` with grey text, placed above the existing `=$C$18=FALSE` rule, so the Amadeus block looks inactive for K–2.
+- [x] Check `B21` is exactly `Amadeus - Tutorials`. The wizard's Amadeus activity uses that name, and it can no longer be renamed or removed in the wizard.
+
+### Step 4: Unallocated blocks and specialist hours
+
+- [x] **TEMPLATE `C15`:** check the whole grid, not just columns J–Z:
+  ```
+  =SUM(
+    ARRAYFORMULA(
+      IF(
+        (I5:I <> "") * (J4:AAK4 <> ""),
+        IF(ISBLANK(J5:AAK), 1, 0),
+        0
+      )
+    )
+  )
+  ```
+- [x] **SPEC_Template `D5`:** `=SUM(D6:D)`. It currently sums `D6:D13`, which misses classes after the eighth.
+
+### Step 7: OVERVIEW tab
+
+- [x] **`G5`:** read the class list from DATA (there is no CLASSES tab):
+  ```
+  =IFERROR(TRANSPOSE(FILTER(DATA!F2:F, DATA!F2:F <> "")), "")
+  ```
+- [x] **`G4`:** widen from `G5:Z5` (20 classes) to `G5:CH5` (80 classes), matching `G17`:
+  ```
+  =IFERROR(BYCOL(G5:CH5, LAMBDA(sheetName, IF(sheetName<>"", INDIRECT("'" & sheetName & "'!C29"), ""))), "")
+  ```
+- [x] **`E6:E13`:** widen from `G:AK` to `G:CH`, for example `E6` = `=IFERROR(AVERAGE(G6:CH6),"n/a")`, then fill down to `E13`.
+- [x] **Unhide** the OVERVIEW tab.
+
+## After applying Phase 1 (done)
+
+- [x] Paste the updated `template/TemplateSync.gs` into the template's script project (Extensions → Apps Script).
+- [x] Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
+- [x] Generate a test timetable with at least one Year 3–6 class, one K–2 class and two specialists, and check:
+  - K–2 class tabs show `C18` = N/A; Years 3–6 show TRUE/FALSE.
+  - Recess and lunch rows on specialist tabs are grey, not red.
+  - OVERVIEW lists every class.
+  - The specialist KLA dropdown in the wizard no longer offers Non-Curricular.
+
+## Phase 2 (applied and tested)
+
+### Step 9: Purge leftovers
+
+Nothing in the scripts or the remaining tabs reads any of these.
+
+- [x] **Delete tabs:** HELPER, Example, "Amadeus + Creative Arts Advice" (right-click the tab → Delete; show hidden tabs first via View → Hidden sheets).
+- [x] **Delete named ranges** that point to `#REF!` (Data → Named ranges): `SchoolData`, `ExtraCurriculars`, `ReferenceList`.
+- [x] **SPEC_Template:** remove all conditional formatting (select all → Format → Conditional formatting → delete each rule). The script already deletes these rules on every generated specialist tab.
+- [x] **TEMPLATE `B19:B21`:** delete the "Text is exactly" rules for Break, English, Mathematics, Religion, Science, HSIE, PDHPE and Creative Arts. Those cells only ever hold the Amadeus labels. Keep the custom-formula rule `=AND(B19<>"", ISNA(MATCH(B19, $B$5:$B$11, 0)))` if it gives the Amadeus labels their colour.
+- [x] **TEMPLATE `A12:B12`:** delete the "Text is exactly Break" rule. Keep the custom-formula `ISNA(MATCH(…))` rule if it gives the Non-Curricular label its colour.
+- [x] **TEMPLATE `B32`:** delete the empty "Resources" heading (and any formatting under it).
+- [x] **DATA:** nothing to do. Column N (ActivityList) is no longer written by the wizard.
+
+### After applying Phase 2 (done)
+
+- [x] Paste the updated `template/TemplateSync.gs` into the template's script project.
+- [x] Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
+- [x] Generate a test timetable and check:
+  - Class tabs still show subject colours, and the compliance table (rows 5–21) looks as before.
+  - Specialist tabs show class colours and grey break rows.
+  - Sync, then Lock Synced Cells, then delete one specialist lesson and run both again: the deleted slot is cleared and no longer locked.
+
+## Phase 3 (tested)
+
+No sheet changes. Paste the updated `wizard/Code.gs`, `wizard/Index.html`
+and `template/TemplateSync.gs`, then check:
+
+- [x] The wizard flags, on the field itself:
+  - a duplicate class name in another grade (the wizard opens that grade's tab),
+  - a class called `Data`, `SPEC_Test` or `Year 3/4`, or containing an apostrophe,
+  - a specialist called `Template` or two specialists with the same name,
+  - a start, end or break time not on a 5-minute mark (e.g. 10:32),
+  - two overlapping breaks.
+- [x] A normal setup generates as before, and DATA shows times such as `08:30` as typed (plain text).
+- [x] The hidden SPEC_Template tab gets no clash formatting, and "Sync Specialist Schedules" doesn't list it.
+
+## Phase 4
+
+No sheet changes. Paste the updated `wizard/Code.gs`, `wizard/Index.html`
+and `template/TemplateSync.gs`.
+
+- [x] **Load test:** first run took 504s (too slow; see PLAN step 17). In the wizard project, add a script file `LoadTest` and paste `wizard/LoadTest.gs` into it. Choose `runLoadTest` in the toolbar and click Run. The log shows how long 28 classes and 6 specialists took (the limit is 360s). Note the time for step 28, delete the generated file, then delete the `LoadTest` file again.
+- [x] Generate a normal timetable from the wizard and check:
+  - Class tabs look as before: headers, times, grey break rows, dropdowns, subject colours, compliance table.
+  - Two classes with the same cycle length have identical grids; a class with a different cycle has its own layout.
+  - Specialist tabs: class colours, grey break rows, red clashes between two specialists.
+  - The file name has no `INCOMPLETE - ` prefix.
+- [x] Force an error (for example, set the `TEMPLATE_ID` script property to `x`) and check the wizard shows the error panel with **Try again** instead of a pop-up. Then set it back.
+- [x] Sync and lock still work as in Phase 2.
+- [x] **Load test with timings:** 429s. Copying class tabs (244s) and writing their details (117s) were 85% of the time.
+- [x] **Load test with the Sheets API:** 93s. Afterwards delete the test timetables and the `LoadTest` file.
+  1. In the wizard project, click **Services** (the + next to it in the left sidebar), choose **Google Sheets API**, keep the identifier `Sheets`, and click **Add**.
+  2. Paste the updated `wizard/Code.gs` (and keep `LoadTest.gs` for now).
+  3. Run `runLoadTest` and copy the whole log. Copies should now appear as lines like "Copy Kindergarten Red, … (one request)".
+  4. Generate a normal timetable from the wizard and check the tabs are in the same order as the classes in the wizard, and each copied class shows its own teacher, name, grade and cycle in `C27:C31`.
+
+### Live clash check across cycle lengths (PLAN step 18a)
+
+- [ ] Paste the updated `template/TemplateSync.gs` into the **template's** script project, and the updated `wizard/Code.gs` into the wizard project.
+- [ ] Generate a new timetable (timetables generated earlier keep their own copy of the old script and rules) with a 1-week and a 2-week specialist, then check:
+  - 1-week specialist: a class in Term 1 Monday 9:00 (column J). 2-week specialist: the same class in Term 1 **Week B** Monday 9:00 (column P). Both cells turn red.
+  - 1-week specialist: a class in Term 2 Monday 9:00 (column P). 2-week specialist: the same class in Term 1 Week B Monday 9:00 (also column P). Neither turns red.
+  - Two specialists with the same cycle length and the same class in the same cell still turn red.
+
+**Result:** different cycle lengths turned red, but two specialists with the same cycle length didn't. Cause: the second specialist with a cycle length is a copy made through the Sheets API, and tabs made that way can't be reached through SpreadsheetApp for the rest of the run. So the clash formatting skipped the copies, and the class tabs were counted into the wrong positions. Fixed by putting the clash rules on the first tab of each cycle before copying (the copies inherit them) and counting tab positions instead of reading them back.
+
+- [x] Paste the updated `wizard/Code.gs` and `template/TemplateSync.gs` again, generate a **new** timetable, and repeat the three checks above, plus:
+  - Tabs appear in the wizard's order: DATA, OVERVIEW, TEMPLATE, SPEC_Template, the specialists, then the classes grade by grade.
+  - Each copied class shows its own details in `C27:C31`.
+- [ ] Optional, on the earlier timetable: **Timetable Admin → Refresh Specialist Clash Formatting** should make the same-cycle clash turn red there too (the menu runs separately, so it sees every tab).
+
+## Phase 5 and step 26a
+
+No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html`.
+
+- [x] The wizard loads and looks the same as before (React, Babel and Tailwind now load pinned versions; check the page is styled, i.e. Tailwind loaded).
+- [x] Step 1 asks for the **School Name** and won't continue without it.
+- [x] Step 3: give a grade 4 or more classes. All of them are visible without a small scroll box, and the tab shows the class count.
+- [x] Leave one class's teacher blank, switch to another grade's tab and click Continue: the wizard opens the right tab, scrolls to the class, highlights it and puts the cursor in the empty field. The tab shows "1 to fix" until it's filled in.
+- [x] The summary step mentions the school name.
+- [x] Generate: the timetable is saved in **My Drive › Timetables** (created the first time) and its name includes the school name. A second timetable goes into the same folder.
+
+## Phase 6
+
+No sheet changes, but the template's script project gets a **new file**.
+
+- [ ] In the template's script project (Extensions → Apps Script): paste the updated `template/TemplateSync.gs`, then add a script file named `TimetableTools` and paste `template/TimetableTools.gs` into it.
+- [ ] Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
+- [ ] Generate a new timetable and check the **Start here** tab is first:
+  - The five stages with a status for each, and "Not run yet" under Last run for the sync and the lock.
+  - Every specialist and class tab listed, each name a working link, with lessons entered / empty slots / conflicts / compliant filling in.
+- [ ] Reload the timetable; the **Timetable Admin** menu is in stage order. Lock before syncing warns first. After a sync and a lock, Start here shows when they ran, by whom and the result.
+- [ ] **Check this timetable** on a class tab (partly filled), on a specialist tab, and on DATA (asks for a timetable tab). **Check all class timetables** lists every class.
+- [ ] **Copy Week A to the other weeks** on a 2-week class: Yes fills only empty slots; No also replaces entries; breaks and synced specialist lessons stay as they are. **Copy Term 1 to Terms 2-4** on a 1-week class.
+- [ ] **Print this timetable**: enter `1A`; the Print view tab shows that week with merged blocks and times, and **Download PDF** gives a landscape A4 page. **Print the compliance overview** downloads OVERVIEW.
+
+### Phase 6 changes: clearer copy wording, Google Docs instead of PDFs
+
+- [ ] In the **template's** script project: click **Services** (+), choose **Drive API**, keep the identifier `Drive` (version v3) and click **Add**.
+- [ ] Paste the updated `template/TemplateSync.gs` and `template/TimetableTools.gs` into the template's script project, and the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project.
+- [ ] Generate a new timetable, then check:
+  - **Copy Week A into the other weeks**: a window explains what will be copied, with the buttons **Fill empty slots only**, **Fill empty slots and replace what's there** and **Cancel**; the result shows in the same window.
+  - **Make a Google Doc of this timetable** on a class tab (`1A`): the Doc opens from the link, is landscape, each lesson is one merged block with its times, and subjects have the same colours as the class tab. Try it on a specialist tab too (class colours).
+  - **Make a Google Doc of the compliance summary**: one row per class, out-of-range percentages in red.
+  - Both Docs are saved in the same folder as the timetable.
+
+### Phase 6 changes: Google Docs details, All terms, Start here list
+
+No sheet changes. Paste the updated `template/TemplateSync.gs` and `template/TimetableTools.gs` into the template's script project, and the updated `wizard/Code.gs` into the wizard project. Remove `LoadTest.gs` from the wizard project if it's there (it's for development only).
+
+- [ ] Generate a new timetable. It's named `<school name> - Timetable - <date>`.
+- [ ] **Start here** has a **Google Docs** section below the class list, reading "None yet…".
+- [ ] **Make a Google Doc of this timetable** on a class tab: the window has a drop-down of weeks (terms, for a 1-week class) plus **All terms**.
+  - One week: the Doc starts with a details table (class, teacher, grade, cycle, school, school day, breaks, generated date and by whom), then the week.
+  - **All terms**: details once at the top, then one page per week (per term for a 1-week class), each with its heading.
+- [ ] On a specialist tab the details show the specialist, KLA and cycle.
+- [ ] **Make a Google Doc of the compliance summary**: details show how many classes are compliant and when it was made.
+- [ ] Each Doc is added to the **Google Docs** list on Start here (a link, what it was made from, when and by whom), newest at the bottom.
+
+### Phase 6 changes: Doc layout, specialist names, compliance colours, Start here style
+
+No sheet changes. Paste the updated `template/TimetableTools.gs` into the template's script project, and the updated `wizard/Code.gs` into the wizard project.
+
+- [ ] Generate a new timetable. **Start here** has no gridlines, a navy title band that stays at the top when scrolling, section headings in navy, light grey table headings and thin dividers. In the class list, Compliant shows green Yes / red No, Conflicts above 0 are red, and 0 empty slots are green. The sync stage's status turns red when there are conflicts and green when there are none.
+- [ ] Sync a specialist, then **Make a Google Doc of this timetable** on a class tab:
+  - The tables stretch across the page.
+  - Every lesson shows its start and end times, including 5-minute ones (e.g. the last slot of the day).
+  - Synced specialist lessons show the specialist's name under the KLA.
+- [ ] **Make a Google Doc of the compliance summary**: percentages within their range are green, outside it red; the table stretches across the page.
+
+## Phase 7
+
+No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project and redeploy (Deploy → Manage deployments → edit → New version).
+
+- [ ] **Drafts:** fill in Core Schedule and part of Classes; "Draft saved" pops up at the top of the screen. Reload the page: "Continue where you left off?" appears. **Resume** goes back to the same step with everything filled in; reload again and **Start new** gives an empty wizard.
+- [ ] **Problem list:** nothing is marked as a problem until you click **Next**. Click Next on Core Schedule with no school name: a red box lists the problem; clicking it puts the cursor in the field, and the box goes once it's fixed. On Classes, make two classes in different grades share a name: both are listed, and clicking one takes you to that class. With more than 6 problems, "Show all" lists the rest.
+- [ ] **Teachers:** leave a class's teacher blank, and type TBC for another: both are listed as problems and Continue is blocked. Clear both fields of a third class: it says "Blank: skipped" and isn't counted on the summary.
+- [ ] **Colours:** the default classes have matching colours (Kindergarten Blue is blue, Year 1 Gold is yellow...). Rename a class "Year 3 Purple": it turns purple. Pick a colour for it, then rename it again: your colour stays.
+- [ ] **Grade cards:** the Classes step starts with two Kindergarten classes; the other grades show as "No classes" lines with a **+** to add one. A grade with classes has a square cycle button (the number of weeks inside a circular arrow: click to choose 1-10, or use the arrow keys) and a square **+** to add a class. Each class row has its numbered colour swatch on the left (click to change the colour), then Class name and Teacher boxes with their labels inside. The icon in the top-right corner is a dashed circle while the grade isn't finished, a green tick when every class has a name and teacher, and a red warning after Next if something needs fixing. **... > No classes in <grade>** (or removing its last class) leaves the grade out.
+- [ ] **Progress bar:** going forward, the finished step's segment fills first, then the next one starts; going back, it empties in order too.
+- [ ] **Paste:** in a spreadsheet, select class names and teachers (two columns) and copy. On Classes, open the **...** on a grade card, **Paste from a spreadsheet**, and paste. It shows how many it found; **Use these N classes** replaces that grade's classes.
+- [ ] **Cycle warning:** on the Specialists step (which has the same cycle button), give a specialist a 2-week cycle while a grade has 1 or 3 weeks: a warning shows under the specialist and on the summary.
+- [ ] **Header:** the new logo and the Figtree font; inside the wizard, the step name and a line about it, with a five-part progress bar (Core Schedule, Classes, Specialists, Activities, Summary). Click a finished step's name to go back to it.
+- [ ] **Sections:** each section heading is large and bold with an **i** button that shows its description (Escape or a click elsewhere hides it). Specialists and activities each have their own step.
+- [ ] **Summary:** four large cards (Classes, School day, Specialists, Extra-curriculars) with big numbers; clicking one shows its details below the cards (with an Edit link back to its step), clicking it again hides them. A large **Generate timetable** button pulses slowly underneath, with the number of tabs and how long it takes.
+- [ ] **Setup file:** the menu (☰) above the wizard, on the right, has **Save setup to a file** (downloads `<school> - timetable setup.json`) and **Load a saved setup**. Loading it in a new wizard fills every step the same way; another file gets "isn't a timetable setup file" at the top of the screen.
+- [ ] **Generating:** after **Generate timetable**, a progress bar; the line under it alternates between the time reminder and teacher in-jokes every few seconds; **View the log** shows the steps. Compare the real time with the estimate.
+- [ ] **After generating:** the whole box turns green with a picture of a timetable and an **Open Sheet** button on it (opens the new spreadsheet). **Keep Editing** returns to the summary with the setup kept (hover its **i** for what it does); **New Timetable** gives an empty wizard.
+- [ ] **Fields:** every box on every step has its label inside it (school name, times, breaks, classes, specialists, KLA, activities); bins are light grey (red on hover); the cycle button's arrow is light with a dark number; the grade header's buttons line up.
+- [ ] **Keyboard:** on Classes, open a class colour and close it with Escape; open a **...** or ☰ menu and use the up/down arrows and Enter.
+
+## Phase 8
+
+No sheet changes. Paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project and redeploy (new version). Use a timetable generated with the current version, with a few lessons entered and a sync run.
+
+- [ ] **Open:** ☰ > **Edit an existing timetable**, paste the timetable's link. A wrong link or a spreadsheet the wizard didn't make is explained in the window. With the right link, the wizard fills in and shows "Editing <file name>".
+- [ ] **Locked:** bell times and breaks can't be changed (with a note why), and the cycle button of an existing grade or specialist can't be opened. A grade with no classes yet, or a new specialist, can choose its cycle.
+- [ ] **Change** a class's teacher, rename a class, add a class, remove a class, rename a specialist, add an activity. The Summary lists exactly these changes; **Update timetable** applies them.
+- [ ] **In the timetable afterwards:**
+  - [ ] The renamed class's tab has its new name and still has its lessons; the specialist tabs show the new class name where the old one was.
+  - [ ] The removed class's tab is "Archived - <name>", hidden (right-click any tab > Show sheet), with its lessons.
+  - [ ] The new class has a tab; the teacher change is on its tab and on Start here.
+  - [ ] The renamed specialist's tab has the new name; on the class tabs, its synced lessons still show and **Sync Specialist Schedules** runs with no conflicts.
+  - [ ] The new activity is in the class tabs' dropdowns; a new class is in the specialist tabs' dropdowns.
+  - [ ] Start here lists the classes as they are now, keeps its "Last run" lines and its Google Docs list.
+- [ ] **Keep Editing** returns to the wizard still editing, with "No changes yet"; **Stop editing** (banner) switches to making a new timetable.
+- [ ] **Draft:** start an edit, reload: "unfinished changes to <file>" resumes the edit.
+- [ ] **View-only:** with a timetable shared with you as a viewer, Update explains you need edit access.
+- [ ] **Start next year:** ☰ > **Start from an existing timetable** with last year's link: the wizard fills in (nothing locked, no banner); generating makes a new timetable and the old one is unchanged.
+
+## Phase 9
+
+No sheet changes and no change in behaviour: the code both scripts share now lives in `shared/` and is copied into them by `npm run build`. Paste the updated `wizard/Code.gs`, `wizard/Index.html` and `template/TemplateSync.gs`, then a quick check that nothing moved:
+
+- [ ] Generate a small timetable: specialist clashes still turn red, and the Start here tab counts conflicts.
+- [ ] Sync a specialist and lock: both work as before.
+- [ ] In the wizard, a 7-minute start time, an 11-week cycle and a teacher typed as "TBC" are still refused.
+
+## OVERVIEW: compare each class with its own minimums
+
+**Problem.** On a class tab, English and Mathematics are checked the NESA way: together at least 50%, Mathematics at least 20% (TEMPLATE!F5 `=50 - MAX(20, E6)`, F6 `=MAX(20, 50 - E5)`), and Religion's minimum depends on the grade (F7: 10% for K-2, 12% for Years 3-6). OVERVIEW instead colours every class against the fixed Min/Max in its own columns B and C, so a class with Mathematics 23% and English 28% (compliant on its tab) shows English as non-compliant.
+
+**Fix** (in the master template's OVERVIEW tab). Each class is coloured against its own tab's Min (F) and Max (G), so OVERVIEW's own Min and Max columns are no longer needed:
+
+- [ ] Select **B5:C13** and delete the contents (the "Min (%)" and "Max (%)" columns). Clear rather than delete the columns, so nothing else on the tab moves; narrow or hide B and C if you like.
+- [ ] **Format > Conditional formatting**: in the **green** rule (custom formula `=AND(ISNUMBER(E6), E6 >= $B6, E6 <= $C6)`), set the range to **`G6:CH13`** (the class columns) and the formula to:
+
+  ```
+  =AND(ISNUMBER(G6), ROUND(G6,1) >= ROUND(INDIRECT("'"&G$5&"'!F"&(ROW()-1)),1), ROUND(G6,1) <= ROUND(INDIRECT("'"&G$5&"'!G"&(ROW()-1)),1))
+  ```
+
+- [ ] In the **red** rule (`=AND(ISNUMBER(E6), OR(E6 < $B6, E6 > $C6))`), the same range **`G6:CH13`** and the formula:
+
+  ```
+  =AND(ISNUMBER(G6), OR(ROUND(G6,1) < ROUND(INDIRECT("'"&G$5&"'!F"&(ROW()-1)),1), ROUND(G6,1) > ROUND(INDIRECT("'"&G$5&"'!G"&(ROW()-1)),1)))
+  ```
+
+  Row 6 (English) reads the class tab's row 5, and so on; values are rounded like the class tab's Compliant check (C16). The School Average column is no longer coloured: minimums differ from class to class, so a single range can't judge a school average (row 17 shows each class as Compliant or Non Compliant).
+
+**Check:**
+
+- [ ] A class with Mathematics 23% and English 28% is green for both on OVERVIEW (and Compliant on its own tab).
+- [ ] A class with Mathematics 18% is red for Mathematics.
+- [ ] A Year 3 class with Religion at 11% is red on OVERVIEW, as on its tab (12% minimum for Years 3-6); a Kindergarten class at 11% is green.
+
+Timetables generated before this change keep their old OVERVIEW: make the same edits on their OVERVIEW tab if they're still in use. New timetables get it from the template.

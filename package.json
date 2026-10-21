@@ -1,0 +1,12 @@
+{
+  "name": "timetable-tool",
+  "private": true,
+  "description": "Local tests for the timetable wizard and template scripts (Google Apps Script).",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node scripts/build.js --check && node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

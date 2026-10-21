@@ -1,0 +1,2600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timetable Configuration Wizard</title>
+    <!-- Pinned versions, so a new release of a library can't change or break the wizard. -->
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Figtree', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif']
+                    },
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        brand: {
+                            green: "#00b268", /* Original Brand Green for accents/logos */
+                            dark: "#007A48",  /* WCAG AA Compliant Green for Buttons with white text */
+                            bg: "#f4f7f9"
+                        },
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 222.2 84% 4.9%;
+            --border: 214.3 31.8% 91.4%;
+            --input: 214.3 31.8% 91.4%;
+            --ring: 222.2 84% 4.9%;
+            --primary: 222.2 47.4% 11.2%;
+            --primary-foreground: 210 40% 98%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
+            --muted: 210 40% 96.1%;
+            --muted-foreground: 215.4 16.3% 46.9%;
+        }
+        body { background-color: #f8fafc; color: hsl(var(--foreground)); font-family: Figtree, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+        /* Custom scrollbar for lists */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+
+        /* Microanimations */
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-step { animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.97) translateY(5px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .animate-pop { animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes successPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            60% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-success { animation: successPop 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes softPulse {
+            0%, 100% { box-shadow: 0 10px 25px -10px rgba(0, 122, 72, 0.55), 0 0 0 0 rgba(0, 178, 104, 0.45); transform: scale(1); }
+            50% { box-shadow: 0 14px 30px -10px rgba(0, 122, 72, 0.6), 0 0 0 14px rgba(0, 178, 104, 0); transform: scale(1.02); }
+        }
+        .animate-soft-pulse { animation: softPulse 2.8s ease-in-out infinite; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .animate-step, .animate-pop, .animate-success, .animate-spin, .animate-pulse, .animate-soft-pulse { animation: none; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center pt-12 pb-8 px-4 sm:px-8">
+    <div id="root" class="w-full max-w-4xl"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- BASE UI COMPONENTS ---
+        const Card = ({ children, className = "" }) => (
+            <div className={`rounded-xl border border-slate-200 bg-white text-slate-950 shadow-sm ${className}`}>{children}</div>
+        );
+        const CardHeader = ({ children, className = "" }) => <div className={`flex flex-col space-y-1.5 p-6 ${className}`}>{children}</div>;
+        const CardContent = ({ children, className = "" }) => <div className={`p-6 pt-0 ${className}`}>{children}</div>;
+        const CardFooter = ({ children, className = "" }) => <div className={`flex items-center p-6 pt-0 ${className}`}>{children}</div>;
+
+        const Label = ({ children, className = "", htmlFor }) => (
+            <label htmlFor={htmlFor} className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${className}`}>{children}</label>
+        );
+
+        // A field's error is shown inside it and read out with it (aria-describedby).
+        const errorIdFor = (id, error) => (error && id ? `${id}-error` : undefined);
+
+        // boxLabel puts a small label inside the top of a slightly taller box.
+        const Input = ({ className = "", error, id, boxLabel, ...props }) => (
+            <div className="relative w-full flex items-center">
+                <input id={id} aria-invalid={error ? true : undefined} aria-describedby={errorIdFor(id, error)} className={`flex ${boxLabel ? 'h-12 pt-5 pb-1' : 'h-10 py-2'} w-full rounded-md border ${error ? 'border-red-500 pr-[80px] ring-1 ring-red-500/20' : 'border-slate-200'} bg-white px-3 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props} />
+                {boxLabel && (
+                    <label htmlFor={id} className="absolute left-3 top-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 pointer-events-none">{boxLabel}</label>
+                )}
+                {error && (
+                    <div className="absolute right-2 flex items-center gap-1 text-[11px] font-medium text-red-600 bg-white px-1 pointer-events-none animate-pop">
+                        <AlertCircleIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span id={errorIdFor(id, error)}>{error}</span>
+                    </div>
+                )}
+            </div>
+        );
+
+        const Select = ({ className = "", error, id, boxLabel, children, ...props }) => (
+            <div className="relative w-full flex items-center">
+                {boxLabel && (
+                    <label htmlFor={id} className="absolute left-3 top-1.5 z-10 text-[10px] font-semibold uppercase tracking-wider text-slate-500 pointer-events-none">{boxLabel}</label>
+                )}
+                <select id={id} aria-invalid={error ? true : undefined} aria-describedby={errorIdFor(id, error)} className={`flex ${boxLabel ? 'h-12 pt-5 pb-1' : 'h-10 py-2'} w-full appearance-none rounded-md border ${error ? 'border-red-500 pr-[96px] ring-1 ring-red-500/20' : 'border-slate-200 pr-9'} bg-white pl-3 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`} {...props}>
+                    {children}
+                </select>
+                {!error && (
+                    <ChevronDownIcon className="w-4 h-4 text-slate-500 absolute right-3 pointer-events-none" />
+                )}
+                {error && (
+                    <div className="absolute right-7 flex items-center gap-1 text-[11px] font-medium text-red-600 bg-white px-1 pointer-events-none animate-pop">
+                        <AlertCircleIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span id={errorIdFor(id, error)}>{error}</span>
+                    </div>
+                )}
+            </div>
+        );
+
+        const Button = ({ children, variant = "default", className = "", ...props }) => {
+            const variants = {
+                default: "bg-slate-900 text-slate-50 hover:bg-slate-900/90",
+                destructive: "bg-red-600 text-slate-50 hover:bg-red-700",
+                bin: "bg-slate-700 text-slate-100 hover:bg-red-600 hover:text-white shadow-sm",
+                outline: "border border-slate-200 bg-white hover:bg-slate-100 hover:text-slate-900",
+                brand: "bg-brand-dark text-white hover:bg-[#00663C] shadow-sm",
+                ghost: "hover:bg-slate-100 hover:text-slate-900",
+                footerOutline: "border border-slate-300 text-slate-700 hover:bg-slate-100 shadow-sm",
+                footerSolid: "bg-brand-dark text-white hover:bg-[#00663C] shadow-md font-semibold",
+            };
+            return (
+                <button type="button" className={`inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-all duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 ${variants[variant] || variants.default} ${className}`} {...props}>
+                    {children}
+                </button>
+            );
+        };
+
+        const DotsIcon = () => <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>;
+
+        // A "..." button with a short menu. Arrow keys move through the items;
+        // Escape or a click elsewhere closes it.
+        const MoreMenu = ({ label, items, className = "", icon, boxed }) => {
+            const [open, setOpen] = useState(false);
+            const buttonRef = useRef(null);
+            const menuRef = useRef(null);
+            useEffect(() => {
+                if (!open) return;
+                const first = menuRef.current && menuRef.current.querySelector('[role="menuitem"]');
+                if (first) first.focus();
+                const closeOnOutsideClick = (e) => {
+                    if (menuRef.current && !menuRef.current.contains(e.target) && !buttonRef.current.contains(e.target)) setOpen(false);
+                };
+                document.addEventListener('mousedown', closeOnOutsideClick);
+                return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+            }, [open]);
+            const onKeyDown = (e) => {
+                const entries = [...menuRef.current.querySelectorAll('[role="menuitem"]')];
+                const index = entries.indexOf(document.activeElement);
+                if (e.key === 'Escape') { e.preventDefault(); setOpen(false); buttonRef.current.focus(); }
+                else if (e.key === 'ArrowDown') { e.preventDefault(); entries[(index + 1) % entries.length].focus(); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); entries[(index - 1 + entries.length) % entries.length].focus(); }
+                else if (e.key === 'Tab') setOpen(false);
+            };
+            return (
+                <div className={`relative inline-flex ${className}`}>
+                    <button ref={buttonRef} type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
+                        onClick={() => setOpen(prev => !prev)}
+                        className={`inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${boxed
+                            ? `w-10 h-10 border shadow-sm ${open ? 'border-slate-400 bg-slate-100 text-slate-900' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`
+                            : 'w-9 h-10 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'}`}>
+                        {icon || <DotsIcon />}
+                    </button>
+                    {open && (
+                        <div ref={menuRef} role="menu" aria-label={label} onKeyDown={onKeyDown}
+                            className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-slate-200 rounded-lg shadow-xl py-1 animate-pop">
+                            {items.map(item => (
+                                <button key={item.label} type="button" role="menuitem" tabIndex={-1}
+                                    onClick={() => { setOpen(false); item.onSelect(); }}
+                                    className="w-full text-left px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none">
+                                    <span className="font-medium">{item.label}</span>
+                                    {item.hint && <span className="block text-xs text-slate-600">{item.hint}</span>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // A light bin button, the same height as the boxes with labels inside.
+        const RemoveButton = ({ label, className = "", ...props }) => (
+            <button type="button" aria-label={label} title={props.title || label} {...props}
+                className={`w-9 h-12 shrink-0 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${className}`}>
+                <TrashIcon />
+            </button>
+        );
+
+        const InfoIcon = () => <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
+
+        // A section's heading, with its description behind an "i" button
+        // (opens on click; Escape or a click elsewhere closes it), and any
+        // buttons for the section on the right.
+        const SectionHeader = ({ id, title, info, children }) => {
+            const [open, setOpen] = useState(false);
+            const ref = useRef(null);
+            useEffect(() => {
+                if (!open) return;
+                const closeOnOutsideClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+                const closeOnEscape = (e) => { if (e.key === 'Escape') setOpen(false); };
+                document.addEventListener('mousedown', closeOnOutsideClick);
+                document.addEventListener('keydown', closeOnEscape);
+                return () => {
+                    document.removeEventListener('mousedown', closeOnOutsideClick);
+                    document.removeEventListener('keydown', closeOnEscape);
+                };
+            }, [open]);
+            return (
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div ref={ref} className="relative flex items-center gap-1.5">
+                        <h3 className="text-xl font-bold tracking-tight text-slate-900">{title}</h3>
+                        {info && (
+                            <button type="button" aria-label={`About ${title}`} aria-expanded={open} aria-controls={`${id}-info`}
+                                onClick={() => setOpen(prev => !prev)}
+                                className={`w-7 h-7 inline-flex items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${open ? 'bg-brand-green/10 text-brand-dark' : 'text-slate-500 hover:bg-slate-100 hover:text-brand-dark'}`}>
+                                <InfoIcon />
+                            </button>
+                        )}
+                        {info && open && (
+                            <div id={`${id}-info`} className="absolute left-0 top-full mt-2 z-30 w-80 max-w-[85vw] rounded-lg bg-slate-900 text-white text-sm leading-relaxed shadow-xl px-3.5 py-2.5 animate-pop">
+                                {info}
+                            </div>
+                        )}
+                    </div>
+                    {children && <div className="flex items-center gap-2">{children}</div>}
+                </div>
+            );
+        };
+
+        // An "i" that shows a short explanation while hovered or focused.
+        const HoverInfo = ({ id, text, label, className = "" }) => {
+            const [open, setOpen] = useState(false);
+            return (
+                <span className={`relative inline-flex ${className}`}
+                    onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+                    <button type="button" aria-label={label} aria-describedby={open ? id : undefined}
+                        onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
+                        onClick={() => setOpen(prev => !prev)}
+                        className="w-7 h-7 inline-flex items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                        <InfoIcon />
+                    </button>
+                    {open && (
+                        <span id={id} role="tooltip"
+                            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-30 w-64 rounded-lg bg-slate-900 text-white text-xs leading-relaxed shadow-xl px-3 py-2 text-left animate-pop">
+                            {text}
+                        </span>
+                    )}
+                </span>
+            );
+        };
+
+        // Asks for a timetable's link, then reads its setup (readTimetableSetup in Code.gs).
+        const LinkDialog = ({ mode, onLoaded, onClose }) => {
+            const [link, setLink] = useState("");
+            const [busy, setBusy] = useState(false);
+            const [error, setError] = useState("");
+            const editing = mode === 'edit';
+            useEffect(() => {
+                const closeOnEscape = (e) => { if (e.key === 'Escape' && !busy) onClose(); };
+                document.addEventListener('keydown', closeOnEscape);
+                return () => document.removeEventListener('keydown', closeOnEscape);
+            }, [busy]);
+            const open = () => {
+                if (!link.trim()) { setError("Paste the timetable's link first."); return; }
+                if (typeof google === 'undefined' || !google.script) { setError("This only works in the deployed wizard."); return; }
+                setBusy(true);
+                setError("");
+                google.script.run
+                    .withSuccessHandler(setup => { setBusy(false); onLoaded(setup); })
+                    .withFailureHandler(err => {
+                        setBusy(false);
+                        setError(String((err && err.message) || err || "The timetable couldn't be opened.").replace(/^((Error|Exception):\s*)+/i, ""));
+                    })
+                    .readTimetableSetup(link.trim());
+            };
+            return ReactDOM.createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+                    <div role="dialog" aria-modal="true" aria-labelledby="link-dialog-title" className="w-full max-w-lg rounded-2xl bg-white shadow-2xl p-6 animate-pop">
+                        <h2 id="link-dialog-title" className="text-xl font-bold text-slate-900">{editing ? 'Edit an existing timetable' : 'Start from an existing timetable'}</h2>
+                        <p className="text-sm text-slate-600 mt-1 mb-4">
+                            {editing
+                                ? "Paste the timetable's link. Its setup opens in the wizard; change what you need, and the timetable is updated in place, keeping every lesson already entered."
+                                : "Paste a timetable's link, for example last year's. Its setup opens in the wizard, and a new timetable is made from it; the old one isn't changed."}
+                        </p>
+                        <Input id="timetable-link" boxLabel="Timetable link" placeholder="https://docs.google.com/spreadsheets/d/..." value={link}
+                            onChange={(e) => { setLink(e.target.value); setError(""); }} onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+                            autoFocus disabled={busy} />
+                        {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
+                        <div className="flex justify-end gap-2 mt-5">
+                            <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+                            <Button variant="brand" onClick={open} disabled={busy}>{busy ? 'Opening...' : 'Open timetable'}</Button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            );
+        };
+
+        // A cycle length shown as its number inside a circular arrow, on a
+        // square button. Click to choose 1-10 weeks; arrow keys step it.
+        const CycleButton = ({ id, value, onChange, owner, className = "", size = "md", lockedReason }) => {
+            const [open, setOpen] = useState(false);
+            const ref = useRef(null);
+            const weeks = Number(value) || 1;
+            useEffect(() => {
+                if (!open) return;
+                const chosen = ref.current && ref.current.querySelector('[aria-pressed="true"]');
+                if (chosen) chosen.focus();
+                const closeOnOutsideClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+                const closeOnEscape = (e) => { if (e.key === 'Escape') { setOpen(false); const button = document.getElementById(id); if (button) button.focus(); } };
+                document.addEventListener('mousedown', closeOnOutsideClick);
+                document.addEventListener('keydown', closeOnEscape);
+                return () => {
+                    document.removeEventListener('mousedown', closeOnOutsideClick);
+                    document.removeEventListener('keydown', closeOnEscape);
+                };
+            }, [open]);
+            const step = (by) => onChange(Math.min(MAX_CYCLE_WEEKS, Math.max(1, weeks + by)));
+            return (
+                <div ref={ref} className={`relative inline-flex ${className}`}>
+                    <button id={id} type="button" aria-haspopup={lockedReason ? undefined : 'true'} aria-expanded={lockedReason ? undefined : open}
+                        aria-disabled={lockedReason ? true : undefined}
+                        aria-label={`${owner} cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}. ${lockedReason ? lockedReason : 'Change'}`}
+                        title={lockedReason || `Cycle: ${weeks} ${weeks === 1 ? 'week' : 'weeks'}`}
+                        onClick={() => { if (!lockedReason) setOpen(prev => !prev); }}
+                        onKeyDown={(e) => {
+                            if (lockedReason) return;
+                            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+                            if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+                        }}
+                        className={`group ${size === 'lg' ? 'w-12 h-12' : 'w-10 h-10'} inline-flex items-center justify-center rounded-md border shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                            lockedReason ? 'border-slate-200 bg-slate-50 cursor-not-allowed' : open ? 'border-brand-dark bg-brand-green/10' : 'border-slate-300 bg-white hover:border-brand-dark'}`}>
+                        <svg viewBox="0 0 24 24" className={size === 'lg' ? 'w-9 h-9' : 'w-8 h-8'} aria-hidden="true">
+                            {/* Light arrow, dark number */}
+                            <g className={open ? 'text-brand-green' : 'text-slate-300 group-hover:text-brand-green'} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 12a8 8 0 1 1-8-8c2.24 0 4.38.89 5.99 2.44L20 8.5" />
+                                <path d="M20 4v4.5h-4.5" />
+                            </g>
+                            <text x="12" y="15.4" textAnchor="middle" fontSize={weeks > 9 ? 7.5 : 9.5} fontWeight="800" className="fill-slate-900" fontFamily="Figtree, sans-serif">{weeks}</text>
+                        </svg>
+                    </button>
+                    {open && (
+                        <div role="group" aria-label={`${owner} cycle length`}
+                            className="absolute right-0 top-full mt-1 z-40 w-56 bg-white border border-slate-200 rounded-lg shadow-xl p-3 animate-pop">
+                            <p className="text-xs font-semibold text-slate-700 mb-2">Cycle length (weeks)</p>
+                            <div className="grid grid-cols-5 gap-1.5">
+                                {Array.from({ length: MAX_CYCLE_WEEKS }, (_, i) => i + 1).map(n => (
+                                    <button key={n} type="button" aria-pressed={n === weeks}
+                                        aria-label={`${n} ${n === 1 ? 'week' : 'weeks'}`}
+                                        onClick={() => { onChange(n); setOpen(false); const button = document.getElementById(id); if (button) button.focus(); }}
+                                        className={`h-8 rounded-md text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                                            n === weeks ? 'bg-brand-dark text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                                        {n}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="text-[11px] text-slate-600 mt-2 leading-snug">How many weeks the timetable runs before repeating.</p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // The success screen's picture: a timetable tab in a spreadsheet window.
+        const TimetableIllustration = () => (
+            <svg viewBox="0 0 560 300" className="w-full h-auto" aria-hidden="true">
+                <defs>
+                    <filter id="sheet-shadow" x="-10%" y="-10%" width="120%" height="130%">
+                        <feDropShadow dx="0" dy="12" stdDeviation="14" floodColor="#003D24" floodOpacity="0.35" />
+                    </filter>
+                </defs>
+                <g filter="url(#sheet-shadow)">
+                    <rect x="20" y="10" width="520" height="280" rx="14" fill="#FFFFFF" />
+                </g>
+                <rect x="20" y="10" width="520" height="34" rx="14" fill="#F1F5F9" />
+                <rect x="20" y="30" width="520" height="14" fill="#F1F5F9" />
+                <circle cx="42" cy="27" r="5" fill="#F87171" />
+                <circle cx="58" cy="27" r="5" fill="#FBBF24" />
+                <circle cx="74" cy="27" r="5" fill="#34D399" />
+                <rect x="96" y="20" width="150" height="14" rx="7" fill="#E2E8F0" />
+                <rect x="20" y="44" width="520" height="16" fill="#00A35F" opacity="0.12" />
+                <rect x="34" y="49" width="60" height="6" rx="3" fill="#00A35F" opacity="0.6" />
+                <rect x="104" y="49" width="40" height="6" rx="3" fill="#00A35F" opacity="0.35" />
+                <rect x="154" y="49" width="50" height="6" rx="3" fill="#00A35F" opacity="0.35" />
+                <rect x="96" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="96" y="92" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="103" y="97" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="96" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="96" y="144" width="76" height="36" rx="4" fill="#FCE5CD" />
+                <rect x="103" y="149" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="96" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="96" y="196" width="76" height="23" rx="4" fill="#D0E0E3" />
+                <rect x="103" y="201" width="42" height="4" rx="2" fill="#45818E" opacity="0.7" />
+                <rect x="96" y="222" width="76" height="23" rx="4" fill="#F4CCCC" />
+                <rect x="103" y="227" width="42" height="4" rx="2" fill="#CC0000" opacity="0.7" />
+                <rect x="178" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="178" y="92" width="76" height="23" rx="4" fill="#FCE5CD" />
+                <rect x="185" y="97" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="178" y="118" width="76" height="10" rx="4" fill="#FFF2CC" />
+                <rect x="178" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="178" y="144" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="185" y="149" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="178" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="178" y="196" width="76" height="49" rx="4" fill="#C9DAF8" />
+                <rect x="185" y="201" width="42" height="4" rx="2" fill="#3D85C6" opacity="0.7" />
+                <rect x="260" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="260" y="92" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="267" y="97" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="260" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="260" y="144" width="76" height="23" rx="4" fill="#FCE5CD" />
+                <rect x="267" y="149" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="260" y="170" width="76" height="10" rx="4" fill="#D9D2E9" />
+                <rect x="260" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="260" y="196" width="76" height="49" rx="4" fill="#F4CCCC" />
+                <rect x="267" y="201" width="42" height="4" rx="2" fill="#CC0000" opacity="0.7" />
+                <rect x="342" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="342" y="92" width="76" height="10" rx="4" fill="#FFF2CC" />
+                <rect x="342" y="105" width="76" height="23" rx="4" fill="#FCE5CD" />
+                <rect x="349" y="110" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="342" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="342" y="144" width="76" height="36" rx="4" fill="#D9EAD3" />
+                <rect x="349" y="149" width="42" height="4" rx="2" fill="#6AA84F" opacity="0.7" />
+                <rect x="342" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="342" y="196" width="76" height="23" rx="4" fill="#D9D2E9" />
+                <rect x="349" y="201" width="42" height="4" rx="2" fill="#674EA7" opacity="0.7" />
+                <rect x="342" y="222" width="76" height="23" rx="4" fill="#D0E0E3" />
+                <rect x="349" y="227" width="42" height="4" rx="2" fill="#45818E" opacity="0.7" />
+                <rect x="424" y="70" width="76" height="14" rx="3" fill="#E8EEF2" />
+                <rect x="424" y="92" width="76" height="23" rx="4" fill="#C9DAF8" />
+                <rect x="431" y="97" width="42" height="4" rx="2" fill="#3D85C6" opacity="0.7" />
+                <rect x="424" y="118" width="76" height="10" rx="4" fill="#D9EAD3" />
+                <rect x="424" y="131" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="424" y="144" width="76" height="36" rx="4" fill="#FCE5CD" />
+                <rect x="431" y="149" width="42" height="4" rx="2" fill="#E69138" opacity="0.7" />
+                <rect x="424" y="183" width="76" height="10" rx="4" fill="#EEEEEE" />
+                <rect x="424" y="196" width="76" height="49" rx="4" fill="#F4CCCC" />
+                <rect x="431" y="201" width="42" height="4" rx="2" fill="#CC0000" opacity="0.7" />
+                <rect x="56" y="92" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="105" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="118" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="131" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="144" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="157" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="170" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="183" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="196" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="209" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="222" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="235" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="56" y="248" width="26" height="4" rx="2" fill="#CBD5E1" />
+                <rect x="20" y="268" width="520" height="22" fill="#F8FAFC" />
+                <rect x="34" y="273" width="58" height="12" rx="4" fill="#FFFFFF" stroke="#CBD5E1" />
+                <rect x="98" y="273" width="52" height="12" rx="4" fill="#E2E8F0" />
+                <rect x="156" y="273" width="52" height="12" rx="4" fill="#E2E8F0" />
+                <rect x="214" y="273" width="52" height="12" rx="4" fill="#E2E8F0" />
+            </svg>
+        );
+
+        // The logo: a mini timetable, three days of lesson blocks on a green tile.
+        const LogoMark = () => (
+            <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
+                <defs>
+                    <linearGradient id="logo-tile" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stopColor="#00C774" />
+                        <stop offset="1" stopColor="#00663C" />
+                    </linearGradient>
+                </defs>
+                <rect width="56" height="56" rx="16" fill="url(#logo-tile)" />
+                <rect x="11" y="11" width="9" height="15" rx="3" fill="#FFFFFF" />
+                <rect x="11" y="29" width="9" height="16" rx="3" fill="#FFFFFF" fillOpacity="0.45" />
+                <rect x="23.5" y="11" width="9" height="8" rx="3" fill="#FDE68A" />
+                <rect x="23.5" y="22" width="9" height="23" rx="3" fill="#FFFFFF" fillOpacity="0.8" />
+                <rect x="36" y="11" width="9" height="20" rx="3" fill="#FFFFFF" fillOpacity="0.6" />
+                <rect x="36" y="34" width="9" height="11" rx="3" fill="#FFFFFF" />
+            </svg>
+        );
+        const PencilLineIcon = () => <svg className="w-5 h-5 shrink-0 text-amber-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>;
+        const MenuIcon = () => <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>;
+        const PlusIcon = ({className}) => <svg className={className || "w-4 h-4"} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
+        const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+        const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+        const CheckCircleIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>;
+        const AlertTriangleIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
+        const ClockIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>;
+        const CalendarIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
+        const ChevronDownIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>;
+        const AlertCircleIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>;
+
+        // Pastel palette offered in the class colour swatch picker (also used
+        // to auto-assign a default colour to newly created classes), ordered
+        // warm -> cool. 15 presets fill a 4x4 popover grid, with the 16th
+        // (bottom-right) cell reserved for the custom colour picker.
+        const CLASS_COLOR_PALETTE = [
+            '#FFADAD', '#FBC4AB', '#FFD6A5', '#FFE5B4', '#FDFFB6',
+            '#CAFFBF', '#C1FFD7', '#D0F4DE', '#9BF6FF', '#C4FAF8',
+            '#A0C4FF', '#BDB2FF', '#E4C1F9', '#FFC6FF', '#FFCFE0'
+        ];
+
+        // ---- shared/setupRules.js (copied here by "npm run build"; edit that file, not this block) ----
+        /*
+         * Setup rules shared by the wizard page (wizard/Index.html), which checks
+         * them as you type, and the server (wizard/Code.gs, validateConfig), which
+         * checks them again before generating: "npm run build" copies this file into
+         * both. Edit it here, run the build, then paste both files into Apps Script.
+         */
+        const SLOT_MINUTES = 5;
+        const MAX_CYCLE_WEEKS = 10;
+        const MAX_NAME_LENGTH = 90;
+        const MAX_SCHOOL_NAME_LENGTH = 100;
+        // Tabs that already exist in the template (or are planned), compared
+        // case-insensitively because Google Sheets tab names are.
+        const RESERVED_TAB_NAMES = ['data', 'template', 'overview', 'spec_template', 'start here'];
+        // Amadeus runs in Years 3-6 in every school. The activity name must match
+        // TEMPLATE!B21 exactly, because C21 counts cells with this value.
+        const AMADEUS_ACTIVITY_NAME = 'Amadeus - Tutorials';
+        // Every class needs its teacher's name for compliance, so stand-ins are refused.
+        const TEACHER_PLACEHOLDER = /^(tbc|tba|tbd|n\/?a|none|unknown|teacher|[-?.\s]*)$/i;
+        // ---- end of shared/setupRules.js ----
+
+        // Short message for a class or specialist name that can't be used as
+        // a tab name, or '' if it's fine. Class names can't contain an
+        // apostrophe because the OVERVIEW tab looks class tabs up by name.
+        const getNameError = (name, isClass) => {
+            const trimmed = name.trim();
+            const lower = trimmed.toLowerCase();
+            if (!trimmed) return "Required";
+            if (trimmed.startsWith('=')) return "Can't start with =";
+            if (trimmed.length > MAX_NAME_LENGTH) return "Too long";
+            if (isClass ? /[\/\\?*\[\]:']/.test(trimmed) : /[\/\\?*\[\]:]/.test(trimmed)) return isClass ? "No / \\ ? * [ ] : '" : "No / \\ ? * [ ] :";
+            if (isClass && (RESERVED_TAB_NAMES.includes(lower) || lower.startsWith('spec_'))) return "Reserved name";
+            if (!isClass && lower === 'template') return "Reserved name";
+            return "";
+        };
+
+        // Names (lower-cased) that appear more than once in a list.
+        const findDuplicates = (names) => {
+            const counts = {};
+            names.forEach(n => { const key = n.trim().toLowerCase(); if (key) counts[key] = (counts[key] || 0) + 1; });
+            return new Set(Object.keys(counts).filter(key => counts[key] > 1));
+        };
+
+        const isOnSlotGrid = (timeStr) => {
+            if (!timeStr) return false;
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return (hours * 60 + minutes) % SLOT_MINUTES === 0;
+        };
+
+        const getTeacherError = (teacher) => {
+            const trimmed = teacher.trim();
+            if (!trimmed) return "Required";
+            if (TEACHER_PLACEHOLDER.test(trimmed)) return "Enter their name";
+            if (trimmed.startsWith('=')) return "Can't start with =";
+            return "";
+        };
+
+        // A class named after a colour starts with that colour from the palette
+        // ("Kindergarten Blue" is blue), until a colour is picked for it.
+        const COLOUR_WORDS = [
+            [['red', 'scarlet', 'crimson', 'ruby', 'cherry'], '#FFADAD'],
+            [['coral', 'peach', 'salmon'], '#FBC4AB'],
+            [['orange', 'amber', 'tangerine', 'bronze', 'copper'], '#FFD6A5'],
+            [['apricot', 'cream', 'sand', 'honey'], '#FFE5B4'],
+            [['gold', 'golden', 'yellow', 'lemon', 'sun', 'sunshine'], '#FDFFB6'],
+            [['green', 'lime', 'emerald', 'olive', 'forest'], '#CAFFBF'],
+            [['jade', 'mint'], '#C1FFD7'],
+            [['sage'], '#D0F4DE'],
+            [['aqua', 'turquoise', 'teal', 'cyan'], '#9BF6FF'],
+            [['sky', 'ice'], '#C4FAF8'],
+            [['blue', 'navy', 'azure', 'sapphire', 'cobalt', 'royal'], '#A0C4FF'],
+            [['purple', 'violet', 'indigo', 'plum', 'grape'], '#BDB2FF'],
+            [['lilac', 'lavender', 'mauve'], '#E4C1F9'],
+            [['pink', 'magenta', 'fuchsia'], '#FFC6FF'],
+            [['rose', 'blush'], '#FFCFE0']
+        ];
+        const colourForName = (name) => {
+            const words = String(name || '').toLowerCase().match(/[a-z]+/g) || [];
+            for (let i = words.length - 1; i >= 0; i--) {
+                const match = COLOUR_WORDS.find(([names]) => names.includes(words[i]));
+                if (match) return match[1];
+            }
+            return null;
+        };
+        const SETUP_FILE_TYPE = 'timetable-tool-setup';
+        const STEP = { SCHEDULE: 1, CLASSES: 2, SPECIALISTS: 3, ACTIVITIES: 4, SUMMARY: 5 };
+        const STEP_NAMES = ['Core Schedule', 'Classes', 'Specialists', 'Activities', 'Summary'];
+        const STEP_INFO = [
+            "Your school's name, bell times and breaks.",
+            "Each grade's cycle length, and each class's name and teacher.",
+            "Specialist teachers and the KLA each one teaches.",
+            "Extra-curricular activities that count as teaching time.",
+            "Check everything, then generate the timetable."
+        ];
+        const LAST_STEP = STEP_NAMES.length;
+
+        // Shown in turn while the timetable is generated, between reminders of
+        // how long it takes.
+        const GENERATING_QUIPS = [
+            "Asking the photocopier nicely. It said no.",
+            "Finding the last clean mug in the staffroom...",
+            "Writing \"see me\" next to the clashes...",
+            "Rounding up the specialists. Has anyone seen the music teacher?",
+            "Colour-coding with the dedication of a Kindy teacher...",
+            "Checking every class has enough Creative Arts. And glue sticks.",
+            "Making sure Friday afternoon sport isn't double-booked...",
+            "Taking the roll: all classes present.",
+            "Reminding Year 6 that the timetable is not a suggestion.",
+            "Laminating... just kidding, that's next week's job.",
+            "Hiding the good whiteboard markers from everyone else...",
+            "Counting down the minutes to recess duty. We mean teaching minutes."
+        ];
+        const DEFAULT_GRADES = [
+            { id: "k", name: "Kindergarten" },
+            { id: "y1", name: "Year 1" },
+            { id: "y2", name: "Year 2" },
+            { id: "y3", name: "Year 3" },
+            { id: "y4", name: "Year 4" },
+            { id: "y5", name: "Year 5" },
+            { id: "y6", name: "Year 6" }
+        ];
+
+        let idCounter = 0;
+        const newId = () => `id-${Date.now().toString(36)}-${(idCounter++).toString(36)}`;
+
+        // The setup a new wizard starts with.
+        const makeInitialData = () => ({
+            schoolName: "",
+            schoolStart: "08:30",
+            schoolEnd: "15:15",
+            breaks: [
+                { id: 1, name: "Recess", start: "10:30", end: "11:00" },
+                { id: 2, name: "Lunch", start: "13:00", end: "13:45" }
+            ],
+            klas: [
+                { id: 10, name: "English" },
+                { id: 20, name: "Mathematics" },
+                { id: 30, name: "Religion" },
+                { id: 40, name: "Science & Tech" },
+                { id: 50, name: "HSIE" },
+                { id: 60, name: "PDHPE" },
+                { id: 70, name: "Creative Arts" },
+                { id: 80, name: "Non-Curricular" }
+            ],
+            grades: DEFAULT_GRADES.map(g => ({ ...g, classes: g.id === 'k' ? 2 : 0, cycle: 1 })),
+            staffing: [
+                { id: 101, gradeId: "k", className: "Kindergarten Blue", teacher: "", color: colourForName("Kindergarten Blue") },
+                { id: 102, gradeId: "k", className: "Kindergarten Red", teacher: "", color: colourForName("Kindergarten Red") }
+            ],
+            specialists: [
+                { id: 301, name: "", kla: "", cycle: 1 } // Initial empty template
+            ],
+            activities: [
+                { id: 201, name: "Assembly" },
+                { id: 202, name: "Library" },
+                // Amadeus runs in Years 3-6 in every school, so it can't be
+                // renamed or removed (the name must match TEMPLATE!B21).
+                { id: 203, name: AMADEUS_ACTIVITY_NAME, locked: true }
+            ]
+        });
+
+        // Each grade's class count from its class rows.
+        const withGradeCounts = (data) => ({
+            ...data,
+            grades: data.grades.map(g => ({ ...g, classes: data.staffing.filter(s => s.gradeId === g.id).length }))
+        });
+
+        // Rows left completely blank are skipped rather than reported.
+        const isBlankClass = (s) => !s.className.trim() && !s.teacher.trim();
+        const isBlankSpecialist = (s) => !s.name.trim() && !s.kla;
+
+        // The classes that will be generated, grade by grade.
+        const getClassesToGenerate = (data) => {
+            const classes = [];
+            data.grades.filter(g => g.classes > 0).forEach(g => {
+                data.staffing
+                    .filter(s => s.gradeId === g.id && !isBlankClass(s))
+                    .forEach(s => classes.push({ ...s, grade: g }));
+            });
+            return classes;
+        };
+        const getSpecialistsToGenerate = (data) => data.specialists.filter(s => !isBlankSpecialist(s));
+
+        // The flat name/value list sent to generateTimetable. The server keeps
+        // it in the timetable's DATA tab (RawData_JSON), and setup files hold
+        // the same list, so either can be loaded back with setupFromVariables.
+        const buildExportVariables = (data) => {
+            const variables = [];
+            const add = (name, value) => variables.push({ name, value });
+            add('SchoolName', data.schoolName.trim());
+            add('SchoolStart', data.schoolStart);
+            add('SchoolEnd', data.schoolEnd);
+            data.breaks.forEach((b, i) => {
+                add(`Break_${i+1}_Name`, b.name);
+                add(`Break_${i+1}_Start`, b.start);
+                add(`Break_${i+1}_End`, b.end);
+            });
+            data.klas.forEach((k, i) => add(`KLA_${i+1}_Name`, k.name));
+            getSpecialistsToGenerate(data).forEach((s, i) => {
+                add(`Specialist_${i+1}_Name`, s.name);
+                add(`Specialist_${i+1}_KLA`, s.kla);
+                add(`Specialist_${i+1}_Cycle`, s.cycle || 1);
+            });
+            getClassesToGenerate(data).forEach((s, i) => {
+                add(`Class_${i+1}_Name`, s.className);
+                add(`Class_${i+1}_Teacher`, s.teacher.trim());
+                add(`Class_${i+1}_Grade`, s.grade.name);
+                add(`Class_${i+1}_Cycle`, s.grade.cycle);
+                add(`Class_${i+1}_Color`, s.color || '');
+            });
+            data.activities.filter(a => a.name.trim()).forEach((a, i) => add(`Activity_${i+1}_Name`, a.name));
+            return variables;
+        };
+
+        const clampCycle = (value) => Math.min(MAX_CYCLE_WEEKS, Math.max(1, parseInt(value, 10) || 1));
+
+        // The wizard's setup from a name/value list (a setup file, or a
+        // timetable's RawData_JSON). Grades the wizard doesn't list are added
+        // after Year 6.
+        const setupFromVariables = (exportVariables) => {
+            const values = {};
+            exportVariables.forEach(item => { if (item && item.name) values[item.name] = item.value; });
+            const text = (name) => (values[name] === undefined || values[name] === null ? '' : String(values[name]));
+            const list = (prefix, read) => {
+                const items = [];
+                for (let i = 1; values[`${prefix}_${i}_Name`] !== undefined; i++) items.push(read(i));
+                return items;
+            };
+            const defaults = makeInitialData();
+
+            const grades = DEFAULT_GRADES.map(g => ({ ...g, classes: 0, cycle: 1 }));
+            const staffing = [];
+            list('Class', i => ({
+                name: text(`Class_${i}_Name`).trim(),
+                teacher: text(`Class_${i}_Teacher`).trim(),
+                grade: text(`Class_${i}_Grade`).trim() || 'Other',
+                cycle: clampCycle(values[`Class_${i}_Cycle`]),
+                color: text(`Class_${i}_Color`).trim()
+            })).filter(c => c.name).forEach(c => {
+                let grade = grades.find(g => g.name.toLowerCase() === c.grade.toLowerCase());
+                if (!grade) {
+                    grade = { id: newId(), name: c.grade, classes: 0, cycle: 1 };
+                    grades.push(grade);
+                }
+                grade.classes++;
+                grade.cycle = c.cycle;
+                staffing.push({
+                    id: newId(),
+                    gradeId: grade.id,
+                    className: c.name,
+                    originalName: c.name, // the class this row continues, when editing a timetable
+                    teacher: c.teacher,
+                    color: c.color || colourForName(c.name) || CLASS_COLOR_PALETTE[staffing.length % CLASS_COLOR_PALETTE.length],
+                    colorChosen: Boolean(c.color) // a saved colour stays when the class is renamed
+                });
+            });
+
+            const klas = list('KLA', i => ({ id: newId(), name: text(`KLA_${i}_Name`).trim() })).filter(k => k.name);
+            const activities = list('Activity', i => ({ id: newId(), name: text(`Activity_${i}_Name`).trim() }))
+                .filter(a => a.name)
+                .map(a => a.name.toLowerCase() === AMADEUS_ACTIVITY_NAME.toLowerCase()
+                    ? { ...a, name: AMADEUS_ACTIVITY_NAME, locked: true }
+                    : a);
+            if (!activities.some(a => a.locked)) activities.push({ id: newId(), name: AMADEUS_ACTIVITY_NAME, locked: true });
+
+            return {
+                schoolName: text('SchoolName').trim(),
+                schoolStart: text('SchoolStart') || defaults.schoolStart,
+                schoolEnd: text('SchoolEnd') || defaults.schoolEnd,
+                breaks: list('Break', i => ({
+                    id: newId(),
+                    name: text(`Break_${i}_Name`),
+                    start: text(`Break_${i}_Start`),
+                    end: text(`Break_${i}_End`)
+                })),
+                klas: klas.length ? klas : defaults.klas,
+                grades: grades,
+                staffing: staffing,
+                specialists: list('Specialist', i => ({
+                    id: newId(),
+                    name: text(`Specialist_${i}_Name`).trim(),
+                    originalName: text(`Specialist_${i}_Name`).trim(),
+                    kla: text(`Specialist_${i}_KLA`).trim(),
+                    cycle: clampCycle(values[`Specialist_${i}_Cycle`])
+                })).filter(s => s.name),
+                activities: activities
+            };
+        };
+
+        // A setup to start a new timetable from: no rows continue anything.
+        const withoutOriginals = (data) => ({
+            ...data,
+            staffing: data.staffing.map(({ originalName, ...row }) => row),
+            specialists: data.specialists.map(({ originalName, ...row }) => row)
+        });
+
+        // After an update the timetable matches the setup, so every row now
+        // continues what it's called.
+        const asOriginals = (data) => ({
+            ...data,
+            staffing: data.staffing.filter(s => !isBlankClass(s)).map(s => ({ ...s, originalName: s.className.trim() })),
+            specialists: data.specialists.filter(s => !isBlankSpecialist(s)).map(s => ({ ...s, originalName: s.name.trim() }))
+        });
+
+        // Renamed classes and specialists, for updateTimetable.
+        const findRenames = (data) => ({
+            classes: getClassesToGenerate(data)
+                .filter(s => s.originalName && s.originalName !== s.className.trim())
+                .map(s => ({ from: s.originalName, to: s.className.trim() })),
+            specialists: getSpecialistsToGenerate(data)
+                .filter(s => s.originalName && s.originalName !== s.name.trim())
+                .map(s => ({ from: s.originalName, to: s.name.trim() }))
+        });
+
+        // What updating the timetable will change, in words (the server works
+        // it out the same way, matching rows by originalName, then by name).
+        const describeUpdate = (original, data) => {
+            const changes = [];
+            const pair = (oldItems, newItems, nameOf) => {
+                const claimed = new Set();
+                const pairs = newItems.map(item => {
+                    let old = item.originalName && oldItems.find(o => nameOf(o) === item.originalName && !claimed.has(o));
+                    if (!old) old = oldItems.find(o => nameOf(o).toLowerCase() === nameOf(item).toLowerCase() && !claimed.has(o));
+                    if (old) claimed.add(old);
+                    return { old: old || null, item };
+                });
+                return { pairs, removed: oldItems.filter(o => !claimed.has(o)) };
+            };
+            const className = c => c.className.trim();
+            const classes = pair(getClassesToGenerate(original), getClassesToGenerate(data), className);
+            classes.pairs.forEach(({ old, item }) => {
+                if (!old) { changes.push(`Add class "${className(item)}" (${item.grade.name}, ${item.teacher.trim()})`); return; }
+                if (className(old) !== className(item)) changes.push(`Rename class "${className(old)}" to "${className(item)}"`);
+                if (old.teacher.trim() !== item.teacher.trim()) changes.push(`${className(item)}: teacher ${old.teacher.trim()} to ${item.teacher.trim()}`);
+                if ((old.color || '') !== (item.color || '')) changes.push(`${className(item)}: new colour`);
+            });
+            classes.removed.forEach(old => changes.push(`Archive class "${className(old)}"`));
+
+            const specialistName = s => s.name.trim();
+            const specialists = pair(getSpecialistsToGenerate(original), getSpecialistsToGenerate(data), specialistName);
+            specialists.pairs.forEach(({ old, item }) => {
+                if (!old) { changes.push(`Add specialist "${specialistName(item)}" (${item.kla})`); return; }
+                if (specialistName(old) !== specialistName(item)) changes.push(`Rename specialist "${specialistName(old)}" to "${specialistName(item)}"`);
+                if (old.kla !== item.kla) changes.push(`${specialistName(item)}: KLA ${old.kla} to ${item.kla}`);
+            });
+            specialists.removed.forEach(old => changes.push(`Archive specialist "${specialistName(old)}"`));
+
+            const activityNames = d => d.activities.map(a => a.name.trim()).filter(Boolean);
+            const before = activityNames(original);
+            const after = activityNames(data);
+            after.filter(name => !before.includes(name)).forEach(name => changes.push(`Add activity "${name}"`));
+            before.filter(name => !after.includes(name)).forEach(name => changes.push(`Remove activity "${name}"`));
+            if (original.schoolName.trim() !== data.schoolName.trim()) changes.push(`School name "${original.schoolName.trim()}" to "${data.schoolName.trim()}"`);
+            return changes;
+        };
+
+        // For each specialist, the grades whose cycle isn't a multiple of
+        // theirs: the sync can't line those lessons up week by week.
+        const findCycleMismatches = (data) => {
+            const classes = getClassesToGenerate(data);
+            const grades = data.grades.filter(g => classes.some(c => c.gradeId === g.id));
+            const mismatches = {};
+            getSpecialistsToGenerate(data).forEach(s => {
+                const cycle = s.cycle || 1;
+                const misfits = grades.filter(g => g.cycle % cycle !== 0);
+                if (misfits.length) mismatches[s.id] = misfits;
+            });
+            return mismatches;
+        };
+
+        const describeCycleMismatch = (specialist, grades) => {
+            const cycle = specialist.cycle || 1;
+            // Grouped by cycle: "Kindergarten (3-week cycle); Year 1, Year 2 (1-week cycle)".
+            const cycles = [...new Set(grades.map(g => g.cycle))];
+            const gradeList = cycles.map(c => `${grades.filter(g => g.cycle === c).map(g => g.name).join(', ')} (${c}-week cycle)`).join('; ');
+            return `${specialist.name.trim() || 'This specialist'}'s ${cycle}-week cycle doesn't fit ${gradeList}. ` +
+                `A class's cycle needs to be a multiple of the specialist's (${cycle}, ${cycle * 2}, ... weeks) for the lessons to line up; ` +
+                `otherwise the sync puts lessons from different weeks together.`;
+        };
+
+        // Roughly how long generating takes, from the load test (28 classes,
+        // 6 specialists: 93 seconds): setup, building the first tab of each
+        // cycle, copying the rest, and each specialist's clash check.
+        const estimateGeneration = (data) => {
+            const classes = getClassesToGenerate(data);
+            const specialists = getSpecialistsToGenerate(data);
+            const firstTabs = new Set(classes.map(c => c.grade.cycle)).size +
+                new Set(specialists.map(s => s.cycle || 1)).size;
+            const seconds = 10 + 11 * firstTabs + 0.7 * (classes.length + specialists.length) + 3 * specialists.length;
+            const halfMinutes = Math.max(2, Math.round(seconds / 30));
+            const minutes = Math.floor(halfMinutes / 2) + (halfMinutes % 2 ? '½' : '');
+            return {
+                classTabs: classes.length,
+                specialistTabs: specialists.length,
+                seconds: Math.round(seconds),
+                text: seconds < 45 ? 'under a minute' : `about ${minutes} minute${halfMinutes > 2 ? 's' : ''}`,
+                short: seconds < 45 ? 'Under 1 min' : `About ${minutes} min`
+            };
+        };
+
+        // Rows copied from a spreadsheet: class name, then teacher (cells are
+        // tab-separated when pasted). A heading row is dropped.
+        const parsePastedClasses = (text) => {
+            const rows = String(text || '').split(/\r?\n/)
+                .map(line => line.split('\t').map(cell => cell.trim()))
+                .filter(cells => cells.some(Boolean));
+            if (rows.length && /^class(\s*name)?$/i.test(rows[0][0])) rows.shift();
+            return rows.map(cells => ({ className: cells[0] || '', teacher: cells[1] || '' }));
+        };
+
+        const App = () => {
+            const [step, setStep] = useState(1);
+
+            // Real-time Generation & Polling States
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [loadingProgress, setLoadingProgress] = useState(0);
+            const [loadingMessage, setLoadingMessage] = useState("");
+            const [activeJobId, setActiveJobId] = useState(null);
+            const [logs, setLogs] = useState([]);
+            const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+            const [isSuccess, setIsSuccess] = useState(false);
+            const [colorPickerFor, setColorPickerFor] = useState(null);
+            const [colorPickerPos, setColorPickerPos] = useState({ top: 0, left: 0 });
+            const colorTriggerRefs = useRef({});
+
+            // Keep the open colour popover glued to its trigger swatch as the
+            // page or any nested scroll container (e.g. the class list) scrolls.
+            useEffect(() => {
+                if (colorPickerFor === null) return;
+                const reposition = () => {
+                    const el = colorTriggerRefs.current[colorPickerFor];
+                    if (!el) return;
+                    const rect = el.getBoundingClientRect();
+                    setColorPickerPos({ top: rect.bottom + 6, left: rect.left });
+                };
+                reposition();
+                const closeOnEscape = (e) => {
+                    if (e.key !== 'Escape') return;
+                    const trigger = colorTriggerRefs.current[colorPickerFor];
+                    setColorPickerFor(null);
+                    if (trigger) trigger.focus();
+                };
+                window.addEventListener('scroll', reposition, true);
+                window.addEventListener('resize', reposition);
+                window.addEventListener('keydown', closeOnEscape);
+                return () => {
+                    window.removeEventListener('scroll', reposition, true);
+                    window.removeEventListener('resize', reposition);
+                    window.removeEventListener('keydown', closeOnEscape);
+                };
+            }, [colorPickerFor]);
+            const [generatedUrl, setGeneratedUrl] = useState("");
+            const [generationError, setGenerationError] = useState("");
+
+            // App state for wizard data
+            const [data, setData] = useState(makeInitialData);
+            const dataRef = useRef(data);
+            dataRef.current = data;
+
+            const [errors, setErrors] = useState({});
+            const [showLogs, setShowLogs] = useState(false);
+            const [summaryDetail, setSummaryDetail] = useState(null); // the summary card whose details are shown
+            const [showAllProblems, setShowAllProblems] = useState(false);
+            const [quipTick, setQuipTick] = useState(0);
+            const quipStart = useRef(0);
+            useEffect(() => {
+                if (!isGenerating) return;
+                setQuipTick(0);
+                quipStart.current = Math.floor(Math.random() * GENERATING_QUIPS.length);
+                const timer = setInterval(() => setQuipTick(prev => prev + 1), 4500);
+                return () => clearInterval(timer);
+            }, [isGenerating]);
+            const logContainerRef = useRef(null);
+            const stepHeadingRef = useRef(null);
+            const fileInputRef = useRef(null);
+            // Short messages at the bottom of the screen ("Draft saved", setup file results).
+            const [toast, setToast] = useState(null); // { id, text, tone: 'info' | 'ok' | 'error' }
+            const showToast = (text, tone, ms) => setToast({ id: Date.now() + Math.random(), text, tone, ms });
+            useEffect(() => {
+                if (!toast) return;
+                const timer = setTimeout(() => setToast(current => (current && current.id === toast.id ? null : current)), toast.ms || 4000);
+                return () => clearTimeout(timer);
+            }, [toast]);
+            const [pasteFor, setPasteFor] = useState(null); // grade id with the paste box open
+            const [pasteText, setPasteText] = useState("");
+
+            // Drafts: the setup is saved for this user (saveDraft in Code.gs) a
+            // moment after each change, and offered back when the wizard opens.
+            const [draftOffer, setDraftOffer] = useState(null);
+            // Editing an existing timetable: the file, and its setup as loaded
+            // (what the changes are measured against).
+            const [editTarget, setEditTarget] = useState(null); // { fileId, fileName, url }
+            const [editOriginal, setEditOriginal] = useState(null);
+            const [linkDialog, setLinkDialog] = useState(null); // 'edit' | 'copy'
+            const [updateResult, setUpdateResult] = useState(null); // { changes, notes } after an update
+            const editing = Boolean(editTarget);
+            const draftsEnabled = useRef(false); // not until any saved draft has been offered
+            const hasServer = typeof google !== 'undefined' && google.script;
+            const initialJson = JSON.stringify(makeInitialData());
+
+            useEffect(() => {
+                if (!hasServer) return;
+                google.script.run
+                    .withSuccessHandler((json) => {
+                        let draft = null;
+                        try { draft = json ? JSON.parse(json) : null; } catch (e) { /* a damaged draft is ignored */ }
+                        // Only offered if nothing has been typed in the meantime.
+                        if (draft && draft.data && Array.isArray(draft.data.grades) && JSON.stringify(dataRef.current) === initialJson) {
+                            setDraftOffer(draft);
+                        } else {
+                            draftsEnabled.current = true;
+                        }
+                    })
+                    .withFailureHandler(() => { draftsEnabled.current = true; })
+                    .loadDraft();
+            }, []);
+
+            useEffect(() => {
+                if (!hasServer || !draftsEnabled.current || isGenerating || isSuccess) return;
+                if (JSON.stringify(data) === initialJson) return; // nothing worth keeping yet
+                const timer = setTimeout(() => {
+                    const draft = { savedAt: new Date().toISOString(), step: step, data: data,
+                        edit: editTarget ? { target: editTarget, original: editOriginal } : null };
+                    google.script.run
+                        .withSuccessHandler((saved) => { if (saved) showToast("Draft saved", 'info', 2000); })
+                        .saveDraft(JSON.stringify(draft));
+                }, 1500);
+                return () => clearTimeout(timer);
+            }, [data, step, editTarget, isGenerating, isSuccess]); // a pending save is dropped once generating starts
+
+            const resumeDraft = () => {
+                draftsEnabled.current = true;
+                setData(withGradeCounts(draftOffer.data));
+                setEditTarget(draftOffer.edit ? draftOffer.edit.target : null);
+                setEditOriginal(draftOffer.edit ? draftOffer.edit.original : null);
+                setStep(Math.min(LAST_STEP, Math.max(1, Number(draftOffer.step) || 1)));
+                setErrors({});
+                setDraftOffer(null);
+            };
+
+            const startNew = () => {
+                draftsEnabled.current = true;
+                setDraftOffer(null);
+                setData(makeInitialData());
+                setErrors({});
+                setStep(1);
+                setIsSuccess(false);
+                setGeneratedUrl("");
+                setGenerationError("");
+                setToast(null);
+                setEditTarget(null);
+                setEditOriginal(null);
+                setUpdateResult(null);
+                if (hasServer) google.script.run.clearDraft();
+            };
+
+            // A timetable's setup, read from its link: to edit it in place, or
+            // to start a new timetable from it.
+            const loadTimetable = (setup) => {
+                const mode = linkDialog;
+                const loaded = setupFromVariables(setup.exportVariables);
+                draftsEnabled.current = true;
+                setLinkDialog(null);
+                setErrors({});
+                setGenerationError("");
+                setUpdateResult(null);
+                setStep(STEP.SCHEDULE);
+                if (mode === 'edit') {
+                    setData(loaded);
+                    setEditTarget({ fileId: setup.fileId, fileName: setup.fileName, url: setup.url });
+                    setEditOriginal(loaded);
+                    showToast(`Editing "${setup.fileName}". Change what you need, then update it on the Summary step.`, 'ok', 7000);
+                } else {
+                    setData(withoutOriginals(loaded));
+                    setEditTarget(null);
+                    setEditOriginal(null);
+                    showToast(`Started from "${setup.fileName}". Generating makes a new timetable; the old one isn't changed.`, 'ok', 7000);
+                }
+            };
+
+            const stopEditing = () => {
+                setEditTarget(null);
+                setEditOriginal(null);
+                setData(prev => withoutOriginals(prev));
+                showToast("Not editing any more: generating will make a new timetable from this setup.", 'info', 5000);
+            };
+
+            // Each new step is announced: focus moves to its (visually hidden) heading.
+            const firstRender = useRef(true);
+            useEffect(() => {
+                if (firstRender.current) { firstRender.current = false; return; }
+                if (stepHeadingRef.current) stepHeadingRef.current.focus();
+            }, [step]);
+
+            useEffect(() => {
+                let timerInterval = null;
+                let pollInterval = null;
+
+                if (isGenerating) {
+                    setElapsedSeconds(0);
+                    timerInterval = setInterval(() => {
+                        setElapsedSeconds(prev => prev + 1);
+                    }, 1000);
+
+                    if (activeJobId) {
+                        pollInterval = setInterval(() => {
+                            if (typeof google !== 'undefined' && google.script) {
+                                google.script.run
+                                    .withSuccessHandler((responseJson) => {
+                                        if (responseJson) {
+                                            try {
+                                                const data = JSON.parse(responseJson);
+                                                if (data.percent >= 0) {
+                                                    setLoadingProgress(data.percent);
+                                                    setLoadingMessage(data.status);
+                                                    setLogs(prev => {
+                                                        if (prev.length === 0 || prev[prev.length - 1].text !== data.status) {
+                                                            return [...prev, {
+                                                                id: Date.now() + Math.random(),
+                                                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                                                text: data.status,
+                                                                percent: data.percent
+                                                            }];
+                                                        }
+                                                        return prev;
+                                                    });
+                                                } else if (data.percent === -1) {
+                                                    setIsGenerating(false);
+                                                    setGenerationError(data.status);
+                                                }
+                                            } catch (e) {
+                                                console.error("Error parsing progress response:", e);
+                                            }
+                                        }
+                                    })
+                                    .checkProgress(activeJobId);
+                            }
+                        }, 1200);
+                    }
+                }
+
+                return () => {
+                    if (timerInterval) clearInterval(timerInterval);
+                    if (pollInterval) clearInterval(pollInterval);
+                };
+            }, [isGenerating, activeJobId]);
+
+            // Auto-scroll activity log to latest entry
+            useEffect(() => {
+                if (logContainerRef.current) {
+                    logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+                }
+            }, [logs]);
+
+            const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
+            // Helper to format elapsed time
+            const formatElapsed = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            };
+
+            const updateField = (field, val) => {
+                setData(prev => ({ ...prev, [field]: val }));
+                setErrors(prev => ({ ...prev, [field]: undefined }));
+            };
+
+            const addToList = (listKey, newItem) => {
+                const itemWithId = { ...newItem, id: Date.now() + Math.random() };
+                setData(prev => ({ ...prev, [listKey]: [...prev[listKey], itemWithId] }));
+            };
+
+            const updateList = (listKey, index, field, val) => {
+                setData(prev => {
+                    const list = [...prev[listKey]];
+                    list[index] = { ...list[index], [field]: val };
+                    if (listKey === 'staffing' && field === 'color') list[index].colorChosen = true;
+                    if (listKey === 'staffing' && field === 'className' && !list[index].colorChosen) {
+                        list[index].color = colourForName(val) || list[index].color;
+                    }
+                    return { ...prev, [listKey]: list };
+                });
+                // The error on the field being edited no longer applies.
+                setErrors(prev => {
+                    if (listKey === 'staffing' && prev.noClasses) prev = { ...prev, noClasses: undefined };
+                    if (!prev[listKey]?.[index]?.[field]) return prev;
+                    const listErrors = { ...prev[listKey], [index]: { ...prev[listKey][index], [field]: undefined } };
+                    return { ...prev, [listKey]: listErrors };
+                });
+            };
+
+            const removeFromList = (listKey, id) => {
+                setData(prev => ({
+                    ...prev,
+                    [listKey]: prev[listKey].filter(item => item.id !== id)
+                }));
+            };
+
+            const validateStep1 = () => {
+                let currentErrors = {};
+                let isValid = true;
+
+                const schoolName = data.schoolName.trim();
+                if (!schoolName) { currentErrors.schoolName = "Required"; isValid = false; }
+                else if (schoolName.startsWith('=')) { currentErrors.schoolName = "Can't start with ="; isValid = false; }
+                else if (schoolName.length > MAX_SCHOOL_NAME_LENGTH) { currentErrors.schoolName = "Too long"; isValid = false; }
+
+                if (!data.schoolStart) { currentErrors.schoolStart = "Required"; isValid = false; }
+                if (!data.schoolEnd) { currentErrors.schoolEnd = "Required"; isValid = false; }
+
+                if (data.schoolStart && !isOnSlotGrid(data.schoolStart)) { currentErrors.schoolStart = "Use 5-min steps"; isValid = false; }
+                if (data.schoolEnd && !isOnSlotGrid(data.schoolEnd)) { currentErrors.schoolEnd = "Use 5-min steps"; isValid = false; }
+
+                if (data.schoolStart && data.schoolEnd && data.schoolStart >= data.schoolEnd) {
+                    currentErrors.schoolEnd = "Must be after start time";
+                    isValid = false;
+                }
+
+                let breakErrs = {};
+                data.breaks.forEach((b, i) => {
+                    breakErrs[i] = {};
+                    if (!b.name.trim()) { breakErrs[i].name = "Required"; isValid = false; }
+                    if (!b.start) { breakErrs[i].start = "Required"; isValid = false; }
+                    if (!b.end) { breakErrs[i].end = "Required"; isValid = false; }
+
+                    if (b.start && !isOnSlotGrid(b.start)) { breakErrs[i].start = "Use 5-min steps"; isValid = false; }
+                    if (b.end && !isOnSlotGrid(b.end)) { breakErrs[i].end = "Use 5-min steps"; isValid = false; }
+
+                    if (b.start && b.end && b.start >= b.end) {
+                        breakErrs[i].end = "End must be after start";
+                        isValid = false;
+                    }
+
+                    const overlaps = data.breaks.some((other, j) => j !== i && b.start && b.end && other.start && other.end && b.start < other.end && other.start < b.end);
+                    if (overlaps && !breakErrs[i].start) { breakErrs[i].start = "Overlaps a break"; isValid = false; }
+
+                    if (b.start && data.schoolStart && b.start < data.schoolStart) {
+                        breakErrs[i].start = "Before school start";
+                        isValid = false;
+                    }
+                    if (b.end && data.schoolEnd && b.end > data.schoolEnd) {
+                        breakErrs[i].end = "After school end";
+                        isValid = false;
+                    }
+                });
+
+                if (Object.keys(breakErrs).some(k => Object.keys(breakErrs[k]).length > 0)) {
+                    currentErrors.breaks = breakErrs;
+                }
+
+                setErrors(currentErrors);
+                return isValid;
+            };
+
+            const validateClasses = () => {
+                let currentErrors = { staffing: {} };
+                let isValid = true;
+                let firstErrorGradeId = null;
+                let firstErrorStaffId = null;
+
+                // Only classes in grades that still have classes are generated,
+                // and rows left completely blank are skipped. Every class needs
+                // its teacher's name (compliance), not a stand-in like TBC.
+                const activeGradeIds = data.grades.filter(g => g.classes > 0).map(g => g.id);
+                const classesToGenerate = getClassesToGenerate(data);
+                const duplicateClasses = findDuplicates(classesToGenerate.map(s => s.className));
+                const breakNames = data.breaks.map(b => b.name.trim().toLowerCase()).filter(Boolean);
+                if (!classesToGenerate.length) { currentErrors.noClasses = true; isValid = false; }
+
+                data.staffing.forEach((s, i) => {
+                    currentErrors.staffing[i] = {};
+                    if (!activeGradeIds.includes(s.gradeId) || isBlankClass(s)) return;
+                    const key = s.className.trim().toLowerCase();
+                    const nameError = getNameError(s.className, true)
+                        || (duplicateClasses.has(key) ? "Duplicate name" : "")
+                        || (breakNames.includes(key) ? "Same as a break" : "");
+                    if (nameError) { currentErrors.staffing[i].className = nameError; isValid = false; }
+                    const teacherError = getTeacherError(s.teacher);
+                    if (teacherError) { currentErrors.staffing[i].teacher = teacherError; isValid = false; }
+                    if (Object.keys(currentErrors.staffing[i]).length && !firstErrorGradeId) {
+                        firstErrorGradeId = s.gradeId;
+                        firstErrorStaffId = s.id;
+                    }
+                });
+
+                setErrors(currentErrors);
+                // Bring the first class with a problem into view.
+                if (firstErrorGradeId) {
+                    setTimeout(() => {
+                        const row = document.getElementById(`class-row-${firstErrorStaffId}`);
+                        if (!row) return;
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        const field = row.querySelector('[aria-invalid="true"]');
+                        if (field) field.focus({ preventScroll: true });
+                    }, 50);
+                }
+                return isValid;
+            };
+
+            const validateSpecialists = () => {
+                let currentErrors = { specialists: {} };
+                let isValid = true;
+                const duplicateSpecialists = findDuplicates(getSpecialistsToGenerate(data).map(s => s.name));
+                data.specialists.forEach((s, i) => {
+                    currentErrors.specialists[i] = {};
+                    if (isBlankSpecialist(s)) return;
+                    const nameError = getNameError(s.name, false)
+                        || (duplicateSpecialists.has(s.name.trim().toLowerCase()) ? "Duplicate name" : "");
+                    if (nameError) { currentErrors.specialists[i].name = nameError; isValid = false; }
+                    if (!s.kla) { currentErrors.specialists[i].kla = "Required"; isValid = false; }
+                    if (!s.cycle || s.cycle < 1 || s.cycle > MAX_CYCLE_WEEKS) { currentErrors.specialists[i].cycle = "1 to 10 weeks"; isValid = false; }
+                });
+
+                setErrors(currentErrors);
+                return isValid;
+            };
+
+            const validateActivities = () => {
+                let currentErrors = { activities: {} };
+                let isValid = true;
+                data.activities.forEach((a, i) => {
+                    currentErrors.activities[i] = {};
+                    if (a.name.trim().startsWith('=')) { currentErrors.activities[i].name = "Can't start with ="; isValid = false; }
+                });
+
+                setErrors(currentErrors);
+                return isValid;
+            };
+
+            const handleNext = () => {
+                let valid = false;
+                if (step === STEP.SCHEDULE) valid = validateStep1();
+                if (step === STEP.CLASSES) valid = validateClasses();
+                if (step === STEP.SPECIALISTS) valid = validateSpecialists();
+                if (step === STEP.ACTIVITIES) valid = validateActivities();
+
+                if (valid && step < LAST_STEP) setStep(step + 1);
+            };
+
+            const handleBack = () => {
+                setGenerationError("");
+                setStep(step - 1);
+            };
+
+            // The summary's Edit links.
+            const goToStep = (target) => {
+                setGenerationError("");
+                setStep(target);
+            };
+
+            // Every problem on the current step, each linked to its field.
+            const listProblems = () => {
+                const items = [];
+                const add = (text, targetId, gradeId) => items.push({ text, targetId, gradeId });
+                if (step === STEP.SCHEDULE) {
+                    if (errors.schoolName) add(`School name: ${errors.schoolName}`, 'school-name');
+                    if (errors.schoolStart) add(`School start time: ${errors.schoolStart}`, 'school-start');
+                    if (errors.schoolEnd) add(`School end time: ${errors.schoolEnd}`, 'school-end');
+                    data.breaks.forEach((b, i) => {
+                        const e = errors.breaks?.[i] || {};
+                        const label = b.name.trim() || `Break ${i + 1}`;
+                        if (e.name) add(`${label} name: ${e.name}`, `break-${b.id}-name`);
+                        if (e.start) add(`${label} start: ${e.start}`, `break-${b.id}-start`);
+                        if (e.end) add(`${label} end: ${e.end}`, `break-${b.id}-end`);
+                    });
+                }
+                if (step === STEP.CLASSES) {
+                    if (errors.noClasses) add("There are no classes yet. Add at least one class to a grade.", null);
+                    data.grades.forEach(g => {
+                        data.staffing.forEach((s, i) => {
+                            if (s.gradeId !== g.id) return;
+                            const e = errors.staffing?.[i] || {};
+                            const position = data.staffing.filter(st => st.gradeId === g.id).indexOf(s) + 1;
+                            const label = `${g.name}, class ${position}${s.className.trim() ? ` (${s.className.trim()})` : ''}`;
+                            if (e.className) add(`${label} name: ${e.className}`, `class-${s.id}-name`, g.id);
+                            if (e.teacher) add(`${label} teacher: ${e.teacher}`, `class-${s.id}-teacher`, g.id);
+                        });
+                    });
+                }
+                if (step === STEP.SPECIALISTS) {
+                    data.specialists.forEach((s, i) => {
+                        const e = errors.specialists?.[i] || {};
+                        const label = `Specialist ${i + 1}${s.name.trim() ? ` (${s.name.trim()})` : ''}`;
+                        if (e.name) add(`${label} name: ${e.name}`, `spec-${s.id}-name`);
+                        if (e.kla) add(`${label} KLA: ${e.kla}`, `spec-${s.id}-kla`);
+                        if (e.cycle) add(`${label} cycle length: ${e.cycle}`, `spec-${s.id}-cycle`);
+                    });
+                }
+                if (step === STEP.ACTIVITIES) {
+                    data.activities.forEach((a, i) => {
+                        const e = errors.activities?.[i] || {};
+                        if (e.name) add(`Activity "${a.name.trim()}": ${e.name}`, `activity-${a.id}`);
+                    });
+                }
+                return items;
+            };
+
+            const goToProblem = (item) => {
+                setTimeout(() => {
+                    const field = item.targetId && document.getElementById(item.targetId);
+                    if (!field) return;
+                    field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    field.focus({ preventScroll: true });
+                }, 50);
+            };
+
+            // A field to put the cursor in once it has rendered (no timer, so it
+            // can't take the cursor from somewhere the user has since moved to).
+            const [focusRequest, setFocusRequest] = useState(null);
+            useEffect(() => {
+                if (!focusRequest) return;
+                const field = document.getElementById(focusRequest);
+                if (field) { field.focus(); if (field.select) field.select(); }
+                setFocusRequest(null);
+            }, [focusRequest]);
+
+            // Adds a class to a grade (its class count follows) and puts the cursor in its name.
+            const addClass = (gradeId) => {
+                const id = newId();
+                setData(prev => {
+                    const grade = prev.grades.find(g => g.id === gradeId);
+                    const count = prev.staffing.filter(s => s.gradeId === gradeId).length;
+                    const className = `${grade.name} - ${count + 1}`;
+                    return {
+                        ...prev,
+                        grades: prev.grades.map(g => g.id === gradeId ? { ...g, classes: count + 1 } : g),
+                        staffing: prev.staffing.concat([{
+                            id: id, gradeId: gradeId, className: className, teacher: "",
+                            color: colourForName(className) || CLASS_COLOR_PALETTE[prev.staffing.length % CLASS_COLOR_PALETTE.length]
+                        }])
+                    };
+                });
+                setFocusRequest(`class-${id}-name`);
+            };
+
+            const removeClass = (classId) => {
+                setData(prev => {
+                    const removed = prev.staffing.find(s => s.id === classId);
+                    const staffing = prev.staffing.filter(s => s.id !== classId);
+                    return {
+                        ...prev,
+                        grades: prev.grades.map(g => g.id === removed.gradeId ? { ...g, classes: staffing.filter(s => s.gradeId === g.id).length } : g),
+                        staffing: staffing
+                    };
+                });
+                // Errors are kept by row position, which has changed.
+                setErrors(prev => ({ ...prev, staffing: {} }));
+            };
+
+            const removeGradeClasses = (gradeId) => {
+                setData(prev => ({
+                    ...prev,
+                    grades: prev.grades.map(g => g.id === gradeId ? { ...g, classes: 0 } : g),
+                    staffing: prev.staffing.filter(s => s.gradeId !== gradeId)
+                }));
+                setErrors(prev => ({ ...prev, staffing: {} }));
+            };
+
+            // Replaces a grade's classes with rows pasted from a spreadsheet.
+            const applyPaste = (gradeId, rows) => {
+                setData(prev => {
+                    const existing = prev.staffing.filter(s => s.gradeId === gradeId);
+                    const others = prev.staffing.filter(s => s.gradeId !== gradeId);
+                    const pasted = rows.map((row, i) => ({
+                        id: existing[i] ? existing[i].id : newId(),
+                        gradeId: gradeId,
+                        className: row.className,
+                        teacher: row.teacher,
+                        color: colourForName(row.className) || (existing[i] ? existing[i].color : CLASS_COLOR_PALETTE[(others.length + i) % CLASS_COLOR_PALETTE.length])
+                    }));
+                    return {
+                        ...prev,
+                        grades: prev.grades.map(g => g.id === gradeId ? { ...g, classes: pasted.length } : g),
+                        staffing: others.concat(pasted)
+                    };
+                });
+                // Errors are kept by row position, which has changed.
+                setErrors(prev => ({ ...prev, staffing: {}, noClasses: undefined }));
+                setPasteFor(null);
+                setPasteText("");
+            };
+
+            // Setup files: the same name/value list the timetable keeps in its DATA tab.
+            const saveSetupFile = () => {
+                const file = {
+                    type: SETUP_FILE_TYPE,
+                    version: 1,
+                    savedAt: new Date().toISOString(),
+                    exportVariables: buildExportVariables(data)
+                };
+                const fileName = `${(data.schoolName.trim() || 'Timetable').replace(/[\\/:*?"<>|]/g, '')} - timetable setup.json`;
+                const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                showToast(`Saved "${fileName}" to your downloads.`, 'ok', 5000);
+            };
+
+            const loadSetupFile = (event) => {
+                const file = event.target.files && event.target.files[0];
+                event.target.value = ""; // so the same file can be chosen again
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const parsed = JSON.parse(reader.result);
+                        if (!parsed || !Array.isArray(parsed.exportVariables)) throw new Error('Not a setup file');
+                        const loaded = setupFromVariables(parsed.exportVariables);
+                        setData(loaded);
+                        setErrors({});
+                        setGenerationError("");
+                                setStep(1);
+                        const classCount = getClassesToGenerate(loaded).length;
+                        const specialistCount = loaded.specialists.length;
+                        showToast(`Loaded the setup${loaded.schoolName ? ` for ${loaded.schoolName}` : ''}: ` +
+                            `${classCount} ${classCount === 1 ? 'class' : 'classes'} and ${specialistCount} ${specialistCount === 1 ? 'specialist' : 'specialists'}. ` +
+                            `Check each step before generating.`, 'ok', 7000);
+                    } catch (e) {
+                        showToast(`"${file.name}" isn't a timetable setup file. Choose a file saved with "Save setup to a file".`, 'error', 10000);
+                    }
+                };
+                reader.onerror = () => showToast(`"${file.name}" couldn't be read.`, 'error', 10000);
+                reader.readAsText(file);
+            };
+
+            // Message for a failed generateTimetable call. The server already
+            // words its own errors; a timeout comes from Google instead.
+            const describeFailure = (error) => {
+                const text = String((error && error.message) || error || "").replace(/^((Error|Exception):\s*)+/i, "");
+                if (/exceeded maximum execution time/i.test(text)) {
+                    return "Generating took longer than Google allows (6 minutes), so it was stopped. " +
+                        "The unfinished copy is named \"INCOMPLETE - ...\" in your Drive and can be deleted. " +
+                        "Please try again.";
+                }
+                return text || "Something went wrong while generating the timetable. Please try again.";
+            };
+
+            const handleSubmit = () => {
+                setGenerationError("");
+                const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+                setActiveJobId(jobId);
+                setShowLogs(false);
+                setIsGenerating(true);
+                setLoadingProgress(5);
+
+                const initialMsg = editing ? "Opening the timetable..." : "Initializing template duplication...";
+                setLoadingMessage(initialMsg);
+                setLogs([{
+                    id: Date.now(),
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    text: initialMsg,
+                    percent: 5
+                }]);
+
+                const exportVariables = buildExportVariables(data);
+
+                const payloadToSubmit = {
+                    jobId: jobId,
+                    exportVariables: exportVariables
+                };
+
+                if (editing && hasServer) {
+                    google.script.run
+                        .withSuccessHandler((result) => {
+                            google.script.run.clearDraft();
+                            setLoadingProgress(100);
+                            setTimeout(() => {
+                                setGeneratedUrl(result.url);
+                                setUpdateResult({ changes: result.changes || [], notes: result.notes || [] });
+                                // The timetable now matches this setup; later changes are measured from it.
+                                const updated = asOriginals(data);
+                                setData(updated);
+                                setEditOriginal(updated);
+                                setIsGenerating(false);
+                                setIsSuccess(true);
+                            }, 600);
+                        })
+                        .withFailureHandler((error) => {
+                            setGenerationError(describeFailure(error));
+                            setIsGenerating(false);
+                        })
+                        .updateTimetable({ jobId: jobId, fileId: editTarget.fileId, exportVariables: exportVariables, renames: findRenames(data) });
+                    return;
+                }
+
+                // Check environment and invoke backend function
+                if (typeof google !== 'undefined' && google.script) {
+                    google.script.run
+                        .withSuccessHandler((url) => {
+                            // The setup is in the timetable now; nothing to resume.
+                            google.script.run.clearDraft();
+                            setLoadingProgress(100);
+                            setLoadingMessage("Finalizing spreadsheet setup...");
+                            setLogs(prev => [...prev, {
+                                id: Date.now(),
+                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                text: "Timetable generated successfully!",
+                                percent: 100
+                            }]);
+                            setTimeout(() => {
+                                setGeneratedUrl(url);
+                                setUpdateResult(null);
+                                setIsGenerating(false);
+                                setIsSuccess(true);
+                            }, 800);
+                        })
+                        .withFailureHandler((error) => {
+                            setGenerationError(describeFailure(error));
+                            setIsGenerating(false);
+                        })
+                        .generateTimetable(payloadToSubmit);
+                } else {
+                    // Local dev simulation with realistic multi-step updates
+                    const steps = [
+                        { pct: 15, msg: "Opening duplicated spreadsheet..." },
+                        { pct: 22, msg: "Populating DATA sheet configurations..." },
+                        { pct: 35, msg: "Generating Class 1 of 3: Kindergarten - 1 (Building grid...)" },
+                        { pct: 55, msg: "Generating Class 2 of 3: Year 1 - 1 (Applying break slots...)" },
+                        { pct: 80, msg: "Generating Class 3 of 3: Year 2 - 1 (Formatting cells...)" },
+                        { pct: 95, msg: "Applying conditional formatting rules..." },
+                        { pct: 100, msg: "Timetable generation complete!" }
+                    ];
+
+                    steps.forEach((step, idx) => {
+                        setTimeout(() => {
+                            setLoadingProgress(step.pct);
+                            setLoadingMessage(step.msg);
+                            setLogs(prev => [...prev, {
+                                id: Date.now() + idx,
+                                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                                text: step.msg,
+                                percent: step.pct
+                            }]);
+
+                            if (step.pct === 100) {
+                                setTimeout(() => {
+                                    setGeneratedUrl("https://docs.google.com/spreadsheets/d/dummy-link-for-dev");
+                                    setIsGenerating(false);
+                                    setIsSuccess(true);
+                                }, 600);
+                            }
+                        }, (idx + 1) * 1200);
+                    });
+                }
+            };
+
+            const timeToMinutes = (timeStr) => {
+                if (!timeStr) return 0;
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return (hours * 60) + minutes;
+            };
+
+            const formatMinutes = (totalMins) => {
+                if (totalMins < 0) return "0 min";
+                const h = Math.floor(totalMins / 60);
+                const m = totalMins % 60;
+                if (h > 0 && m > 0) return `${h} hr ${m} min`;
+                if (h > 0) return `${h} hr`;
+                return `${m} min`;
+            };
+
+            const formatAMPM = (timeStr) => {
+                if (!timeStr) return '';
+                let [hours, minutes] = timeStr.split(':').map(Number);
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12;
+                const mins = minutes < 10 ? '0' + minutes : minutes;
+                return `${hours}:${mins} ${ampm}`;
+            };
+
+            // Calculate active totals for Step 1
+            const schoolStartMins = timeToMinutes(data.schoolStart);
+            const schoolEndMins = timeToMinutes(data.schoolEnd);
+            const totalSchoolMins = schoolEndMins > schoolStartMins ? schoolEndMins - schoolStartMins : 0;
+
+            let totalBreakMins = 0;
+            data.breaks.forEach(b => {
+                if (b.start && b.end) {
+                    const start = timeToMinutes(b.start);
+                    const end = timeToMinutes(b.end);
+                    if (end > start) totalBreakMins += (end - start);
+                }
+            });
+
+            const dailyTeachingMins = Math.max(0, totalSchoolMins - totalBreakMins);
+
+            const renderStep1 = () => (
+                <div className="space-y-6 animate-step" key="step1">
+
+                    {/* School */}
+                    <div>
+                        <SectionHeader id="school" title="School" info="The school's name is used in the timetable's file name and on its Start here tab." />
+                        <div>
+                            <Input id="school-name" boxLabel="School name" placeholder="e.g. St Mary's Primary" value={data.schoolName} onChange={(e) => updateField('schoolName', e.target.value)} error={errors.schoolName} />
+                        </div>
+                    </div>
+
+                    {/* Bell Times */}
+                    <div className="border-t border-slate-200 pt-6">
+                        <SectionHeader id="bell-times" title="Bell Times" info="When the school day starts and ends. All grades and days use the same times, in 5-minute steps." />
+                        {editing && (
+                            <p className="mb-3 text-sm text-slate-600">Bell times and breaks can't be changed in an existing timetable, because every tab's grid is built from them. To change them, start a new timetable from this one (☰ menu).</p>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <Input id="school-start" disabled={editing} boxLabel="School starts" type="time" step="300" value={data.schoolStart} onChange={(e) => updateField('schoolStart', e.target.value)} error={errors.schoolStart} />
+                            </div>
+                            <div>
+                                <Input id="school-end" disabled={editing} boxLabel="School ends" type="time" step="300" value={data.schoolEnd} onChange={(e) => updateField('schoolEnd', e.target.value)} error={errors.schoolEnd} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Global Breaks */}
+                    <div className="border-t border-slate-200 pt-6">
+                        <SectionHeader id="breaks" title="Global Breaks" info="Recess, lunch and any other breaks. They apply to every class, every day, and don't count as teaching time.">
+                            {!editing && (
+                                <Button variant="brand" size="sm" onClick={() => addToList('breaks', { name: "", start: "", end: "" })} className="h-8 gap-1">
+                                    <PlusIcon className="w-4 h-4 mr-1" /> Add Break
+                                </Button>
+                            )}
+                        </SectionHeader>
+
+                        <div id="list-container-breaks" className="space-y-1">
+                            {data.breaks.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
+                                    <CalendarIcon className="w-8 h-8 mb-3 text-slate-400" />
+                                    <p className="text-sm font-medium text-slate-700 mb-1">No breaks configured</p>
+                                    <p className="text-xs mb-4 text-center">Add lunch, recess, or standard transition times.</p>
+                                    <Button variant="outline" size="sm" onClick={() => addToList('breaks', { name: "", start: "", end: "" })}>Add First Break</Button>
+                                </div>
+                            ) : (
+                                data.breaks.map((b, i) => {
+                                    const bMins = (b.start && b.end) ? (timeToMinutes(b.end) - timeToMinutes(b.start)) : 0;
+                                    return (
+                                    <div key={b.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 py-1 animate-pop">
+                                        <div className="flex-1 min-w-[10rem]">
+                                            <Input id={`break-${b.id}-name`} disabled={editing} boxLabel="Break" placeholder="e.g. Lunch" value={b.name} onChange={(e) => updateList('breaks', i, 'name', e.target.value)} error={errors.breaks?.[i]?.name} />
+                                        </div>
+                                        <div className="w-36">
+                                            <Input id={`break-${b.id}-start`} disabled={editing} boxLabel="Starts" type="time" step="300" value={b.start} onChange={(e) => updateList('breaks', i, 'start', e.target.value)} error={errors.breaks?.[i]?.start} />
+                                        </div>
+                                        <div className="w-36">
+                                            <Input id={`break-${b.id}-end`} disabled={editing} boxLabel="Ends" type="time" step="300" value={b.end} onChange={(e) => updateList('breaks', i, 'end', e.target.value)} error={errors.breaks?.[i]?.end} />
+                                        </div>
+                                        <div className="h-12 px-3 flex items-center justify-center bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-md whitespace-nowrap min-w-[72px]">
+                                            {bMins > 0 ? formatMinutes(bMins) : '0 min'}
+                                        </div>
+                                        <RemoveButton label={`Remove ${b.name.trim() || 'this break'}`} onClick={() => removeFromList('breaks', b.id)} disabled={editing} />
+                                    </div>
+                                )})
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Real-time Summary Box */}
+                    <div className="bg-brand-green/10 p-4 rounded-lg border border-brand-green/20 flex flex-col sm:flex-row justify-between items-center mt-4 gap-4 shadow-sm animate-pop">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-brand-dark text-white p-2.5 rounded-full shadow-sm">
+                                <ClockIcon />
+                            </div>
+                            <div>
+                                <span className="text-base font-bold text-slate-900 block">Daily Teaching Time</span>
+                                <span className="text-xs text-slate-600 font-medium">Total Day: {formatMinutes(totalSchoolMins)}</span>
+                            </div>
+                        </div>
+                        <div className="text-center sm:text-right">
+                            <span className="text-2xl font-black text-brand-dark leading-none">{formatMinutes(dailyTeachingMins)}</span>
+                            <span className="text-[11px] text-slate-500 block mt-0.5 font-medium">Minus {formatMinutes(totalBreakMins)} Breaks</span>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderClassesStep = () => {
+                // Problems are only shown once Next has been clicked (they come
+                // from the last check); until then a grade is either ready or
+                // still being filled in.
+                const rowHasProblem = (s) => {
+                    const globalIdx = data.staffing.findIndex(st => st.id === s.id);
+                    return Object.values(errors.staffing?.[globalIdx] || {}).some(Boolean);
+                };
+                // Square "+" beside the cycle button.
+                const renderAddClassButton = (g) => (
+                    <button type="button" onClick={() => addClass(g.id)} aria-label={`Add a class to ${g.name}`} title="Add a class"
+                        className="w-10 h-10 inline-flex items-center justify-center rounded-md border border-slate-300 bg-white text-brand-dark shadow-sm hover:border-brand-dark hover:bg-brand-green/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                        <PlusIcon className="w-5 h-5" />
+                    </button>
+                );
+                const gradeStatus = (g) => {
+                    const rows = data.staffing.filter(s => s.gradeId === g.id);
+                    if (rows.some(rowHasProblem)) return 'problem';
+                    const classes = rows.filter(s => !isBlankClass(s));
+                    if (classes.length && classes.every(s => !getNameError(s.className, true) && !getTeacherError(s.teacher))) return 'ready';
+                    return 'open';
+                };
+
+                return (
+                    <div className="space-y-8 animate-step" key="step3">
+                        {/* Classroom Teachers: one card per grade */}
+                        <div>
+                            <SectionHeader id="classes" title="Grades and Classes"
+                                info={"For each grade: its cycle length (how many weeks its timetable runs before repeating), and each class's name and teacher's name (needed for compliance). A grade with no classes is left out. Rows left completely blank are skipped." +
+                                    (editing ? " Removing a class that's already in the timetable archives its tab (hidden, not deleted); renaming it keeps its tab and lessons." : "")} />
+
+                                <div className="space-y-4">
+                                    {data.grades.map(g => {
+                                        const staffForGrade = data.staffing.filter(s => s.gradeId === g.id);
+                                        const status = gradeStatus(g);
+                                        const pasted = pasteFor === g.id ? parsePastedClasses(pasteText) : [];
+                                        const openPaste = () => { setPasteFor(g.id); setPasteText(""); setFocusRequest(`paste-${g.id}`); };
+
+                                        // A grade without classes: one line, to add some.
+                                        if (!staffForGrade.length && pasteFor !== g.id) {
+                                            return (
+                                                <section key={g.id} id={`grade-card-${g.id}`} aria-labelledby={`grade-${g.id}-heading`}
+                                                    className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 flex flex-wrap items-center gap-2 px-4 py-2.5">
+                                                    <h5 id={`grade-${g.id}-heading`} className="text-base font-bold text-slate-500">{g.name}</h5>
+                                                    <span className="text-sm text-slate-500">No classes</span>
+                                                    <div className="ml-auto flex items-center gap-1.5">
+                                                        {renderAddClassButton(g)}
+                                                        <MoreMenu label={`More options for ${g.name}`}
+                                                            items={[{ label: 'Paste from a spreadsheet', hint: `Add ${g.name} classes and teachers copied from a spreadsheet`, onSelect: openPaste }]} />
+                                                    </div>
+                                                </section>
+                                            );
+                                        }
+
+                                        return (
+                                            <section key={g.id} id={`grade-card-${g.id}`} aria-labelledby={`grade-${g.id}-heading`}
+                                                className={`rounded-xl border bg-white shadow-sm ${status === 'problem' ? 'border-red-200' : 'border-slate-200'}`}>
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 rounded-t-xl">
+                                                    <h5 id={`grade-${g.id}-heading`} className="text-base font-bold text-slate-900">{g.name}</h5>
+                                                    <div className="ml-auto flex items-center gap-1.5">
+                                                        <CycleButton id={`grade-${g.id}-cycle`} owner={g.name} value={g.cycle}
+                                                            lockedReason={editing && staffForGrade.some(s => s.originalName) ? "Can't be changed: this grade's tabs are built for this cycle" : undefined}
+                                                            onChange={(weeks) => updateList('grades', data.grades.findIndex(item => item.id === g.id), 'cycle', clampCycle(weeks))} />
+                                                        {renderAddClassButton(g)}
+                                                        <MoreMenu
+                                                            label={`More options for ${g.name}`}
+                                                            items={[
+                                                                { label: 'Paste from a spreadsheet', hint: `Replace the ${g.name} classes with names and teachers copied from a spreadsheet`, onSelect: openPaste },
+                                                                { label: `No classes in ${g.name}`, hint: 'Remove all of this grade\'s classes (it is left out of the timetable)', onSelect: () => removeGradeClasses(g.id) }
+                                                            ]}
+                                                        />
+                                                        <span className="w-6 h-6 inline-flex items-center justify-center" role="img"
+                                                            aria-label={status === 'problem' ? `${g.name} has problems to fix` : status === 'ready' ? `${g.name} is ready` : `${g.name} isn't finished yet`}
+                                                            title={status === 'problem' ? 'Has problems to fix' : status === 'ready' ? 'Ready' : 'Not finished yet'}>
+                                                            {status === 'problem' && <AlertTriangleIcon className="w-5 h-5 text-red-600" aria-hidden="true" />}
+                                                            {status === 'ready' && <CheckCircleIcon className="w-5 h-5 text-brand-dark" aria-hidden="true" />}
+                                                            {status === 'open' && <span className="w-4 h-4 rounded-full border-2 border-dashed border-slate-300" aria-hidden="true"></span>}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {pasteFor === g.id && (
+                                                    <div className="m-3 p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2 animate-pop">
+                                                        <Label htmlFor={`paste-${g.id}`}>Paste class names and teachers</Label>
+                                                        <p id={`paste-${g.id}-help`} className="text-xs text-slate-600">
+                                                            In your spreadsheet, select two columns (class name, then teacher), copy, and paste here: one class per line.
+                                                            This replaces the {g.name} classes below.
+                                                        </p>
+                                                        <textarea
+                                                            id={`paste-${g.id}`}
+                                                            aria-describedby={`paste-${g.id}-help`}
+                                                            rows={6}
+                                                            value={pasteText}
+                                                            onChange={(e) => setPasteText(e.target.value)}
+                                                            placeholder={"3 Blue\tMs Lee\n3 Gold\tMr Tran"}
+                                                            className="w-full rounded-md border border-slate-200 bg-white p-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
+                                                        />
+                                                        <div className="flex flex-wrap items-center justify-end gap-2">
+                                                            <span className="text-xs text-slate-600 mr-auto" aria-live="polite">
+                                                                {pasted.length ? `Found ${pasted.length} ${pasted.length === 1 ? 'class' : 'classes'}: ${pasted.slice(0, 3).map(row => row.className || '(no name)').join(', ')}${pasted.length > 3 ? ', ...' : ''}` : ''}
+                                                            </span>
+                                                            <Button variant="outline" className="h-9" onClick={() => { setPasteFor(null); setPasteText(""); }}>Cancel</Button>
+                                                            <Button variant="brand" className="h-9" disabled={!pasted.length} onClick={() => applyPaste(g.id, pasted)}>
+                                                                {pasted.length ? `Use these ${pasted.length} ${pasted.length === 1 ? 'class' : 'classes'}` : 'Paste some rows first'}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="p-2 sm:p-3">
+                                                    <ul className="space-y-1">
+                                                        {staffForGrade.map((s, idx) => {
+                                                            const globalIdx = data.staffing.findIndex(st => st.id === s.id);
+                                                            const hasError = Object.values(errors.staffing?.[globalIdx] || {}).some(Boolean);
+                                                            const isBlank = isBlankClass(s);
+                                                            const rowName = s.className.trim() || `class ${idx + 1}`;
+                                                            return (
+                                                                <li key={s.id} id={`class-row-${s.id}`}
+                                                                    className={`flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-lg px-2 py-1.5 transition-colors ${hasError ? 'bg-red-50/70' : isBlank ? 'opacity-60' : 'hover:bg-slate-50'}`}>
+                                                                    <button
+                                                                        ref={(el) => { colorTriggerRefs.current[s.id] = el; }}
+                                                                        type="button"
+                                                                        onClick={() => setColorPickerFor(prev => prev === s.id ? null : s.id)}
+                                                                        aria-label={`Colour for ${rowName}`}
+                                                                        aria-haspopup="dialog"
+                                                                        aria-expanded={colorPickerFor === s.id}
+                                                                        title="Choose class colour"
+                                                                        className="w-12 h-12 shrink-0 inline-flex items-center justify-center rounded-md border border-black/10 shadow-sm text-base font-bold text-slate-800/80 cursor-pointer transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
+                                                                        style={{ backgroundColor: s.color || CLASS_COLOR_PALETTE[0] }}
+                                                                    >
+                                                                        <span aria-hidden="true">{idx + 1}</span>
+                                                                    </button>
+                                                                    <div className="flex-1 min-w-[10rem]">
+                                                                        <Input id={`class-${s.id}-name`} boxLabel="Class name" aria-label={`${g.name} class ${idx + 1} name`} placeholder="e.g. 3 Blue" value={s.className} onChange={(e) => updateList('staffing', globalIdx, 'className', e.target.value)} error={errors.staffing?.[globalIdx]?.className} />
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-[10rem]">
+                                                                        <Input id={`class-${s.id}-teacher`} boxLabel="Teacher" aria-label={`${g.name} class ${idx + 1} teacher`} placeholder={isBlank ? "Blank row: skipped" : "e.g. Ms Lee"} value={s.teacher} onChange={(e) => updateList('staffing', globalIdx, 'teacher', e.target.value)} error={errors.staffing?.[globalIdx]?.teacher} />
+                                                                    </div>
+                                                                    <RemoveButton label={`Remove ${rowName}`} onClick={() => removeClass(s.id)} />
+                                                                    {colorPickerFor === s.id && ReactDOM.createPortal(
+                                                                        <React.Fragment>
+                                                                            <div className="fixed inset-0 z-40" onClick={() => setColorPickerFor(null)} />
+                                                                            <div
+                                                                                role="dialog"
+                                                                                aria-label={`Colour for ${rowName}`}
+                                                                                className="fixed z-50 p-2.5 bg-white border border-slate-200 rounded-lg shadow-xl animate-pop w-[152px]"
+                                                                                style={{ top: colorPickerPos.top, left: colorPickerPos.left }}
+                                                                            >
+                                                                                <div className="grid grid-cols-4 gap-1.5">
+                                                                                    {CLASS_COLOR_PALETTE.map((hex) => (
+                                                                                        <button
+                                                                                            key={hex}
+                                                                                            type="button"
+                                                                                            onClick={() => { updateList('staffing', globalIdx, 'color', hex); setColorPickerFor(null); }}
+                                                                                            title={hex}
+                                                                                            aria-label={`Colour ${hex}`}
+                                                                                            aria-pressed={s.color === hex}
+                                                                                            className={`w-5 h-5 rounded-sm border transition-all ${s.color === hex ? 'ring-2 ring-offset-1 ring-slate-400 border-white' : 'border-black/10 hover:scale-110'}`}
+                                                                                            style={{ backgroundColor: hex }}
+                                                                                        />
+                                                                                    ))}
+                                                                                    <label
+                                                                                        htmlFor={`custom-color-${s.id}`}
+                                                                                        title="Custom colour"
+                                                                                        className={`relative w-5 h-5 rounded-sm border cursor-pointer overflow-hidden transition-all ${!CLASS_COLOR_PALETTE.includes(s.color) ? 'ring-2 ring-offset-1 ring-slate-400 border-white' : 'border-black/10 hover:scale-110'}`}
+                                                                                        style={!CLASS_COLOR_PALETTE.includes(s.color) && s.color
+                                                                                            ? { backgroundColor: s.color }
+                                                                                            : { background: 'conic-gradient(from 0deg, #FFADAD, #FDFFB6, #CAFFBF, #A0C4FF, #BDB2FF, #FFC6FF, #FFADAD)' }}
+                                                                                    >
+                                                                                        <input
+                                                                                            id={`custom-color-${s.id}`}
+                                                                                            type="color"
+                                                                                            aria-label="Custom colour"
+                                                                                            value={s.color || CLASS_COLOR_PALETTE[0]}
+                                                                                            onChange={(e) => { updateList('staffing', globalIdx, 'color', e.target.value); setColorPickerFor(null); }}
+                                                                                            className="absolute w-0 h-0 opacity-0"
+                                                                                        />
+                                                                                    </label>
+                                                                                </div>
+                                                                            </div>
+                                                                        </React.Fragment>,
+                                                                        document.body
+                                                                    )}
+                                                                </li>
+                                                            );
+                                                        })}
+                                                    </ul>
+                                                </div>
+                                            </section>
+                                        );
+                                    })}
+                                </div>
+                        </div>
+
+                    </div>
+                );
+            };
+
+            const renderSpecialistsStep = () => {
+                const cycleMismatches = findCycleMismatches(data);
+                return (
+                    <div className="space-y-8 animate-step" key="step-specialists">
+                        {/* Specialist Teachers */}
+                        <div>
+                            <SectionHeader id="specialists" title="Specialist Profiles"
+                                info="Specialist teachers (e.g. PE, music) and the KLA each one teaches. Each gets their own tab to timetable their lessons, which are then synced onto the class tabs. Rows left blank are skipped.">
+                                <Button variant="brand" size="sm" onClick={() => addToList('specialists', { name: "", kla: "", cycle: 1 })} className="h-8 gap-1">
+                                    <PlusIcon className="w-4 h-4 mr-1" /> Add Specialist
+                                </Button>
+                            </SectionHeader>
+
+                            <div id="list-container-specialists" className="space-y-1">
+                                {data.specialists.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
+                                        <p className="text-sm font-medium text-slate-700 mb-2">No specialist teachers added</p>
+                                        <Button variant="outline" size="sm" onClick={() => addToList('specialists', { name: "", kla: "", cycle: 1 })}>Add Specialist</Button>
+                                    </div>
+                                ) : (
+                                    data.specialists.map((s, i) => (
+                                        <div key={s.id} className="animate-pop py-1 space-y-1.5">
+                                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                                            <div className="flex-1 min-w-[10rem]">
+                                                <Input id={`spec-${s.id}-name`} boxLabel="Specialist" placeholder="e.g. Mr Smith" value={s.name} onChange={(e) => updateList('specialists', i, 'name', e.target.value)} error={errors.specialists?.[i]?.name} />
+                                            </div>
+                                            <div className="flex-1 min-w-[10rem]">
+                                                <Select id={`spec-${s.id}-kla`} boxLabel="KLA" value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
+                                                    <option value="">Choose a KLA...</option>
+                                                    {data.klas.filter(k => k.name.trim() && !/^non[- ]?curricul(?:ar|um)$/i.test(k.name.trim())).map(k => (
+                                                        <option key={k.id} value={k.name}>{k.name}</option>
+                                                    ))}
+                                                </Select>
+                                            </div>
+                                            <CycleButton id={`spec-${s.id}-cycle`} size="lg" owner={s.name.trim() || `Specialist ${i + 1}`} value={s.cycle}
+                                                lockedReason={editing && s.originalName ? "Can't be changed: this specialist's tab is built for this cycle" : undefined}
+                                                onChange={(weeks) => updateList('specialists', i, 'cycle', clampCycle(weeks))} />
+                                            <RemoveButton label={`Remove ${s.name.trim() || 'this specialist'}`} onClick={() => removeFromList('specialists', s.id)} />
+                                        </div>
+                                        {cycleMismatches[s.id] && (
+                                            <p className="flex items-start gap-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                                                <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                                                <span>{describeCycleMismatch(s, cycleMismatches[s.id])}</span>
+                                            </p>
+                                        )}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                    </div>
+                );
+            };
+
+            const renderActivitiesStep = () => (
+                <div className="space-y-8 animate-step" key="step-activities">
+                        {/* Extracurricular Activities */}
+                        <div>
+                            <SectionHeader id="activities" title="Extra-Curricular Activities"
+                                info="Events such as assembly or library that class teachers can put on their timetables, counted as teaching time. Amadeus - Tutorials is required for Years 3-6, so it can't be removed.">
+                                <Button variant="brand" size="sm" onClick={() => addToList('activities', { name: "" })} className="h-8 gap-1">
+                                    <PlusIcon className="w-4 h-4 mr-1" /> Add Activity
+                                </Button>
+                            </SectionHeader>
+
+                            <div id="list-container-activities" className="space-y-1">
+                                {data.activities.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 text-slate-500 animate-pop">
+                                        <p className="text-sm font-medium text-slate-700 mb-2">No extra-curriculars added</p>
+                                        <Button variant="outline" size="sm" onClick={() => addToList('activities', { name: "" })}>Add Activity</Button>
+                                    </div>
+                                ) : (
+                                    data.activities.map((a, i) => (
+                                        <div key={a.id} className="flex items-center gap-2 py-1 animate-pop">
+                                            <div className="flex-1">
+                                                <Input id={`activity-${a.id}`} boxLabel={a.locked ? "Activity (required for Years 3-6)" : "Activity"} placeholder="e.g. Debate Club" value={a.name} onChange={(e) => updateList('activities', i, 'name', e.target.value)} error={errors.activities?.[i]?.name} disabled={a.locked} />
+                                            </div>
+                                            <RemoveButton label={`Remove ${a.name.trim() || 'this activity'}`} onClick={() => removeFromList('activities', a.id)} disabled={a.locked} />
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                </div>
+            );
+
+            const renderSummaryStep = () => {
+                const classesToGenerate = getClassesToGenerate(data);
+                const gradeGroups = data.grades
+                    .map(g => ({ grade: g, classes: classesToGenerate.filter(c => c.gradeId === g.id) }))
+                    .filter(group => group.classes.length);
+                const specialists = getSpecialistsToGenerate(data);
+                const activities = data.activities.filter(a => a.name.trim());
+                const estimate = estimateGeneration(data);
+                const cycleMismatches = findCycleMismatches(data);
+                const schoolName = data.schoolName.trim();
+                const dayHours = Math.floor(dailyTeachingMins / 60);
+                const dayMinutes = dailyTeachingMins % 60;
+
+                const renderEditLink = (target, what) => (
+                    <button type="button" onClick={() => goToStep(target)}
+                        className="text-sm font-semibold text-brand-dark hover:underline rounded px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                        Edit<span className="sr-only"> {what}</span>
+                    </button>
+                );
+
+                // The four headline cards; each opens its details below.
+                const cards = [
+                    { key: 'classes', label: 'Classes', value: classesToGenerate.length,
+                        detail: `in ${plural(gradeGroups.length, 'grade', 'grades')}` },
+                    { key: 'day', label: 'School day',
+                        value: <>{dayHours}<span className="text-3xl">h</span>{dayMinutes ? <> {dayMinutes}<span className="text-3xl">m</span></> : ''}</>,
+                        detail: 'teaching a day' },
+                    { key: 'specialists', label: 'Specialists', value: specialists.length,
+                        detail: specialists.length ? [...new Set(specialists.map(s => s.kla))].join(', ') : 'none' },
+                    { key: 'activities', label: 'Extra-curriculars', value: activities.length,
+                        detail: activities.length === 1 ? 'activity' : 'activities' }
+                ];
+
+                const details = {
+                    classes: {
+                        title: `Classes (${classesToGenerate.length})`,
+                        edit: renderEditLink(STEP.CLASSES, 'grades and classes'),
+                        body: (
+                            <table className="w-full text-sm">
+                                <tbody>
+                                    {gradeGroups.map(group => (
+                                        <tr key={group.grade.id} className="align-top border-t border-slate-100 first:border-t-0">
+                                            <th scope="row" className="text-left font-semibold text-slate-900 py-2 pr-4 whitespace-nowrap w-0">
+                                                {group.grade.name}
+                                                <span className="block text-xs font-normal text-slate-600">{group.grade.cycle}-week cycle</span>
+                                            </th>
+                                            <td className="py-2">
+                                                <ul className="flex flex-wrap gap-1.5">
+                                                    {group.classes.map(c => (
+                                                        <li key={c.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-md px-2 py-0.5">
+                                                            <span className="w-2.5 h-2.5 rounded-full border border-black/10" style={{ backgroundColor: c.color || CLASS_COLOR_PALETTE[0] }} aria-hidden="true"></span>
+                                                            <span className="font-medium text-slate-900">{c.className}</span>
+                                                            <span className="text-slate-600">{c.teacher}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )
+                    },
+                    day: {
+                        title: 'School day',
+                        edit: renderEditLink(STEP.SCHEDULE, 'school day and breaks'),
+                        body: (
+                            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 text-sm">
+                                <div>
+                                    <dt className="text-xs text-slate-600">Hours</dt>
+                                    <dd className="font-semibold text-slate-900">{formatAMPM(data.schoolStart)} - {formatAMPM(data.schoolEnd)}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">Breaks</dt>
+                                    <dd className="text-slate-900">
+                                        {data.breaks.length ? data.breaks.map(b => (
+                                            <span key={b.id} className="block">{b.name || 'Unnamed'} {formatAMPM(b.start)} - {formatAMPM(b.end)}</span>
+                                        )) : 'None'}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">Teaching time a day</dt>
+                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins)}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-slate-600">A week</dt>
+                                    <dd className="font-semibold text-brand-dark">{formatMinutes(dailyTeachingMins * 5)}</dd>
+                                </div>
+                            </dl>
+                        )
+                    },
+                    specialists: {
+                        title: `Specialists (${specialists.length})`,
+                        edit: renderEditLink(STEP.SPECIALISTS, 'specialists'),
+                        body: specialists.length ? (
+                            <ul className="divide-y divide-slate-100 text-sm">
+                                {specialists.map(s => (
+                                    <li key={s.id} className="flex items-baseline justify-between gap-3 py-1.5">
+                                        <span className="font-medium text-slate-900">{s.name}</span>
+                                        <span className="text-slate-600 text-right">{s.kla} · {s.cycle || 1}-week cycle</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-sm text-slate-600">No specialists.</p>
+                    },
+                    activities: {
+                        title: `Extra-curricular activities (${activities.length})`,
+                        edit: renderEditLink(STEP.ACTIVITIES, 'extra-curricular activities'),
+                        body: activities.length ? (
+                            <ul className="flex flex-wrap gap-1.5 text-sm">
+                                {activities.map(a => (
+                                    <li key={a.id} className="bg-slate-50 border border-slate-200 rounded-md px-2 py-0.5 text-slate-900">{a.name.trim()}</li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-sm text-slate-600">No activities.</p>
+                    }
+                };
+                const open = summaryDetail && details[summaryDetail];
+                const changes = editing && editOriginal ? describeUpdate(editOriginal, data) : [];
+
+                return (
+                    <div className="animate-step space-y-6" key="step-summary">
+                        <div>
+                            {editing ? (
+                                <h3 className="text-xl font-bold tracking-tight text-slate-900">Ready to update <span className="text-brand-dark">{editTarget.fileName}</span></h3>
+                            ) : (
+                                <h3 className="text-xl font-bold tracking-tight text-slate-900">Ready to generate{schoolName ? <> for <span className="text-brand-dark">{schoolName}</span></> : ''}</h3>
+                            )}
+                            <p className="text-sm text-slate-600 mt-1">Click a card to see its details.</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            {cards.map(card => {
+                                const selected = summaryDetail === card.key;
+                                return (
+                                    <button key={card.key} type="button" id={`summary-card-${card.key}`}
+                                        aria-expanded={selected} aria-controls="summary-details"
+                                        onClick={() => setSummaryDetail(selected ? null : card.key)}
+                                        className={`flex flex-col justify-between text-left min-h-[11rem] rounded-2xl border-2 p-5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 ${
+                                            selected ? 'border-brand-dark bg-brand-green/10 shadow-md -translate-y-0.5' : 'border-slate-200 bg-white shadow-sm hover:border-brand-green hover:-translate-y-0.5 hover:shadow-md'}`}>
+                                        <span className={`text-xs font-bold uppercase tracking-wider ${selected ? 'text-brand-dark' : 'text-slate-600'}`}>{card.label}</span>
+                                        <span className="text-5xl font-extrabold tracking-tight text-slate-900 leading-none my-3">{card.value}</span>
+                                        <span className="text-sm text-slate-600 leading-snug">{card.detail}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div id="summary-details" role="region" aria-label={open ? open.title : 'Details'}>
+                            {open && (
+                                <section key={summaryDetail} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm animate-pop">
+                                    <div className="flex items-center justify-between gap-3 mb-3">
+                                        <h4 className="text-base font-bold text-slate-900">{open.title}</h4>
+                                        {open.edit}
+                                    </div>
+                                    {open.body}
+                                </section>
+                            )}
+                        </div>
+
+                        {Object.keys(cycleMismatches).length > 0 && (
+                            <div className="flex items-start gap-1.5 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                <AlertTriangleIcon className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                                <div className="space-y-1">
+                                    {specialists.filter(s => cycleMismatches[s.id]).map(s => (
+                                        <p key={s.id}>{describeCycleMismatch(s, cycleMismatches[s.id])}</p>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {editing && (
+                            <section aria-labelledby="changes-heading" className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+                                <h4 id="changes-heading" className="text-base font-bold text-slate-900 mb-2">
+                                    {changes.length ? `${changes.length} ${changes.length === 1 ? 'change' : 'changes'} to make` : 'No changes yet'}
+                                </h4>
+                                {changes.length ? (
+                                    <ul className="list-disc pl-5 space-y-1 text-sm text-slate-800">
+                                        {changes.map((change, i) => <li key={i}>{change}</li>)}
+                                    </ul>
+                                ) : (
+                                    <p className="text-sm text-slate-700">Change the setup in the earlier steps; the changes are listed here before anything is updated.</p>
+                                )}
+                                <p className="text-xs text-slate-600 mt-3">Only these changes are made. Lessons already entered are kept; archived tabs are hidden, never deleted.</p>
+                            </section>
+                        )}
+
+                        <div className="flex flex-col items-center gap-3 pt-4 pb-2">
+                            {editing ? (
+                                <button type="button" onClick={handleSubmit} disabled={isGenerating || !changes.length}
+                                    className={`${changes.length ? 'animate-soft-pulse' : ''} inline-flex items-center justify-center gap-3 rounded-2xl bg-brand-dark px-12 py-5 text-xl font-bold text-white hover:bg-[#00663C] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-green/40`}>
+                                    Update timetable
+                                </button>
+                            ) : (
+                            <button type="button" onClick={handleSubmit} disabled={isGenerating}
+                                className="animate-soft-pulse inline-flex items-center justify-center gap-3 rounded-2xl bg-brand-dark px-12 py-5 text-xl font-bold text-white hover:bg-[#00663C] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-green/40">
+                                Generate timetable
+                            </button>
+                            )}
+                            <p className={`text-sm text-slate-600 ${editing ? 'hidden' : ''}`}>
+                                {plural(classesToGenerate.length, 'class tab', 'class tabs')} and {plural(specialists.length, 'specialist tab', 'specialist tabs')} · takes {estimate.text}
+                            </p>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="w-full flex flex-col items-center">
+
+                    {/* BRANDING HEADER, with the menu for saving and loading the setup */}
+                    <div className="w-full flex items-center justify-between gap-4 mb-8">
+                        <div className="flex items-center gap-4">
+                            <div className="shrink-0 rounded-2xl shadow-md shadow-brand-dark/20">
+                                <LogoMark />
+                            </div>
+                            <h1 className="text-[32px] leading-none font-extrabold tracking-tight text-slate-900">
+                                the<span className="text-brand-dark">timetable</span>tool<span className="text-brand-green">.</span>
+                            </h1>
+                        </div>
+                        {!isGenerating && !isSuccess && !draftOffer && (
+                            <MoreMenu
+                                boxed
+                                icon={<MenuIcon />}
+                                label="Menu"
+                                items={[
+                                    { label: 'Edit an existing timetable', hint: 'Add, rename or archive classes and specialists in a timetable you made', onSelect: () => setLinkDialog('edit') },
+                                    { label: 'Start from an existing timetable', hint: 'A new timetable from one you made, e.g. last year\'s', onSelect: () => setLinkDialog('copy') },
+                                    { label: 'Save setup to a file', hint: 'Download this setup to load again later', onSelect: saveSetupFile },
+                                    { label: 'Load a saved setup', hint: 'Fill the wizard from a setup file', onSelect: () => fileInputRef.current && fileInputRef.current.click() }
+                                ]}
+                            />
+                        )}
+                    </div>
+
+                    {linkDialog && <LinkDialog mode={linkDialog} onLoaded={loadTimetable} onClose={() => setLinkDialog(null)} />}
+
+                    {/* Editing an existing timetable */}
+                    {editing && !isGenerating && !isSuccess && !draftOffer && (
+                        <div role="status" className="w-full mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <PencilLineIcon />
+                            <span className="flex-1 min-w-[12rem]">Editing <strong>{editTarget.fileName}</strong>. Changes are made to this timetable when you update it; lessons already entered are kept.</span>
+                            <a href={editTarget.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline hover:text-amber-700">Open it<span className="sr-only"> (opens in a new tab)</span></a>
+                            <button type="button" onClick={stopEditing} className="font-semibold underline hover:text-amber-700">Stop editing</button>
+                        </div>
+                    )}
+
+                    {/* GENERATION PROGRESS SCREEN */}
+                    {isGenerating ? (
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 animate-pop">
+                            <CardContent className="p-8 sm:p-12 flex flex-col items-center text-center gap-5">
+                                <h2 className="text-xl font-bold text-slate-900">{editing ? 'Updating your timetable' : 'Generating your timetable'}</h2>
+                                <div className="w-full max-w-lg flex items-center gap-3">
+                                    <div className="flex-1 bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200"
+                                        role="progressbar" aria-label="Timetable generation" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadingProgress}>
+                                        <div className="bg-brand-dark h-full rounded-full transition-all duration-500 ease-out" style={{ width: `${loadingProgress}%` }}></div>
+                                    </div>
+                                    <span className="text-sm font-mono font-semibold text-slate-700 w-12 text-right" aria-hidden="true">{loadingProgress}%</span>
+                                </div>
+                                {(() => {
+                                    // The reminder, then three quips, then the reminder again...
+                                    const reminder = `This usually takes ${estimateGeneration(data).text}. Please keep this window open.`;
+                                    const quipNumber = quipTick - Math.floor(quipTick / 4) - 1;
+                                    const text = quipTick % 4 === 0
+                                        ? reminder
+                                        : GENERATING_QUIPS[(quipStart.current + quipNumber) % GENERATING_QUIPS.length];
+                                    return (
+                                        <React.Fragment>
+                                            <p key={quipTick} aria-hidden="true" className="text-sm text-slate-600 max-w-md min-h-[2.5rem] animate-pop">{text}</p>
+                                            <p className="sr-only">{reminder}</p>
+                                        </React.Fragment>
+                                    );
+                                })()}
+                                <Button variant="ghost" className="h-9 text-slate-700" aria-expanded={showLogs} aria-controls="generation-log" onClick={() => setShowLogs(prev => !prev)}>
+                                    {showLogs ? 'Hide the log' : 'View the log'}
+                                </Button>
+                                {showLogs && (
+                                    <div id="generation-log" className="w-full max-w-lg text-left bg-slate-50 border border-slate-200 rounded-lg animate-pop">
+                                        <div className="flex justify-between px-3 py-2 border-b border-slate-200 text-xs text-slate-600">
+                                            <span>{plural(logs.length, 'step', 'steps')}</span>
+                                            <span>Elapsed <span className="font-mono">{formatElapsed(elapsedSeconds)}</span></span>
+                                        </div>
+                                        <ol ref={logContainerRef} className="p-3 max-h-[220px] overflow-y-auto custom-scrollbar text-xs space-y-1.5">
+                                            {logs.map((log) => (
+                                                <li key={log.id} className="flex items-start gap-2.5 leading-relaxed">
+                                                    <span className="text-slate-500 font-mono shrink-0">{log.time}</span>
+                                                    <span className="text-slate-800 break-words flex-1">{log.text}</span>
+                                                </li>
+                                            ))}
+                                        </ol>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    ) : isSuccess ? (
+                        /* SUCCESS SCREEN */
+                        <div className="w-full rounded-2xl shadow-xl overflow-hidden animate-pop bg-gradient-to-br from-[#00C774] via-[#00A35F] to-[#00663C] text-white">
+                            <div className="px-6 sm:px-12 pt-10 pb-10 flex flex-col items-center text-center">
+                                <div className="animate-success mb-4 w-16 h-16 rounded-full bg-white/20 ring-4 ring-white/20 flex items-center justify-center" aria-hidden="true">
+                                    <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                </div>
+                                <h2 className="text-3xl font-extrabold tracking-tight">{updateResult ? 'Your timetable is updated' : 'Your timetable is ready'}</h2>
+                                {updateResult ? (
+                                    <div className="text-base text-white/90 mt-2 max-w-lg">
+                                        <p>{updateResult.changes.length} {updateResult.changes.length === 1 ? 'change' : 'changes'} made to <strong className="text-white">{editTarget ? editTarget.fileName : 'the timetable'}</strong>.</p>
+                                        {updateResult.notes.map((note, i) => <p key={i} className="text-sm text-white/80 mt-1">{note}</p>)}
+                                    </div>
+                                ) : (
+                                    <p className="text-base text-white/85 mt-2 max-w-md">Saved in the <strong className="text-white">Timetables</strong> folder in your My Drive.</p>
+                                )}
+
+                                {/* The picture, with the button on top of it */}
+                                <div className="relative w-full max-w-2xl mt-8">
+                                    <TimetableIllustration />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <a href={generatedUrl} target="_blank" rel="noopener noreferrer"
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-10 py-4 text-xl font-bold text-brand-dark shadow-2xl ring-1 ring-black/5 transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/70">
+                                            Open Sheet<span className="sr-only"> (opens in a new tab)</span>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
+                                    <span className="inline-flex items-center gap-1">
+                                        <button type="button" onClick={() => { setIsSuccess(false); setStep(LAST_STEP); }}
+                                            className="h-11 px-6 rounded-xl border border-white/50 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                                            Keep Editing
+                                        </button>
+                                        <HoverInfo id="keep-editing-info" label="About Keep Editing"
+                                            text={updateResult
+                                                ? "Keep Editing goes back to the wizard, still editing this timetable, to make more changes."
+                                                : "Keep Editing goes back to the wizard with this setup, for example to change something and generate again."} />
+                                    </span>
+                                    <button type="button" onClick={startNew}
+                                        className="h-11 px-6 rounded-xl border border-white/50 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+                                        New Timetable
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : draftOffer ? (
+                        /* RESUME SCREEN */
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 overflow-hidden animate-pop flex flex-col">
+                            <CardContent className="p-10 flex flex-col items-center justify-center text-center min-h-[360px]">
+                                <h2 className="text-2xl font-bold text-slate-800 mb-3">Continue where you left off?</h2>
+                                <p className="text-base text-slate-600 mb-8 max-w-md">
+                                    You have {draftOffer.edit ? <>unfinished changes to <strong>{draftOffer.edit.target.fileName}</strong></> : <>an unfinished timetable setup{draftOffer.data.schoolName ? <> for <strong>{draftOffer.data.schoolName}</strong></> : ''}</>},
+                                    saved {new Date(draftOffer.savedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} at
+                                    step {draftOffer.step || 1} ({STEP_NAMES[(draftOffer.step || 1) - 1]}).
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <Button variant="footerSolid" className="h-11 px-6" onClick={resumeDraft}>Resume</Button>
+                                    <Button variant="outline" className="h-11 px-6" onClick={startNew}>Start new</Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        /* WIZARD SCREEN */
+                        <React.Fragment>
+                        <input ref={fileInputRef} type="file" accept=".json,application/json" className="hidden" onChange={loadSetupFile} aria-hidden="true" tabIndex={-1} />
+                        <Card className="w-full shadow-lg border-0 ring-1 ring-slate-200 flex flex-col">
+                            <CardHeader className="border-b border-slate-200 bg-slate-50 rounded-t-xl px-6 py-6 sm:px-10 z-10 relative">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <h2 ref={stepHeadingRef} tabIndex={-1} className="text-2xl font-bold text-slate-900 focus:outline-none">
+                                            <span className="sr-only">Step {step} of {LAST_STEP}: </span>{STEP_NAMES[step - 1]}
+                                        </h2>
+                                        <p className="text-sm text-slate-600 mt-1">{editing && step === LAST_STEP ? 'Check the changes, then update the timetable.' : STEP_INFO[step - 1]}</p>
+                                    </div>
+                                </div>
+
+                                {/* Progress: one segment per step */}
+                                <div className="mt-5 flex gap-1.5" role="progressbar" aria-label="Wizard progress"
+                                    aria-valuemin={1} aria-valuemax={LAST_STEP} aria-valuenow={step} aria-valuetext={`Step ${step} of ${LAST_STEP}: ${STEP_NAMES[step - 1]}`}>
+                                    {STEP_NAMES.map((name, i) => i + 1).map(s => (
+                                        <div key={s} className="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden">
+                                            {/* The current step's segment moves after the others have finished, so the bar fills (or empties) in order. */}
+                                            <div className={`h-full rounded-full transition-all duration-300 ease-out ${s < step ? 'w-full bg-brand-dark' : s === step ? 'w-1/2 bg-brand-green' : 'w-0'}`}
+                                                style={{ transitionDelay: s === step ? '300ms' : '0ms' }}></div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <ol aria-label="Steps" className="mt-2 grid grid-cols-5 gap-1.5">
+                                    {STEP_NAMES.map((name, i) => i + 1).map(s => (
+                                        <li key={s} aria-current={step === s ? "step" : undefined} className="min-w-0">
+                                            {s < step ? (
+                                                <button type="button" onClick={() => goToStep(s)}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-brand-dark hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
+                                                    <CheckIcon />
+                                                    <span className="truncate">{STEP_NAMES[s - 1]}</span>
+                                                    <span className="sr-only"> (done, go back)</span>
+                                                </button>
+                                            ) : (
+                                                <span className={`block truncate text-[11px] font-semibold uppercase tracking-wider ${s === step ? 'text-slate-900' : 'text-slate-500'}`}>
+                                                    {STEP_NAMES[s - 1]}
+                                                    <span className="sr-only">{s === step ? ' (current step)' : ''}</span>
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ol>
+                            </CardHeader>
+
+                            <CardContent className="p-6 sm:p-10 min-h-[400px] bg-white relative flex-1">
+                                {(() => {
+                                    const problems = listProblems();
+                                    if (!problems.length) return null;
+                                    return (
+                                        <div role="alert" className="mb-6 bg-red-50 border border-red-200 p-4 rounded-lg text-sm text-red-900 animate-pop">
+                                            <p className="font-semibold mb-2 flex items-center gap-2">
+                                                <AlertTriangleIcon className="w-4 h-4 text-red-600" aria-hidden="true" />
+                                                {problems.length === 1 ? '1 thing needs fixing' : `${problems.length} things need fixing`} before you continue:
+                                            </p>
+                                            <ul className="list-disc pl-6 space-y-1">
+                                                {(showAllProblems ? problems : problems.slice(0, 6)).map((item, i) => (
+                                                    <li key={i}>
+                                                        {item.targetId
+                                                            ? <button type="button" className="underline text-left hover:text-red-700" onClick={() => goToProblem(item)}>{item.text}</button>
+                                                            : item.text}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            {problems.length > 6 && (
+                                                <button type="button" onClick={() => setShowAllProblems(prev => !prev)} className="mt-2 ml-6 text-xs font-semibold underline hover:text-red-700">
+                                                    {showAllProblems ? 'Show fewer' : `Show all ${problems.length}`}
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                                {step === STEP.SCHEDULE && renderStep1()}
+                                {step === STEP.CLASSES && renderClassesStep()}
+                                {step === STEP.SPECIALISTS && renderSpecialistsStep()}
+                                {step === STEP.ACTIVITIES && renderActivitiesStep()}
+                                {step === LAST_STEP && generationError && (
+                                    <div role="alert" className="mb-6 bg-red-50 border border-red-200 p-4 rounded-lg flex items-start gap-3 text-sm text-red-900 animate-pop">
+                                        <AlertTriangleIcon className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                                        <div className="flex-1">
+                                            <p className="font-semibold mb-1">The timetable wasn't generated</p>
+                                            <p className="whitespace-pre-line leading-relaxed">{generationError}</p>
+                                        </div>
+                                        <Button variant="outline" onClick={handleSubmit} className="shrink-0">Try again</Button>
+                                    </div>
+                                )}
+                                {step === LAST_STEP && renderSummaryStep()}
+                            </CardContent>
+
+                            <CardFooter className="flex items-start justify-between bg-slate-50 rounded-b-xl border-t border-slate-200 p-6 sm:px-10 h-28 pt-8 shrink-0">
+                                <Button variant="outline" onClick={handleBack} disabled={step === STEP.SCHEDULE}>
+                                    Back
+                                </Button>
+
+                                {step < LAST_STEP && (
+                                    <Button variant="default" onClick={handleNext}>Next: {STEP_NAMES[step]}</Button>
+                                )}
+                            </CardFooter>
+                        </Card>
+                        </React.Fragment>
+                    )}
+
+                    {/* Toast: always present so screen readers announce what appears in it */}
+                    <div aria-live="polite" className="fixed top-4 inset-x-0 z-50 flex justify-center px-4 pointer-events-none">
+                        {toast && (
+                            <div role="status" className={`pointer-events-auto max-w-lg flex items-start gap-3 rounded-lg shadow-lg px-4 py-2.5 text-sm animate-pop ${
+                                toast.tone === 'error' ? 'bg-red-700 text-white' : toast.tone === 'ok' ? 'bg-brand-dark text-white' : 'bg-slate-800 text-white'}`}>
+                                {toast.tone === 'info' && <CheckIcon />}
+                                <span className="flex-1">{toast.text}</span>
+                                {toast.tone !== 'info' && (
+                                    <button type="button" onClick={() => setToast(null)} className="text-xs font-semibold underline shrink-0">Dismiss</button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SUITE TAG */}
+                    <div className="mt-12 mb-4 text-[11px] font-medium text-brand-dark tracking-widest text-center uppercase">
+                        A Sydney Catholic Schools Curriculum Tool - 2026
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
