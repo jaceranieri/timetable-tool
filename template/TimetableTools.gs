@@ -209,30 +209,32 @@ function describeSpecialistTimetable(sheet) {
 const COPY_MODES = {
   weeks: {
     title: 'Copy Week A into the other weeks',
-    explanation: 'Copies what is in <b>Week A</b> of each term into the other weeks of the same term ' +
+    explanation: 'Copies what is in Week A of each term into the other weeks of the same term ' +
       '(Term 1 Week A into Term 1 Week B, and so on).'
   },
   terms: {
     title: 'Copy Term 1 into Terms 2-4',
-    explanation: 'Copies each week of <b>Term 1</b> into the same week of Terms 2, 3 and 4 ' +
+    explanation: 'Copies each week of Term 1 into the same week of Terms 2, 3 and 4 ' +
       '(Term 1 Week A into Term 2 Week A, Term 3 Week A and Term 4 Week A, and so on).'
   }
 };
 
 function copyWeekAToOtherWeeks() {
-  showCopyDialog('weeks');
+  runCopyTool('weeks');
 }
 
 function copyTermOneToOtherTerms() {
-  showCopyDialog('terms');
+  runCopyTool('terms');
 }
 
 /**
- * Explains what will be copied on the active tab and offers the choices as
- * labelled buttons. The buttons call runCopyFromDialog, and the result is
- * shown in the same window.
+ * Explains what will be copied on the active tab, asks whether to keep
+ * what's already there, copies and shows the result. Only Sheets' own
+ * alerts are used, not an HTML window calling back with google.script.run:
+ * that fails with PERMISSION_DENIED for anyone signed into more than one
+ * Google account in the browser.
  */
-function showCopyDialog(mode) {
+function runCopyTool(mode) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
   const sheet = ss.getActiveSheet();
@@ -250,55 +252,38 @@ function showCopyDialog(mode) {
     return;
   }
 
-  // The tab and mode go into the script as JSON, not into the onclick
-  // attributes, so names with quotes can't break the page.
-  showDialog(ui, copyMode.title,
-    '<p>' + copyMode.explanation + '</p>' +
-    '<p>This only changes the <b>' + escapeHtml(sheet.getName()) + '</b> tab. Breaks and specialist ' +
-    'lessons are never changed, and nothing is deleted.</p>' +
-    '<p>What should happen to slots that already have something in them?</p>' +
-    '<div id="choices">' +
-    '<p><button class="primary" onclick="copy(false)">Fill empty slots only</button><br>' +
-    '<span class="note">Slots that already have something in them stay as they are.</span></p>' +
-    '<p><button onclick="copy(true)">Fill empty slots and replace what\'s there</button><br>' +
-    '<span class="note">Slots that already have something in them get the copied entry instead.</span></p>' +
-    '<p><button onclick="google.script.host.close()">Cancel</button></p>' +
-    '</div><div id="result"></div>' +
-    '<script>' +
-    'var MODE=' + JSON.stringify(mode) + ';var SHEET=' + JSON.stringify(sheet.getName()).replace(/</g, '\\u003c') + ';' +
-    'function copy(replace){document.getElementById("choices").style.display="none";' +
-    'document.getElementById("result").innerHTML="<p>Copying...</p>";' +
-    'google.script.run.withSuccessHandler(done).withFailureHandler(failed).runCopyFromDialog(MODE,SHEET,replace);}' +
-    'function done(html){document.getElementById("result").innerHTML=html+' +
-    '"<p><button class=\\"primary\\" onclick=\\"google.script.host.close()\\">Close</button></p>";}' +
-    'function failed(e){done("<p class=\\"bad\\">"+(e&&e.message?e.message:e)+"</p>");}' +
-    '</script>');
+  const answer = ui.alert(copyMode.title,
+    copyMode.explanation + '\n\n' +
+    'This only changes the "' + sheet.getName() + '" tab. Breaks and specialist lessons are never ' +
+    'changed, and nothing is deleted.\n\n' +
+    'Keep what is already in the slots you are copying into?\n\n' +
+    'Yes: fill empty slots only, and keep what is already there.\n' +
+    'No: fill empty slots, and replace what is already there.\n' +
+    'Cancel: don\'t copy anything.',
+    ui.ButtonSet.YES_NO_CANCEL);
+  if (answer !== ui.Button.YES && answer !== ui.Button.NO) return;
+
+  ss.toast('Copying...', copyMode.title, 30);
+  ui.alert(copyMode.title, describeCopyResult(copyTimetableBlocks(ss, sheet, mode, answer === ui.Button.NO)),
+    ui.ButtonSet.OK);
 }
 
-/**
- * Called from the copy window. Copies on the named tab and returns the
- * result as HTML for the window.
- */
-function runCopyFromDialog(mode, sheetName, replaceExisting) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(sheetName);
-  if (!sheet) throw new Error('The tab "' + sheetName + '" no longer exists.');
-  const result = copyTimetableBlocks(ss, sheet, mode, Boolean(replaceExisting));
-
+/** The result of copyTimetableBlocks as a message for an alert. */
+function describeCopyResult(result) {
   const lines = [];
   lines.push(result.copied
-    ? '<p class="ok"><b>Done.</b> Filled ' + result.copied + ' slot(s) (' + formatDuration(result.copied * 5) + ').</p>'
-    : '<p><b>Nothing to copy.</b> Every slot already matched or was kept.</p>');
+    ? 'Done. Filled ' + result.copied + ' slot(s) (' + formatDuration(result.copied * 5) + ').'
+    : 'Nothing to copy. Every slot already matched or was kept.');
   if (result.keptExisting) {
-    lines.push('<p>' + result.keptExisting + ' slot(s) already had something in them and were left as they were.</p>');
+    lines.push(result.keptExisting + ' slot(s) already had something in them and were left as they were.');
   }
   if (result.keptSpecialist) {
-    lines.push('<p>' + result.keptSpecialist + ' specialist lesson slot(s) were left as they were.</p>');
+    lines.push(result.keptSpecialist + ' specialist lesson slot(s) were left as they were.');
   }
   if (result.locked) {
-    lines.push('<p class="bad">' + result.locked + ' slot(s) are locked and could not be changed.</p>');
+    lines.push(result.locked + ' slot(s) are locked and could not be changed.');
   }
-  return lines.join('');
+  return lines.join('\n\n');
 }
 
 /** Each target day column with the column it copies from. */
@@ -383,10 +368,12 @@ function writeGridChanges(sheet, grid, changed) {
 // ---------------------------------------------------------------------------
 
 /**
- * Offers a choice of week (or term, for a 1-week timetable), or all terms,
- * for a Google Doc of the active class or specialist tab. The button calls
- * makeTimetableDocFromDialog and the link to the Doc appears in the same
- * window.
+ * Asks which week (or term, for a 1-week timetable), or all terms, to make
+ * a Google Doc of for the active class or specialist tab, makes it and
+ * shows the link. The question is a Sheets prompt, not an HTML window
+ * calling back with google.script.run: that fails with PERMISSION_DENIED
+ * for anyone signed into more than one Google account in the browser. The
+ * window with the link only shows it, which works for everyone.
  */
 function makeTimetableDoc() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -400,29 +387,57 @@ function makeTimetableDoc() {
   }
   if (!hasDriveService(ui, title)) return;
 
-  const choices = getDocWeekChoices(readTimetableGrid(sheet));
-  const options = choices.map(choice =>
-    '<option value="' + escapeHtml(choice.value) + '">' + escapeHtml(choice.label) + '</option>').join('');
+  const grid = readTimetableGrid(sheet);
+  const choice = askDocWeekChoice(ui, title, sheet, grid);
+  if (!choice) return;
+
+  ss.toast('Making the Google Doc...', title, 60);
+  const doc = makeTimetableDocOfTab(ss, sheet, choice);
   showDialog(ui, title,
-    '<p>Makes a Google Doc of the <b>' + escapeHtml(sheet.getName()) + '</b> timetable, coloured like the ' +
-    'tab, with each lesson as one block. It is saved in the same folder as this timetable and listed on ' +
-    'the Start here tab.</p>' +
-    '<div id="choices">' +
-    '<p><label for="week"><b>Which part of the year?</b></label><br>' +
-    '<select id="week" style="font-size:13px;padding:5px;margin-top:4px;min-width:280px">' + options + '</select></p>' +
-    '<p><button class="primary" onclick="make()">Make the Google Doc</button> ' +
-    '<button onclick="google.script.host.close()">Cancel</button></p>' +
-    '</div><div id="result"></div>' +
-    '<script>' +
-    'var SHEET=' + JSON.stringify(sheet.getName()).replace(/</g, '\\u003c') + ';' +
-    'function make(){var week=document.getElementById("week").value;' +
-    'document.getElementById("choices").style.display="none";' +
-    'document.getElementById("result").innerHTML="<p>Making the Google Doc...</p>";' +
-    'google.script.run.withSuccessHandler(done).withFailureHandler(failed).makeTimetableDocFromDialog(SHEET,week);}' +
-    'function done(html){document.getElementById("result").innerHTML=html+' +
-    '"<p><button onclick=\\"google.script.host.close()\\">Close</button></p>";}' +
-    'function failed(e){done("<p class=\\"bad\\">"+(e&&e.message?e.message:e)+"</p>");}' +
-    '</script>');
+    '<p class="ok"><b>Your Google Doc is ready:</b> ' + escapeHtml(doc.title) + '.</p>' +
+    (doc.pages > 1 ? '<p>' + doc.pages + ' pages, one per ' + doc.pageUnit + '.</p>' : '') +
+    '<p>It is saved in the same folder as this timetable and listed on the Start here tab.</p>' +
+    '<p><a class="button" href="' + doc.url + '" target="_blank">Open the document</a></p>');
+}
+
+
+/**
+ * Asks for the part of the year by number. Leaving it blank picks the week
+ * (or term) the selected cell is in, when it is in one. Asks again after
+ * an answer that isn't one of the numbers. Returns the choice's value
+ * ("term|week" or "all"), or null if cancelled.
+ */
+function askDocWeekChoice(ui, title, sheet, grid) {
+  const choices = getDocWeekChoices(grid);
+  const selected = getSelectedDocWeekChoice(sheet, grid, choices);
+  const question = 'Makes a Google Doc of the "' + sheet.getName() + '" timetable, coloured like the tab.\n\n' +
+    'Which part of the year? Type its number:\n\n' +
+    choices.map((choice, i) => (i + 1) + '   ' + choice.label).join('\n') +
+    (selected ? '\n\nOr leave it blank for ' + selected.label + ', where your selected cell is.' : '');
+
+  let problem = '';
+  for (;;) {
+    const response = ui.prompt(title, problem + question, ui.ButtonSet.OK_CANCEL);
+    if (response.getSelectedButton() !== ui.Button.OK) return null;
+    const text = String(response.getResponseText()).trim();
+    if (!text && selected) return selected.value;
+    const number = /^\d+$/.test(text) ? Number(text) : 0;
+    if (number >= 1 && number <= choices.length) return choices[number - 1].value;
+    problem = (text ? '"' + text + '" isn\'t one of the numbers. ' : '') +
+      'Type a number from 1 to ' + choices.length + '.\n\n';
+  }
+}
+
+
+/** The week (or term) choice the selected cell's column is in, or null. */
+function getSelectedDocWeekChoice(sheet, grid, choices) {
+  const cell = sheet.getActiveCell();
+  if (!cell) return null;
+  const column = cell.getColumn();
+  // Each week takes 6 columns: 5 days and a gap, which counts as the week before it.
+  const day = grid.columns.filter(item => item.column <= column && column - item.column < 6).pop();
+  if (!day) return null;
+  return choices.filter(choice => choice.value === day.term + '|' + day.week)[0] || null;
 }
 
 
@@ -441,14 +456,11 @@ function getDocWeekChoices(grid) {
 
 
 /**
- * Called from the window: makes the Doc for the chosen week ("term|week")
- * or "all", lists it on Start here and returns the result as HTML.
+ * Makes the Doc of a class or specialist tab for the chosen week
+ * ("term|week") or "all", and lists it on Start here. Returns its title,
+ * link and how many pages (one per week, or per term) it has.
  */
-function makeTimetableDocFromDialog(sheetName, choice) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(sheetName);
-  if (!sheet) throw new Error('The tab "' + sheetName + '" no longer exists.');
-
+function makeTimetableDocOfTab(ss, sheet, choice) {
   const grid = readTimetableGrid(sheet);
   const oneWeekCycle = !grid.columns.some(column => column.week > 0);
   const blocks = getDocWeekChoices(grid)
@@ -483,9 +495,7 @@ function makeTimetableDocFromDialog(sheetName, choice) {
   });
   recordDocOnStartHere(ss, doc.url, docTitle, sheet.getName() + ', ' + madeFrom);
 
-  return '<p class="ok"><b>Your Google Doc is ready:</b> ' + escapeHtml(docTitle) + '.</p>' +
-    (blocks.length > 1 ? '<p>' + blocks.length + ' pages, one per ' + (oneWeekCycle ? 'term' : 'week') + '.</p>' : '') +
-    '<p><a class="button" href="' + doc.url + '" target="_blank">Open the document</a></p>';
+  return { title: docTitle, url: doc.url, pages: blocks.length, pageUnit: oneWeekCycle ? 'term' : 'week' };
 }
 
 

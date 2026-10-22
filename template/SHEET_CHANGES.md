@@ -284,3 +284,18 @@ No sheet changes and no change in behaviour: the code both scripts share now liv
 - [ ] A Year 3 class with Religion at 11% is red on OVERVIEW, as on its tab (12% minimum for Years 3-6); a Kindergarten class at 11% is green.
 
 Timetables generated before this change keep their old OVERVIEW: make the same edits on their OVERVIEW tab if they're still in use. New timetables get it from the template.
+
+## Copy and Google Doc tools: work when signed into more than one Google account
+
+**Problem.** Anyone signed into more than one Google account in their browser got "We're sorry, a server error occurred while reading from storage. Error code PERMISSION_DENIED." from **Copy Week A into the other weeks**, **Copy Term 1 into Terms 2-4** and **Make a Google Doc of this timetable**. Those three asked their question in an HTML window whose buttons called back into the script (`google.script.run`), and Google sends that call as the browser's first signed-in account rather than the one using the sheet.
+
+**Fix.** The questions are now asked with Sheets' own alert and prompt boxes, which run as the right account. The window that shows the Doc link only displays it, which works for everyone (as the Check windows and the compliance summary Doc already did).
+
+No sheet changes. Paste the updated `template/TimetableTools.gs` into the template's script project. Timetables already generated have their own copy of the script: in each one still in use, open **Extensions > Apps Script** and paste `TimetableTools.gs` there too.
+
+**Check** in a normal browser window signed into two Google accounts, using the timetable as the second account:
+
+- [ ] **Copy Week A into the other weeks** on a 2-week class tab: an alert explains the copy and asks "Keep what is already in the slots you are copying into?" **Yes** fills empty slots only, **No** also replaces what's there, **Cancel** copies nothing. The result shows in a second alert.
+- [ ] **Copy Term 1 into Terms 2-4** on a 1-week class tab works the same way.
+- [ ] **Make a Google Doc of this timetable**: a prompt lists the weeks (terms, for a 1-week class) by number, with **All terms** last. Typing a number makes that Doc; with a cell selected inside a week, leaving it blank makes that week. A number that isn't listed asks again. The window that follows has **Open the document**.
+- [ ] The Doc is listed on Start here, as before.
