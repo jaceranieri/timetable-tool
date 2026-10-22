@@ -128,23 +128,28 @@ test('Check all class timetables lists every class, non-compliant first', () => 
   assert.ok(html.indexOf('K Blue') < html.indexOf('K Red'), 'non-compliant first');
 });
 
-test('Copy Week A: the window explains the choice with labelled buttons', () => {
-  const { world, tools, open, lastDialog } = setUp();
-  open('Year 3 Gold');
-  tools.copyWeekAToOtherWeeks();
-  const html = lastDialog().html;
-  assert.equal(lastDialog().title, 'Copy Week A into the other weeks');
-  assert.match(html, /Copies what is in <b>Week A<\/b> of each term into the other weeks of the same term/);
-  assert.match(html, /only changes the <b>Year 3 Gold<\/b> tab/);
-  assert.match(html, />Fill empty slots only<\/button>/);
-  assert.match(html, />Fill empty slots and replace what's there<\/button>/);
-  assert.match(html, />Cancel<\/button>/);
-  assert.match(html, /var MODE="weeks";var SHEET="Year 3 Gold";/);
-  assert.equal(world.alerts.length, 0);
+/** Runs a copy tool on the active tab, answering its Yes/No/Cancel question; returns the alerts it showed. */
+function runCopy(world, tools, mode, answer) {
+  world.alerts = [];
+  world.answers = [answer];
+  if (mode === 'weeks') tools.copyWeekAToOtherWeeks(); else tools.copyTermOneToOtherTerms();
+  return world.alerts;
+}
+
+test('Copy Week A: asks in a Sheets alert, not an HTML window (which fails with more than one Google account)', () => {
+  const { world, tools, open } = setUp();
+  open('Year 3 Gold').getRange('J11').setValue('English');
+  const alerts = runCopy(world, tools, 'weeks', 'CANCEL');
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /^Copies what is in Week A of each term into the other weeks of the same term/);
+  assert.match(alerts[0], /only changes the "Year 3 Gold" tab/);
+  assert.match(alerts[0], /Yes: fill empty slots only, and keep what is already there\.\nNo: fill empty slots, and replace what is already there\.\nCancel: don't copy anything\./);
+  assert.equal(open('Year 3 Gold').getRange('P11').getValue(), '', 'cancel copies nothing');
+  assert.equal(world.dialogs, undefined, 'no HTML window');
 });
 
 test('Copy Week A: fills empty slots in each term, keeps breaks, existing entries and specialist lessons', () => {
-  const { tools, open } = setUp();
+  const { world, tools, open } = setUp();
   const sheet = open('Year 3 Gold'); // 2-week cycle: Term 1 Week A = J-N, Week B = P-T; Term 2 Week A = V-Z, Week B = AB-AF
   sheet.getRange('J11:J13').setValues([['English'], ['English'], ['Mathematics']]);
   sheet.getRange('V11').setValue('HSIE');
@@ -152,27 +157,27 @@ test('Copy Week A: fills empty slots in each term, keeps breaks, existing entrie
   sheet.getRange('P13').setValue('PDHPE').setNote('[SPEC_SYNC] Mr Smith');  // specialist lesson
   sheet.getRange('J29').setValue('Recess');                                 // break row (already Recess)
 
-  const result = tools.runCopyFromDialog('weeks', 'Year 3 Gold', false); // fill empty slots only
+  const alerts = runCopy(world, tools, 'weeks', 'YES'); // fill empty slots only
   assert.equal(sheet.getRange('P11').getValue(), 'English');
   assert.equal(sheet.getRange('P12').getValue(), 'Religion', 'existing entry kept');
   assert.equal(sheet.getRange('P13').getValue(), 'PDHPE', 'specialist lesson kept');
   assert.equal(sheet.getRange('AB11').getValue(), 'HSIE', 'Term 2 copies from Term 2 Week A');
   assert.equal(sheet.getRange('P29').getValue(), 'Recess');
-  assert.equal(result, '<p class="ok"><b>Done.</b> Filled 2 slot(s) (10 min).</p>' +
-    '<p>1 slot(s) already had something in them and were left as they were.</p>' +
-    '<p>1 specialist lesson slot(s) were left as they were.</p>');
+  assert.equal(alerts[1], 'Done. Filled 2 slot(s) (10 min).\n\n' +
+    '1 slot(s) already had something in them and were left as they were.\n\n' +
+    '1 specialist lesson slot(s) were left as they were.');
 
-  tools.runCopyFromDialog('weeks', 'Year 3 Gold', true); // also replace what's there
+  runCopy(world, tools, 'weeks', 'NO'); // also replace what's there
   assert.equal(sheet.getRange('P12').getValue(), 'English');
   assert.equal(sheet.getRange('P13').getValue(), 'PDHPE');
-  assert.match(tools.runCopyFromDialog('weeks', 'Year 3 Gold', true), /Nothing to copy/);
+  assert.match(runCopy(world, tools, 'weeks', 'NO')[1], /Nothing to copy/);
 });
 
 test('Copy Term 1 into Terms 2-4, and the 1-week timetable message for Copy Week A', () => {
   const { world, tools, open } = setUp();
   const sheet = open('K Blue'); // 1-week cycle: Term 1 = J-N, Term 2 = P-T, Term 3 = V-Z, Term 4 = AB-AF
   sheet.getRange('J11').setValue('English');
-  assert.match(tools.runCopyFromDialog('terms', 'K Blue', false), /Filled 3 slot\(s\) \(15 min\)/);
+  assert.match(runCopy(world, tools, 'terms', 'YES')[1], /Filled 3 slot\(s\) \(15 min\)/);
   assert.deepEqual(['P11', 'V11', 'AB11'].map(a1 => sheet.getRange(a1).getValue()), ['English', 'English', 'English']);
   tools.copyWeekAToOtherWeeks();
   assert.match(world.alerts.pop(), /1-week timetable, so there are no other weeks to copy into\. Use "Copy Term 1 into Terms 2-4" instead\./);
@@ -198,31 +203,43 @@ function tableShape(html) {
   return covered.map(row => row.filter(Boolean).length);
 }
 
-test('Google Doc window: a drop-down of every week, then All terms', () => {
-  const { tools, open, lastDialog } = setUp();
-  open('Year 3 Gold');
+/** Makes a Google Doc of a tab from the menu, typing the answers into its prompt. */
+function makeDoc(world, tools, open, name, ...answers) {
+  open(name);
+  world.promptAnswers = answers;
   tools.makeTimetableDoc();
-  const html = lastDialog().html;
-  const options = [...html.matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g)].map(m => [m[1], m[2]]);
-  assert.deepEqual(options.slice(0, 3), [['1|0', 'Term 1 - Week A'], ['1|1', 'Term 1 - Week B'], ['2|0', 'Term 2 - Week A']]);
-  assert.deepEqual(options[options.length - 1], ['all', 'All terms (one page per week)']);
-  assert.equal(options.length, 9);
-  assert.match(html, />Make the Google Doc<\/button>/);
-  assert.match(html, /var SHEET="Year 3 Gold";/);
+}
 
-  open('K Blue');
-  tools.makeTimetableDoc();
-  const termOptions = [...lastDialog().html.matchAll(/<option value="([^"]*)">([^<]*)<\/option>/g)].map(m => m[2]);
-  assert.deepEqual(termOptions, ['Term 1', 'Term 2', 'Term 3', 'Term 4', 'All terms (one page per term)']);
+test('Google Doc: a Sheets prompt numbers every week, then All terms (no window calling the script back)', () => {
+  const { world, tools, open, lastDialog } = setUp();
+  makeDoc(world, tools, open, 'Year 3 Gold', null); // cancelled
+  const question = world.prompts.pop();
+  assert.match(question, /^Makes a Google Doc of the "Year 3 Gold" timetable/);
+  assert.match(question, /\n1   Term 1 - Week A\n2   Term 1 - Week B\n3   Term 2 - Week A\n/);
+  assert.match(question, /\n9   All terms \(one page per week\)$/, 'A1 is selected: no blank option');
+  assert.equal(world.docs, undefined);
+  assert.equal(world.dialogs, undefined);
+
+  open('K Blue').setActiveSelection('Q20'); // Term 2
+  makeDoc(world, tools, open, 'K Blue', null);
+  assert.match(world.prompts.pop(), /1   Term 1\n2   Term 2\n3   Term 3\n4   Term 4\n5   All terms \(one page per term\)\n\nOr leave it blank for Term 2, where your selected cell is\.$/);
+
+  // Blank picks the selected week; a wrong answer asks again.
+  open('Year 3 Gold').setActiveSelection('U12'); // the gap after Term 1 Week B counts as Week B
+  makeDoc(world, tools, open, 'Year 3 Gold', '12', '');
+  assert.match(world.prompts[world.prompts.length - 1], /^"12" isn't one of the numbers\. Type a number from 1 to 9\.\n\nMakes a Google Doc/);
+  assert.equal(world.docs[0].name, 'Year 3 Gold - Term 1 - Week B');
+  assert.match(lastDialog().html, /Your Google Doc is ready:<\/b> Year 3 Gold - Term 1 - Week B\./);
+  assert.ok(!/google\.script\.run/.test(lastDialog().html));
 });
 
 test('Google Doc of a week: details, merged lessons with their times, coloured like the tab, listed on Start here', () => {
-  const { world, ss, tools, open } = setUp();
+  const { world, ss, tools, open, lastDialog } = setUp();
   const sheet = open('Year 3 Gold');
   sheet.getRange('J11:J22').setValue('English');     // Monday 9:00-10:00
   sheet.getRange('K11:K16').setValue('Mathematics'); // Tuesday 9:00-9:30
   sheet.getRange('K17:K22').setValue('Assembly');    // Tuesday 9:30-10:00 (no colour rule but "not empty")
-  const result = tools.makeTimetableDocFromDialog('Year 3 Gold', '1|0');
+  makeDoc(world, tools, open, 'Year 3 Gold', '1');
 
   const doc = world.docs[0];
   assert.equal(doc.name, 'Year 3 Gold - Term 1 - Week A');
@@ -248,7 +265,7 @@ test('Google Doc of a week: details, merged lessons with their times, coloured l
   // The tables are stretched to the page: the time column narrow, the days equal.
   const tables = doc.children.filter(child => child.type === 'TABLE');
   assert.deepEqual(tables.map(table => table.widths), [[94, 299, 94, 299], [79, 141, 141, 141, 141, 143]]);
-  assert.match(result, /href="https:\/\/docs\.google\.com\/document\/d\/doc1\/edit" target="_blank">Open the document</);
+  assert.match(lastDialog().html, /href="https:\/\/docs\.google\.com\/document\/d\/doc1\/edit" target="_blank">Open the document</);
 
   // Listed on Start here, replacing the "None yet" line; the next one goes below it.
   const docsHeadings = ss.getRangeByName('StartHereDocs');
@@ -258,15 +275,16 @@ test('Google Doc of a week: details, merged lessons with their times, coloured l
     '=HYPERLINK("https://docs.google.com/document/d/doc1/edit","Year 3 Gold - Term 1 - Week A")',
     'Year 3 Gold, Term 1 - Week A', '21 October 2026, 2:05 PM', 'coordinator@school.example'
   ]);
-  tools.makeTimetableDocFromDialog('K Blue', '2|0');
+  makeDoc(world, tools, open, 'K Blue', '2');
   assert.deepEqual(startHere.getRange(row + 1, 1, 1, 2).getValues()[0], [
     '=HYPERLINK("https://docs.google.com/document/d/doc2/edit","K Blue - Term 2")', 'K Blue, Term 2'
   ]);
 });
 
 test('Google Doc of all terms: one page per week, details once at the top', () => {
-  const { world, tools } = setUp();
-  tools.makeTimetableDocFromDialog('Year 3 Gold', 'all');
+  const { world, tools, open, lastDialog } = setUp();
+  makeDoc(world, tools, open, 'Year 3 Gold', '9');
+  assert.match(lastDialog().html, /8 pages, one per week\./);
   const doc = world.docs[0];
   assert.equal(doc.name, 'Year 3 Gold - All terms');
   assert.match(doc.html, /<h1>Year 3 Gold<\/h1><table class="details">/);
@@ -285,7 +303,7 @@ test('Google Doc of a class tab: synced specialist lessons show the specialist, 
   tools.syncSpecialistSchedules();
   const sheet = open('K Blue');
   sheet.getRange('J17').setValue('Religion');                    // Monday 9:30-9:35, one row
-  tools.makeTimetableDocFromDialog('K Blue', '1|0');
+  makeDoc(world, tools, open, 'K Blue', '1');
   const html = world.docs[0].html;
   assert.match(html, /<b>PDHPE<\/b><br><span class="small">Mr Smith<\/span><br><span class="small">09:00 - 09:30<\/span>/);
   assert.match(html, /<b>Religion<\/b><br><span class="small">09:30 - 09:35<\/span>/);
@@ -295,7 +313,7 @@ test('Google Doc of a specialist tab: specialist details, classes keep their col
   const { world, tools, open } = setUp();
   const spec = open('SPEC_Mr Smith');
   spec.getRange('J11:J16').setValue('K Blue');
-  tools.makeTimetableDocFromDialog('SPEC_Mr Smith', '1|0');
+  makeDoc(world, tools, open, 'SPEC_Mr Smith', '1');
   const doc = world.docs[0];
   assert.equal(doc.name, 'Mr Smith - Term 1');
   assert.match(doc.html, /<td class="label">Specialist<\/td><td>Mr Smith<\/td><td class="label">KLA<\/td><td>PDHPE<\/td>/);
