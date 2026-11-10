@@ -913,7 +913,9 @@ function validateConfig(config) {
     }
   });
 
-  const klaNames = config.klas.map(item => item.name.toLowerCase());
+  // A specialist teaches a KLA or one of the extra-curricular activities.
+  const klaNames = config.klas.map(item => item.name.toLowerCase())
+    .concat(config.activities.map(item => item.name.toLowerCase()));
   const seenSpecialists = {};
   config.specialists.forEach(item => {
     const label = 'Specialist "' + item.name + '"';
@@ -923,7 +925,7 @@ function validateConfig(config) {
     if (seenSpecialists[key]) problems.push(label + ' is used more than once.');
     seenSpecialists[key] = true;
     if (klaNames.indexOf(item.kla.toLowerCase()) === -1) {
-      problems.push(label + ' needs a KLA from the list.');
+      problems.push(label + ' needs a KLA or activity from the list.');
     }
     if (!isValidCycle(item.cycle)) {
       problems.push(label + ' needs a cycle length of 1 to ' + MAX_CYCLE_WEEKS + ' weeks.');
@@ -1492,7 +1494,7 @@ function buildStartHereSheet(ss, config, tabs) {
   ]);
 
   put(11, ['Specialist timetables']);
-  put(12, ['Tab', 'KLA', 'Cycle', 'Lessons entered']);
+  put(12, ['Tab', 'Teaches', 'Cycle', 'Lessons entered']);
   if (!specialistCount) put(specialistFirstRow, ['No specialists in this timetable']);
   const hasBreaks = config.breaks.length > 0;
   config.specialists.forEach((specialist, index) => {

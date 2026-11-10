@@ -2,7 +2,7 @@
 
 ## What’s new
 
-- **A simpler setup wizard.** Five steps: Core Schedule, Classes, Specialists, Activities and Summary. Each one is checked as you go.
+- **A simpler setup wizard.** Five steps: Core Schedule, Classes, Activities, Specialists and Summary. Each one is checked as you go.
 - **Your progress is saved.** Come back later and pick up where you left off, or save your setup to a file.
 - **Change your timetable after it’s made.** Add, rename or remove classes and specialists without starting again.
 - **Start next year from this year.** Reuse last year’s setup as the starting point for a new timetable.
@@ -44,6 +44,9 @@ Every class timetable needs a named teacher for compliance. If you’re still wa
 
 **My classes run on a fortnightly cycle. Can the tool handle that?**
 Yes. Each grade and each specialist can have its own cycle, from 1 to 10 weeks. Set it with the cycle button next to the grade or specialist.
+
+**Can a specialist teach an extra-curricular activity, like Library?**
+Yes. Add the activity on the Activities step. Then, on the Specialists step, choose it from the specialist’s drop-down, under **Extra-curricular activities**. When you sync, the activity is added to each class timetable.
 
 **Do I need to set up Amadeus?**
 No. Amadeus Tutorials are added automatically for Years 3–6, and the compliance check includes them for those classes.
@@ -90,7 +93,7 @@ Yes. Choose **☰ > Start from an existing timetable** in the wizard and paste t
 ## Compliance questions
 
 **Why isn’t the English minimum always 30%?**
-English and Mathematics are checked together: combined, they need at least 50% of teaching time, with Mathematics at least 20%. The English minimum adjusts to match. For example, a class with 23% Mathematics needs at least 27% English. Religion’s minimum depends on the grade: 10% for K–2 and 12% for Years 3–6.
+English and Mathematics are checked together: combined, they need at least 50% of teaching time, with Mathematics at least 20%. The English minimum adjusts to match. For example, a class with 23% Mathematics needs at least 27% English. The Religious Education minimum depends on the grade: 10% for K–2 and 12% for Years 3–6.
 
 ## Troubleshooting
 

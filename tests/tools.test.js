@@ -36,7 +36,7 @@ function setCompliance(sheet, rows, extra) {
 }
 
 const BALANCED = [
-  ['English', 600, 33, 30, 35], ['Mathematics', 450, 25, 20, 35], ['Religion', 216, 12, 12, 15],
+  ['English', 600, 33, 30, 35], ['Mathematics', 450, 25, 20, 35], ['Religious Education', 216, 12, 12, 15],
   ['Science & Tech', 162, 9, 8, 10], ['HSIE', 162, 9, 8, 10], ['PDHPE', 162, 9, 8, 10],
   ['Creative Arts', 54, 3, 8, 10], ['Non-Curricular', 0, 0, 0, 20]
 ];
@@ -153,13 +153,13 @@ test('Copy Week A: fills empty slots in each term, keeps breaks, existing entrie
   const sheet = open('Year 3 Gold'); // 2-week cycle: Term 1 Week A = J-N, Week B = P-T; Term 2 Week A = V-Z, Week B = AB-AF
   sheet.getRange('J11:J13').setValues([['English'], ['English'], ['Mathematics']]);
   sheet.getRange('V11').setValue('HSIE');
-  sheet.getRange('P12').setValue('Religion');                               // existing entry
+  sheet.getRange('P12').setValue('Religious Education');                               // existing entry
   sheet.getRange('P13').setValue('PDHPE').setNote('[SPEC_SYNC] Mr Smith');  // specialist lesson
   sheet.getRange('J29').setValue('Recess');                                 // break row (already Recess)
 
   const alerts = runCopy(world, tools, 'weeks', 'YES'); // fill empty slots only
   assert.equal(sheet.getRange('P11').getValue(), 'English');
-  assert.equal(sheet.getRange('P12').getValue(), 'Religion', 'existing entry kept');
+  assert.equal(sheet.getRange('P12').getValue(), 'Religious Education', 'existing entry kept');
   assert.equal(sheet.getRange('P13').getValue(), 'PDHPE', 'specialist lesson kept');
   assert.equal(sheet.getRange('AB11').getValue(), 'HSIE', 'Term 2 copies from Term 2 Week A');
   assert.equal(sheet.getRange('P29').getValue(), 'Recess');
@@ -302,11 +302,11 @@ test('Google Doc of a class tab: synced specialist lessons show the specialist, 
   open('SPEC_Mr Smith').getRange('J11:J16').setValue('K Blue'); // Monday 9:00-9:30
   tools.syncSpecialistSchedules();
   const sheet = open('K Blue');
-  sheet.getRange('J17').setValue('Religion');                    // Monday 9:30-9:35, one row
+  sheet.getRange('J17').setValue('Religious Education');                    // Monday 9:30-9:35, one row
   makeDoc(world, tools, open, 'K Blue', '1');
   const html = world.docs[0].html;
   assert.match(html, /<b>PDHPE<\/b><br><span class="small">Mr Smith<\/span><br><span class="small">09:00 - 09:30<\/span>/);
-  assert.match(html, /<b>Religion<\/b><br><span class="small">09:30 - 09:35<\/span>/);
+  assert.match(html, /<b>Religious Education<\/b><br><span class="small">09:30 - 09:35<\/span>/);
 });
 
 test('Google Doc of a specialist tab: specialist details, classes keep their colours', () => {
@@ -316,7 +316,7 @@ test('Google Doc of a specialist tab: specialist details, classes keep their col
   makeDoc(world, tools, open, 'SPEC_Mr Smith', '1');
   const doc = world.docs[0];
   assert.equal(doc.name, 'Mr Smith - Term 1');
-  assert.match(doc.html, /<td class="label">Specialist<\/td><td>Mr Smith<\/td><td class="label">KLA<\/td><td>PDHPE<\/td>/);
+  assert.match(doc.html, /<td class="label">Specialist<\/td><td>Mr Smith<\/td><td class="label">Teaches<\/td><td>PDHPE<\/td>/);
   assert.match(doc.html, /<td class="label">Timetable<\/td><td>1-week cycle<\/td>/);
   assert.match(doc.html, /style="background-color:#FFADAD"><b>K Blue<\/b>/);
 });

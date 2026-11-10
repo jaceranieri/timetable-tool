@@ -126,6 +126,15 @@ test('specialists: a rename and a KLA change carry their synced lessons; an arch
   assert.equal(sheet('K Blue').getRange('J11').getValue(), 'HSIE');
 });
 
+test('a specialist changed from a KLA to an extra-curricular activity carries their synced lessons', () => {
+  const { sheet, update, tools } = setUp();
+  sheet('SPEC_Mr Smith').getRange('J11').setValue('K Blue');
+  tools.syncSpecialistSchedules();
+  update({ specialists: [['Mr Smith', 'Library', 1], ['Ms Jones', 'Creative Arts', 2]] }, { specialists: [] });
+  assert.equal(sheet('SPEC_Mr Smith').getRange('B3').getValue(), 'Library');
+  assert.deepEqual([sheet('K Blue').getRange('J11').getValue(), sheet('K Blue').getRange('J11').getNotes()[0][0]], ['Library', '[SPEC_SYNC] Mr Smith']);
+});
+
 test('bell times, breaks and the cycle of an existing class or specialist are refused, and nothing changes', () => {
   const { update, wizard, url, sheet } = setUp();
   const before = plain(wizard.readTimetableSetup(url).exportVariables);

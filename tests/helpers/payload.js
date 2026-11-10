@@ -1,6 +1,6 @@
 'use strict';
 
-const KLAS = ['English', 'Mathematics', 'Religion', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'];
+const KLAS = ['English', 'Mathematics', 'Religious Education', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'];
 
 /**
  * A wizard payload, in the same flat name/value form Index.html sends.
@@ -21,7 +21,7 @@ function makePayload(options) {
     add(`Break_${i + 1}_End`, item[2]);
   });
 
-  KLAS.forEach((name, i) => add(`KLA_${i + 1}_Name`, name));
+  (o.klas || KLAS).forEach((name, i) => add(`KLA_${i + 1}_Name`, name));
 
   (o.specialists || [['Mr Smith', 'PDHPE', 1], ['Ms Jones', 'Creative Arts', 2]]).forEach((item, i) => {
     add(`Specialist_${i + 1}_Name`, item[0]);
@@ -59,7 +59,7 @@ function makeLargeSchoolPayload() {
   });
   const specialists = [
     ['PE Teacher', 'PDHPE', 1], ['Music Teacher', 'Creative Arts', 1], ['Art Teacher', 'Creative Arts', 2],
-    ['Science Teacher', 'Science & Tech', 1], ['RE Teacher', 'Religion', 3], ['Library Teacher', 'English', 2]
+    ['Science Teacher', 'Science & Tech', 1], ['RE Teacher', 'Religious Education', 3], ['Library Teacher', 'English', 2]
   ];
   return makePayload({ classes, specialists });
 }
