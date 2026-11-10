@@ -285,6 +285,9 @@ class FakeSheet {
   }
 
   getName() { return this._name; }
+  /** The selected cell: A1 unless a test picks another with setActiveSelection. */
+  getActiveCell() { return this.getRange(this._activeCell || 'A1'); }
+  setActiveSelection(a1) { this._activeCell = a1; return this.getRange(a1); }
   getSheetId() { return this._id; }
   setName(name) {
     if (this._spreadsheet._sheets.some(sheet => sheet !== this._proxy && sheet._name.toLowerCase() === String(name).toLowerCase())) {
