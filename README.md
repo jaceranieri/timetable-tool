@@ -8,7 +8,8 @@ A timetable helper wizard tool that assists Primary schools creating their timet
 | `wizard/` | The standalone web app project | `Index.html` is the setup wizard; `Code.gs` copies the master template and builds the class and specialist tabs |
 | `template/` | The project bound to the master template spreadsheet | `TemplateSync.gs` adds the **Timetable Admin** menu and does the sync, lock and clash formatting; `TimetableTools.gs` adds the checks, copy helpers and Google Docs. Both are copied into every generated timetable along with the spreadsheet. |
 
-`PLAN.md` lists the planned fixes and features in priority order, and
+`CLAUDE.md` has the rules for working in this repo and `HANDOFF.md` the
+current state and open items. `PLAN.md` lists the planned fixes and features in priority order, and
 `template/SHEET_CHANGES.md` the edits made in the template spreadsheet itself.
 
 `wizard/LoadTest.gs` is a development-only load test; don't include it in the
