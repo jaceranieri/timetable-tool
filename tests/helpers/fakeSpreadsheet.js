@@ -709,11 +709,11 @@ function makeTemplate(world, id) {
   const template = ss._addSheet('TEMPLATE', 75, 15);
   template.getRange('J1').setValue('Week A - Term 1');
   template.getRange('I4:N4').setValues([['Time'].concat(days)]);
-  template.getRange('B5:B12').setValues(['English', 'Mathematics', 'Religion', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'].map(v => [v]));
+  template.getRange('B5:B12').setValues(['English', 'Mathematics', 'Religious Education', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'].map(v => [v]));
   template.getRange('B21').setValue('Amadeus - Tutorials');
   template.getRange('B27:C30').setValues([['Teacher: ', 'Jason Ranieri'], ['Class Name', 'KGREEN'], ['Grade', 'Kindergarten'], ['Weeks per Cycle', '3 weeks per term']]);
   [
-    ['English', '#D9EAD3', '#6AA84F'], ['Mathematics', '#FCE5CD', '#E69138'], ['Religion', '#FFF2CC', '#F1C232'],
+    ['English', '#D9EAD3', '#6AA84F'], ['Mathematics', '#FCE5CD', '#E69138'], ['Religious Education', '#FFF2CC', '#F1C232'],
     ['Science & Tech', '#C9DAF8', '#3D85C6'], ['HSIE', '#D9D2E9', '#674EA7'], ['PDHPE', '#D0E0E3', '#45818E'],
     ['Creative Arts', '#F4CCCC', '#CC0000']
   ].forEach(([kla, background, fontColor]) => {

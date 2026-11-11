@@ -66,10 +66,12 @@ test('class rules: unique, not a break name, cycle 1-10, at least one class', ()
     ['Class "K Blue": the teacher name can\'t start with =.']);
 });
 
-test('specialist rules: unique, KLA from the list, cycle 1-10', () => {
+test('specialist rules: unique, a KLA or activity from the list, cycle 1-10', () => {
   assert.deepEqual(problems({ specialists: [['Mr Smith', 'PDHPE', 1], ['mr smith', 'PDHPE', 1]] }),
     ['Specialist "mr smith" is used more than once.']);
-  assert.deepEqual(problems({ specialists: [['Mr Smith', 'Assembly', 1]] }), ['Specialist "Mr Smith" needs a KLA from the list.']);
+  assert.deepEqual(problems({ specialists: [['Mr Smith', 'Library', 1]] }), [], 'an extra-curricular activity');
+  assert.deepEqual(problems({ specialists: [['Mr Smith', 'Gardening', 1]] }),
+    ['Specialist "Mr Smith" needs a KLA or activity from the list.']);
   assert.deepEqual(problems({ specialists: [['Mr Smith', 'PDHPE', 0]] }),
     ['Specialist "Mr Smith" needs a cycle length of 1 to 10 weeks.']);
   assert.deepEqual(problems({ specialists: [['Template', 'PDHPE', 1]] }),

@@ -630,13 +630,14 @@
             return null;
         };
         const SETUP_FILE_TYPE = 'timetable-tool-setup';
-        const STEP = { SCHEDULE: 1, CLASSES: 2, SPECIALISTS: 3, ACTIVITIES: 4, SUMMARY: 5 };
-        const STEP_NAMES = ['Core Schedule', 'Classes', 'Specialists', 'Activities', 'Summary'];
+        // Activities come before Specialists, so a specialist can be given one.
+        const STEP = { SCHEDULE: 1, CLASSES: 2, ACTIVITIES: 3, SPECIALISTS: 4, SUMMARY: 5 };
+        const STEP_NAMES = ['Core Schedule', 'Classes', 'Activities', 'Specialists', 'Summary'];
         const STEP_INFO = [
             "Your school's name, bell times and breaks.",
             "Each grade's cycle length, and each class's name and teacher.",
-            "Specialist teachers and the KLA each one teaches.",
             "Extra-curricular activities that count as teaching time.",
+            "Specialist teachers and the KLA or activity each one teaches.",
             "Check everything, then generate the timetable."
         ];
         const LAST_STEP = STEP_NAMES.length;
@@ -682,7 +683,7 @@
             klas: [
                 { id: 10, name: "English" },
                 { id: 20, name: "Mathematics" },
-                { id: 30, name: "Religion" },
+                { id: 30, name: "Religious Education" },
                 { id: 40, name: "Science & Tech" },
                 { id: 50, name: "HSIE" },
                 { id: 60, name: "PDHPE" },
@@ -834,11 +835,33 @@
             };
         };
 
+        // KLAs the template has since renamed (lower case, to the new name).
+        // Timetables made before keep the old name, so a setup is only
+        // renamed when it starts a new timetable, never when editing one.
+        const RENAMED_KLAS = { 'religion': 'Religious Education' };
+
+        const withCurrentKlaNames = (data) => {
+            const current = (name) => RENAMED_KLAS[String(name || '').trim().toLowerCase()] || name;
+            return {
+                ...data,
+                klas: data.klas.map(k => ({ ...k, name: current(k.name) })),
+                specialists: data.specialists.map(s => ({ ...s, kla: current(s.kla) }))
+            };
+        };
+
         // A setup to start a new timetable from: no rows continue anything.
-        const withoutOriginals = (data) => ({
+        const withoutOriginals = (data) => withCurrentKlaNames({
             ...data,
             staffing: data.staffing.map(({ originalName, ...row }) => row),
             specialists: data.specialists.map(({ originalName, ...row }) => row)
+        });
+
+        // What a specialist can be given: the KLAs (but not Non-Curricular),
+        // then the extra-curricular activities.
+        const isNonCurricular = (name) => /^non[- ]?curricul(?:ar|um)$/i.test(name.trim());
+        const getSpecialistChoices = (data) => ({
+            klas: data.klas.map(k => k.name.trim()).filter(name => name && !isNonCurricular(name)),
+            activities: [...new Set(data.activities.map(a => a.name.trim()).filter(Boolean))]
         });
 
         // After an update the timetable matches the setup, so every row now
@@ -1078,7 +1101,7 @@
 
             const resumeDraft = () => {
                 draftsEnabled.current = true;
-                setData(withGradeCounts(draftOffer.data));
+                setData(withGradeCounts(draftOffer.edit ? draftOffer.data : withCurrentKlaNames(draftOffer.data)));
                 setEditTarget(draftOffer.edit ? draftOffer.edit.target : null);
                 setEditOriginal(draftOffer.edit ? draftOffer.edit.original : null);
                 setStep(Math.min(LAST_STEP, Math.max(1, Number(draftOffer.step) || 1)));
@@ -1227,6 +1250,14 @@
                     if (listKey === 'staffing' && field === 'className' && !list[index].colorChosen) {
                         list[index].color = colourForName(val) || list[index].color;
                     }
+                    // Specialists given an activity keep it when it's renamed.
+                    if (listKey === 'activities' && field === 'name') {
+                        const oldName = prev.activities[index].name.trim().toLowerCase();
+                        const specialists = oldName && !prev.activities.some((a, j) => j !== index && a.name.trim().toLowerCase() === oldName)
+                            ? prev.specialists.map(sp => sp.kla.trim().toLowerCase() === oldName ? { ...sp, kla: val.trim() } : sp)
+                            : prev.specialists;
+                        return { ...prev, activities: list, specialists };
+                    }
                     return { ...prev, [listKey]: list };
                 });
                 // The error on the field being edited no longer applies.
@@ -1350,6 +1381,8 @@
                 let currentErrors = { specialists: {} };
                 let isValid = true;
                 const duplicateSpecialists = findDuplicates(getSpecialistsToGenerate(data).map(s => s.name));
+                const specialistChoices = getSpecialistChoices(data);
+                const choices = new Set(specialistChoices.klas.concat(specialistChoices.activities).map(name => name.toLowerCase()));
                 data.specialists.forEach((s, i) => {
                     currentErrors.specialists[i] = {};
                     if (isBlankSpecialist(s)) return;
@@ -1357,6 +1390,10 @@
                         || (duplicateSpecialists.has(s.name.trim().toLowerCase()) ? "Duplicate name" : "");
                     if (nameError) { currentErrors.specialists[i].name = nameError; isValid = false; }
                     if (!s.kla) { currentErrors.specialists[i].kla = "Required"; isValid = false; }
+                    else if (!choices.has(s.kla.trim().toLowerCase())) {
+                        currentErrors.specialists[i].kla = `"${s.kla}" isn't on the list any more. Choose again`;
+                        isValid = false;
+                    }
                     if (!s.cycle || s.cycle < 1 || s.cycle > MAX_CYCLE_WEEKS) { currentErrors.specialists[i].cycle = "1 to 10 weeks"; isValid = false; }
                 });
 
@@ -1431,7 +1468,7 @@
                         const e = errors.specialists?.[i] || {};
                         const label = `Specialist ${i + 1}${s.name.trim() ? ` (${s.name.trim()})` : ''}`;
                         if (e.name) add(`${label} name: ${e.name}`, `spec-${s.id}-name`);
-                        if (e.kla) add(`${label} KLA: ${e.kla}`, `spec-${s.id}-kla`);
+                        if (e.kla) add(`${label} KLA or activity: ${e.kla}`, `spec-${s.id}-kla`);
                         if (e.cycle) add(`${label} cycle length: ${e.cycle}`, `spec-${s.id}-cycle`);
                     });
                 }
@@ -1559,7 +1596,7 @@
                         const parsed = JSON.parse(reader.result);
                         if (!parsed || !Array.isArray(parsed.exportVariables)) throw new Error('Not a setup file');
                         const loaded = setupFromVariables(parsed.exportVariables);
-                        setData(loaded);
+                        setData(editTarget ? loaded : withCurrentKlaNames(loaded));
                         setErrors({});
                         setGenerationError("");
                                 setStep(1);
@@ -2026,12 +2063,15 @@
 
             const renderSpecialistsStep = () => {
                 const cycleMismatches = findCycleMismatches(data);
+                const specialistChoices = getSpecialistChoices(data);
+                const isChoice = (name) => specialistChoices.klas.concat(specialistChoices.activities)
+                    .some(choice => choice.toLowerCase() === name.trim().toLowerCase());
                 return (
                     <div className="space-y-8 animate-step" key="step-specialists">
                         {/* Specialist Teachers */}
                         <div>
                             <SectionHeader id="specialists" title="Specialist Profiles"
-                                info="Specialist teachers (e.g. PE, music) and the KLA each one teaches. Each gets their own tab to timetable their lessons, which are then synced onto the class tabs. Rows left blank are skipped.">
+                                info="Specialist teachers (e.g. PE, music, a librarian) and the KLA or extra-curricular activity each one teaches. Each gets their own tab to timetable their lessons, which are then synced onto the class tabs. Rows left blank are skipped.">
                                 <Button variant="brand" size="sm" onClick={() => addToList('specialists', { name: "", kla: "", cycle: 1 })} className="h-8 gap-1">
                                     <PlusIcon className="w-4 h-4 mr-1" /> Add Specialist
                                 </Button>
@@ -2051,11 +2091,19 @@
                                                 <Input id={`spec-${s.id}-name`} boxLabel="Specialist" placeholder="e.g. Mr Smith" value={s.name} onChange={(e) => updateList('specialists', i, 'name', e.target.value)} error={errors.specialists?.[i]?.name} />
                                             </div>
                                             <div className="flex-1 min-w-[10rem]">
-                                                <Select id={`spec-${s.id}-kla`} boxLabel="KLA" value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
-                                                    <option value="">Choose a KLA...</option>
-                                                    {data.klas.filter(k => k.name.trim() && !/^non[- ]?curricul(?:ar|um)$/i.test(k.name.trim())).map(k => (
-                                                        <option key={k.id} value={k.name}>{k.name}</option>
-                                                    ))}
+                                                <Select id={`spec-${s.id}-kla`} boxLabel="KLA or activity" value={s.kla} onChange={(e) => updateList('specialists', i, 'kla', e.target.value)} error={errors.specialists?.[i]?.kla}>
+                                                    <option value="">Choose a KLA or activity...</option>
+                                                    <optgroup label="KLAs">
+                                                        {specialistChoices.klas.map(name => <option key={`kla-${name}`} value={name}>{name}</option>)}
+                                                    </optgroup>
+                                                    {specialistChoices.activities.length > 0 && (
+                                                        <optgroup label="Extra-curricular activities">
+                                                            {specialistChoices.activities.map(name => <option key={`activity-${name}`} value={name}>{name}</option>)}
+                                                        </optgroup>
+                                                    )}
+                                                    {s.kla && !isChoice(s.kla) && (
+                                                        <option value={s.kla}>{s.kla} (not on the list)</option>
+                                                    )}
                                                 </Select>
                                             </div>
                                             <CycleButton id={`spec-${s.id}-cycle`} size="lg" owner={s.name.trim() || `Specialist ${i + 1}`} value={s.cycle}
@@ -2084,7 +2132,7 @@
                         {/* Extracurricular Activities */}
                         <div>
                             <SectionHeader id="activities" title="Extra-Curricular Activities"
-                                info="Events such as assembly or library that class teachers can put on their timetables, counted as teaching time. Amadeus - Tutorials is required for Years 3-6, so it can't be removed.">
+                                info="Events such as assembly or library that class teachers can put on their timetables, counted as teaching time. On the next step, a specialist can be given one of these to teach. Amadeus - Tutorials is required for Years 3-6, so it can't be removed.">
                                 <Button variant="brand" size="sm" onClick={() => addToList('activities', { name: "" })} className="h-8 gap-1">
                                     <PlusIcon className="w-4 h-4 mr-1" /> Add Activity
                                 </Button>

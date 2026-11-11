@@ -15,10 +15,10 @@ function runLoadTest() {
     ['Music Teacher', 'Creative Arts', 1],
     ['Art Teacher', 'Creative Arts', 2],
     ['Science Teacher', 'Science & Tech', 1],
-    ['RE Teacher', 'Religion', 3],
+    ['RE Teacher', 'Religious Education', 3],
     ['Library Teacher', 'English', 2]
   ];
-  const klas = ['English', 'Mathematics', 'Religion', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'];
+  const klas = ['English', 'Mathematics', 'Religious Education', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'];
 
   const variables = [];
   const add = (name, value) => variables.push({ name: name, value: value });

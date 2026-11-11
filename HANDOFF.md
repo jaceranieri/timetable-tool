@@ -67,7 +67,7 @@ behaves oddly:
   SpreadsheetApp later in the same run, so conditional formatting goes on
   the first tab of each cycle before the copies are made.
 - English and Mathematics minimums depend on each other (together at least
-  50%, Mathematics at least 20%), and Religion's on the grade (10% K-2, 12%
+  50%, Mathematics at least 20%), and Religious Education's on the grade (10% K-2, 12%
   Years 3-6), so any compliance colouring has to read the class tab's own
   F and G columns, not fixed numbers.
 
@@ -79,6 +79,6 @@ behaves oddly:
 | What was changed in the spreadsheet by hand, and how to test it | `template/SHEET_CHANGES.md` |
 | Deploying, first-run permissions, testing against a template copy | `README.md` |
 | Generating, editing an existing timetable, drafts | `wizard/Code.gs` (`generateTimetable`, `updateTimetable`, `saveDraft`) |
-| The wizard UI | `wizard/Index.html` (`App`; steps Core Schedule, Classes, Specialists, Activities, Summary) |
+| The wizard UI | `wizard/Index.html` (`App`; steps Core Schedule, Classes, Activities, Specialists, Summary) |
 | Sync, lock, clash formatting | `template/TemplateSync.gs` |
 | Checks, copy helpers, Google Docs | `template/TimetableTools.gs` |

@@ -517,7 +517,7 @@ function getTimetableDetails(ss, sheet, grid) {
   if (isSpecialistSheet(sheet)) {
     const name = String(sheet.getRange('B1').getDisplayValue() || sheet.getName().replace(/^SPEC_/, ''));
     const cycle = Number(sheet.getRange('D3').getValue()) || 1;
-    rows.push(['Specialist', name], ['KLA', String(sheet.getRange('B3').getDisplayValue())]);
+    rows.push(['Specialist', name], ['Teaches', String(sheet.getRange('B3').getDisplayValue())]);
     rows.push(['Timetable', cycle + '-week cycle']);
     if (schoolName) rows.push(['School', schoolName]);
     if (schoolDay) rows.push(['School day', schoolDay]);

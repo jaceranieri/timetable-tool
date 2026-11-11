@@ -299,3 +299,46 @@ No sheet changes. Paste the updated `template/TimetableTools.gs` into the templa
 - [ ] **Copy Term 1 into Terms 2-4** on a 1-week class tab works the same way.
 - [ ] **Make a Google Doc of this timetable**: a prompt lists the weeks (terms, for a 1-week class) by number, with **All terms** last. Typing a number makes that Doc; with a cell selected inside a week, leaving it blank makes that week. A number that isn't listed asks again. The window that follows has **Open the document**.
 - [ ] The Doc is listed on Start here, as before.
+
+## "Religion" becomes "Religious Education" (PLAN step 35)
+
+**Why the sheet matters.** The wizard only supplies the drop-down list. Each class tab counts a KLA's lessons by matching the grid against the name in the compliance table (TEMPLATE!C7 counts cells equal to B7), and colours them with the template's "Text is exactly" rule, which the wizard copies onto every class tab. If the wizard says "Religious Education" while the template still says "Religion", those lessons aren't counted and the class shows as non-compliant. So **make these template changes before pasting the new wizard files**, in the same sitting.
+
+Things that need **no** change: the Religious Education minimum (F7, by grade), its maximum (G7), the formulas in C7:E7, OVERVIEW's percentages (they're read by row, not by name), the scripts (they read names from the sheet), DATA (the wizard writes it).
+
+In the **master template**:
+
+- [ ] **File > Version history > Name current version**, e.g. "Before Religious Education", so you can go back.
+- [ ] **TEMPLATE!B7:** type `Religious Education`.
+- [ ] **TEMPLATE colour rule:** click B7, then **Format > Conditional formatting**. Open the rule **Text is exactly "Religion"** (yellow, range `A5:B12`) and change the text to `Religious Education`. Keep the colours and the range. This is the rule copied onto every class grid, and the Google Docs take their colours from it.
+- [ ] **TEMPLATE B19:B21:** if a "Text is exactly Religion" rule is still there (Phase 2 removed it), delete it.
+- [ ] **OVERVIEW!A8:** type `Religious Education`. Show the tab first if it's hidden (View > Hidden sheets).
+- [ ] **OVERVIEW colour rule:** click A8, **Format > Conditional formatting**, open **Text is exactly "Religion"** (range `A6:A13`) and change the text to `Religious Education`.
+- [ ] **Widen** TEMPLATE column B and OVERVIEW column A if the longer name is cut off or wraps awkwardly.
+- [ ] **Check nothing is left:** **Edit > Find and replace**, find `Religion`, search **All sheets**, tick **Also search within formulas**, and click **Find**. It should find nothing. Don't use **Replace all** for this: it doesn't change conditional formatting rules.
+
+Then paste the updated `wizard/Code.gs` and `wizard/Index.html` into the wizard project, and the updated `template/TimetableTools.gs` into the template's script project. (These also carry step 36, below.)
+
+**Timetables made before this change** keep "Religion", and keep working: their formulas, colours and lessons all use that name, and the wizard keeps it when you edit one. Renaming an existing timetable means doing the steps above on its TEMPLATE, OVERVIEW and **every class tab** (each has its own compliance table and colour rule), replacing every lesson, and fixing its DATA lists. It isn't worth doing by hand. **Start from an existing timetable** in the wizard uses "Religious Education" automatically, and so does a saved setup file or an unfinished draft.
+
+**Check:**
+
+- [ ] Generate a new timetable. On a class tab the drop-down offers **Religious Education**, it turns yellow in the grid, and the compliance table counts it on row 7.
+- [ ] **Timetable Admin > Check this timetable** names Religious Education when it's under its range. OVERVIEW row 8 reads Religious Education and is coloured.
+- [ ] **Make a Google Doc of this timetable:** Religious Education lessons are yellow.
+- [ ] A specialist teaching Religious Education syncs "Religious Education" onto the class tabs.
+- [ ] ☰ > **Edit an existing timetable** on a timetable made before the change: the KLA list still says Religion.
+- [ ] ☰ > **Start from an existing timetable** on the same one: the list says Religious Education, and any specialist who taught Religion now teaches Religious Education.
+
+## Specialists can teach an extra-curricular activity (PLAN step 36)
+
+No sheet changes. The class tabs' drop-downs already list the activities, so a synced activity is a valid entry, and it counts towards time the same way as when a teacher types it.
+
+**Check** (after pasting the files above):
+
+- [ ] The wizard's steps are Core Schedule, Classes, **Activities**, **Specialists**, Summary.
+- [ ] On Specialists, the drop-down (now labelled **KLA or activity**) has two groups: **KLAs** (no Non-Curricular) and **Extra-curricular activities**.
+- [ ] Give a specialist "Library". Go back to Activities and rename Library to "Library Lessons": the specialist now teaches "Library Lessons". Remove it: Next on Specialists says it isn't on the list any more and asks you to choose again.
+- [ ] Generate. On the specialist's tab, put a class in a slot, then **Timetable Admin > 1. Sync Specialist Schedules**: the class tab shows the activity, with the specialist's note, and **2. Lock Synced Cells** locks it.
+- [ ] Start here lists the specialist with the activity under **Teaches**. The specialist's Google Doc shows **Teaches**: the activity.
+- [ ] ☰ > **Edit an existing timetable**: change a specialist from a KLA to an activity and update. Their synced lessons change to the activity.

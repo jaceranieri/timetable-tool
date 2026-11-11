@@ -41,6 +41,13 @@ test('sync copies a specialist lesson onto the class tab built by the wizard', (
   assert.match(world.alerts.pop(), /Populated 1 specialist slot/);
 });
 
+test('a specialist given an extra-curricular activity syncs that activity onto the class tab', () => {
+  const { sync, sheet } = setUp({ specialists: [['Ms Reid', 'Library', 1]] });
+  sheet('SPEC_Ms Reid').getRange('J11').setValue('K Red'); // Monday 09:00
+  sync.syncSpecialistSchedules();
+  assert.deepEqual(cell(sheet('K Red'), 'J11'), { value: 'Library', note: '[SPEC_SYNC] Ms Reid', background: '#ffffff' });
+});
+
 test('a 1-week specialist lands in every week of a 2-week class', () => {
   const { sync, sheet } = setUp();
   sheet('SPEC_Mr Smith').getRange('M13').setValue('Year 3 Gold'); // Thursday 09:10

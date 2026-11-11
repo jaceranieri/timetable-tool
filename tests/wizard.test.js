@@ -14,7 +14,8 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'wizard', 'Index.html'),
 const helperSource = html.match(/(const CLASS_COLOR_PALETTE[\s\S]*?)\n\s*const App = /)[1];
 const wizard = vm.runInNewContext(helperSource + `;({ makeInitialData, buildExportVariables, setupFromVariables,
   getClassesToGenerate, findCycleMismatches, describeCycleMismatch, estimateGeneration, parsePastedClasses,
-  getTeacherError, colourForName, describeUpdate, findRenames, withoutOriginals, asOriginals })`, {});
+  getTeacherError, colourForName, describeUpdate, findRenames, withoutOriginals, asOriginals,
+  withCurrentKlaNames, getSpecialistChoices })`, {});
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const valuesOf = variables => Object.fromEntries(variables.map(item => [item.name, item.value]));
@@ -140,4 +141,35 @@ test('editing: the changes are listed, renames are found, and a copy continues n
   // Starting a new timetable from one: nothing is a rename.
   const copy = wizard.withoutOriginals(data);
   assert.ok(copy.staffing.every(s => !('originalName' in s)) && copy.specialists.every(s => !('originalName' in s)));
+});
+
+test('Religion is now Religious Education, but only for new timetables', () => {
+  assert.equal(wizard.makeInitialData().klas[2].name, 'Religious Education');
+  // A setup saved before the template renamed it.
+  const oldPayload = makePayload({
+    klas: ['English', 'Mathematics', 'Religion', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular'],
+    specialists: [['Mrs Lee', 'Religion', 1], ['Mr Smith', 'PDHPE', 1]]
+  });
+  const loaded = wizard.setupFromVariables(oldPayload.exportVariables);
+  // Editing that timetable keeps its own name, which its tabs and formulas use.
+  assert.equal(loaded.klas[2].name, 'Religion');
+  assert.equal(loaded.specialists[0].kla, 'Religion');
+  // Starting a new timetable from it (or from a saved file or draft) uses the new name.
+  for (const copy of [wizard.withoutOriginals(loaded), wizard.withCurrentKlaNames(loaded)]) {
+    assert.deepEqual(plain(copy.klas.map(k => k.name)),
+      ['English', 'Mathematics', 'Religious Education', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts', 'Non-Curricular']);
+    assert.deepEqual(plain(copy.specialists.map(s => s.kla)), ['Religious Education', 'PDHPE']);
+  }
+});
+
+test('a specialist can teach a KLA (not Non-Curricular) or an extra-curricular activity', () => {
+  const data = wizard.makeInitialData();
+  data.activities.push({ id: 'a1', name: 'Choir' }, { id: 'a2', name: '  ' }, { id: 'a3', name: 'Choir' });
+  assert.deepEqual(plain(wizard.getSpecialistChoices(data)), {
+    klas: ['English', 'Mathematics', 'Religious Education', 'Science & Tech', 'HSIE', 'PDHPE', 'Creative Arts'],
+    activities: ['Assembly', 'Library', 'Amadeus - Tutorials', 'Choir']
+  });
+  data.specialists = [{ id: 's1', name: 'Ms Reid', kla: 'Library', cycle: 1 }];
+  const sent = valuesOf(wizard.buildExportVariables(data));
+  assert.equal(sent.Specialist_1_KLA, 'Library');
 });
